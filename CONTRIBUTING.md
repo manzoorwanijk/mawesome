@@ -1,0 +1,66 @@
+# Contributing
+
+This document is the human-facing guide. [AGENTS.md](./AGENTS.md) is the authoritative
+reference for the full command list and the hard rules — please read it too (it applies to
+human contributors and AI agents alike).
+
+## Prerequisites
+
+- **Node `>=24.12`** (see `.nvmrc`).
+- **pnpm 10** — we do **not** use Corepack. Install pnpm standalone with `npm i -g pnpm@10`,
+  the [pnpm install script](https://pnpm.io/installation), or a version manager
+  (mise/proto). `devEngines` will error if your Node or pnpm version is wrong.
+
+```sh
+pnpm install
+pnpm verify   # the full local gate
+```
+
+## Repository layout
+
+- `packages/*` — published `@mawesome/*` packages (each declares all of its own deps).
+- `tools/tsconfig` — `@mawesome/tsconfig`, the shared strict TypeScript base.
+- `tools/repo` — repo-level dev CLIs (oxlint, oxfmt, syncpack, tsgo) and their configs.
+- Root holds **no dependencies** except the `@changesets/*` release tooling (enforced by
+  `pnpm check:root-deps`).
+
+## Adding a package
+
+Run `/add-package <name>` (or copy `templates/package/` to `packages/<name>`), then:
+
+1. Set the package `name` to `@mawesome/<name>` and fill in `description`.
+2. Add any dependencies **to the catalog** in `pnpm-workspace.yaml` first (caret range,
+   already older than the 3-day `minimumReleaseAge`), then reference them as `catalog:`.
+   Internal `@mawesome/*` deps use `workspace:*`.
+3. `pnpm install`, then `pnpm verify` until green.
+4. Add a changeset (below).
+
+## Dependencies
+
+- Every dependency version lives in the **catalog** (`pnpm-workspace.yaml`). Packages
+  reference it as `catalog:`; syncpack (`pnpm deps:lint`) enforces this.
+- Use **caret ranges** so security patches flow in; the lockfile pins exact resolved
+  versions for reproducibility.
+- A new dependency that ships an install/build script will fail `pnpm install`
+  (`strictDepBuilds`). If it genuinely needs to build, raise a PR to add it to
+  `onlyBuiltDependencies` in `pnpm-workspace.yaml` with justification.
+
+## Changesets / releasing
+
+Every change that affects a **published** package's behavior or public API needs a
+changeset. Pure internal/tooling/docs/test changes don't (use `pnpm changeset --empty` only
+if a required check demands one).
+
+1. **Create one:** `pnpm changeset`. Select the affected `@mawesome/*` package(s), pick the
+   bump — **patch** (fix), **minor** (backward-compatible feature), **major** (breaking;
+   note `0.x` minors are still breaking under semver) — and write a clear, user-facing
+   summary. It becomes the package's changelog entry. Commit the generated file in
+   `.changeset/`.
+2. **Don't hand-edit `CHANGELOG.md`** — changesets generates it.
+3. **Release flow:** merges to `main` accumulate changesets. The `changesets/action`
+   opens/updates a **"Version Packages"** PR that bumps versions and writes changelogs.
+   Merging _that_ PR publishes the changed packages via npm **OIDC trusted publishing** (no
+   tokens). The first publish of a brand-new package name may need a one-time manual
+   `npm publish` / npm UI setup to create the name before the trusted-publisher link exists.
+4. Internal `@mawesome/*` dependents are bumped automatically
+   (`updateInternalDependencies: patch`).

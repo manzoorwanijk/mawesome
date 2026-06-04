@@ -1,0 +1,55 @@
+{
+	"name": "@mawesome/PACKAGE_NAME",
+	"version": "0.0.0",
+	"description": "TODO: describe @mawesome/PACKAGE_NAME",
+	"keywords": [],
+	"license": "MIT",
+	"author": "Manzoor Ahmad Wani",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/manzoorwanijk/mawesome.git",
+		"directory": "packages/PACKAGE_NAME"
+	},
+	"files": [
+		"dist"
+	],
+	"type": "module",
+	"main": "./dist/index.cjs",
+	"module": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"exports": {
+		".": {
+			"import": {
+				"types": "./dist/index.d.ts",
+				"default": "./dist/index.js"
+			},
+			"require": {
+				"types": "./dist/index.d.cts",
+				"default": "./dist/index.cjs"
+			}
+		}
+	},
+	"publishConfig": {
+		"access": "public",
+		"provenance": true
+	},
+	"scripts": {
+		"build": "tsdown",
+		"dev": "tsdown --watch",
+		"typecheck": "tsgo",
+		"test": "vitest run",
+		"check:exports": "attw --pack . && publint --strict"
+	},
+	"devDependencies": {
+		"@arethetypeswrong/cli": "catalog:",
+		"@mawesome/tsconfig": "workspace:*",
+		"@types/node": "catalog:",
+		"@typescript/native-preview": "catalog:",
+		"publint": "catalog:",
+		"tsdown": "catalog:",
+		"vitest": "catalog:"
+	},
+	"engines": {
+		"node": ">=24.12.0"
+	}
+}
