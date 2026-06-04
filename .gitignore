@@ -32,3 +32,6 @@ pnpm-debug.log*
 # the generated local copy is the developer's own.
 .vscode/settings.json
 
+
+# Local scratch (e.g. the monorepo setup plan) — not tracked.
+temp/
