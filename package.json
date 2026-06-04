@@ -27,6 +27,7 @@
 		"release": "changeset publish",
 		"test": "pnpm -r --if-present test",
 		"typecheck": "pnpm -r --if-present typecheck",
+		"verify": "pnpm lint && pnpm format:check && pnpm deps:lint && pnpm check:root-deps && pnpm typecheck && pnpm test && pnpm build && pnpm check:exports",
 		"version": "changeset version"
 	},
 	"devDependencies": {

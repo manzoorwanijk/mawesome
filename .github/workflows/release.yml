@@ -1,0 +1,38 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: release-${{ github.ref }}
+
+# Trusted publishing to npm via OIDC (no NPM_TOKEN). `id-token` mints the
+# short-lived credential; `contents`/`pull-requests` are for the Version PR.
+permissions:
+  contents: write
+  pull-requests: write
+  id-token: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # Full gate must pass before anything is versioned or published.
+      - run: pnpm verify
+      # npm >= 11.5.1 is required for OIDC trusted publishing.
+      - run: npm install -g npm@latest
+      - name: Create Version PR or publish
+        uses: changesets/action@v1.9.0
+        with:
+          version: pnpm run version
+          publish: pnpm run release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
