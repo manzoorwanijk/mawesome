@@ -1,0 +1,10 @@
+{
+	"extends": "@mawesome/tsconfig/base.json",
+	"compilerOptions": {
+		"noEmit": true,
+		"allowImportingTsExtensions": true,
+		"isolatedDeclarations": false,
+		"types": ["node"]
+	},
+	"include": ["*.config.ts", "scripts/**/*.ts", "test/**/*.ts"]
+}

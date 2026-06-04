@@ -1,0 +1,8 @@
+{
+	"//": "Editor convenience base. Type-checking runs per-workspace via `tsgo` (pnpm -r typecheck).",
+	"extends": "./tools/tsconfig/base.json",
+	"compilerOptions": {
+		"noEmit": true
+	},
+	"files": []
+}

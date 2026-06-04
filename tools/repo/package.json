@@ -1,0 +1,28 @@
+{
+	"name": "@mawesome/repo",
+	"version": "0.0.0",
+	"private": true,
+	"description": "Repo-level dev tooling (oxlint, oxfmt, syncpack, tsgo) and their configs for the mawesome monorepo",
+	"license": "MIT",
+	"author": "Manzoor Ahmad Wani",
+	"type": "module",
+	"scripts": {
+		"deps:fix": "cd ../.. && syncpack fix --config tools/repo/syncpack.config.ts",
+		"deps:lint": "cd ../.. && syncpack lint --config tools/repo/syncpack.config.ts",
+		"format": "cd ../.. && oxfmt --config tools/repo/oxfmt.config.ts .",
+		"format:check": "cd ../.. && oxfmt --check --config tools/repo/oxfmt.config.ts .",
+		"lint": "cd ../.. && oxlint --config tools/repo/oxlint.config.ts .",
+		"lint:fix": "cd ../.. && oxlint --fix --config tools/repo/oxlint.config.ts .",
+		"test": "vitest run",
+		"typecheck": "tsgo"
+	},
+	"devDependencies": {
+		"@mawesome/tsconfig": "workspace:*",
+		"@types/node": "catalog:",
+		"@typescript/native-preview": "catalog:",
+		"oxfmt": "catalog:",
+		"oxlint": "catalog:",
+		"syncpack": "catalog:",
+		"vitest": "catalog:"
+	}
+}
