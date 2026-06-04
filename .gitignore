@@ -28,3 +28,7 @@ pnpm-debug.log*
 !.claude/
 .claude/settings.local.json
 
+# VS Code: recommended settings are opt-in via `pnpm vscode:setup` (settings.dist.jsonc);
+# the generated local copy is the developer's own.
+.vscode/settings.json
+

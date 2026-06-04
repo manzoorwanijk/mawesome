@@ -1,0 +1,43 @@
+// Recommended, opt-in VS Code workspace settings for the mawesome monorepo.
+//
+// @mawesome/managed-vscode-settings
+//
+// Install with `pnpm vscode:setup` — it copies this file to `.vscode/settings.json`
+// (which is gitignored). It only overwrites a `settings.json` that still carries the
+// `@mawesome/managed-vscode-settings` marker above, so your own edits are never clobbered.
+// Delete that marker line to take ownership of your local settings.
+{
+	"$schema": "vscode://schemas/settings/workspace",
+
+	// Format with oxfmt via the oxc extension (recommended in .vscode/extensions.json).
+	"editor.formatOnSave": false, // disable default behavior
+	"editor.codeActionsOnSave": {
+		"source.format.oxc": "always", // run formatter first
+		"source.fixAll.oxc": "always", // run lint fixes after
+	},
+	"editor.defaultFormatter": "oxc.oxc-vscode",
+	"[javascript]": { "editor.defaultFormatter": "oxc.oxc-vscode" },
+	"[typescript]": { "editor.defaultFormatter": "oxc.oxc-vscode" },
+	"[json]": { "editor.defaultFormatter": "oxc.oxc-vscode" },
+	"[jsonc]": { "editor.defaultFormatter": "oxc.oxc-vscode" },
+	"[yaml]": { "editor.defaultFormatter": "oxc.oxc-vscode" },
+	"[markdown]": { "editor.defaultFormatter": "oxc.oxc-vscode" },
+
+	// Apply the repo's single lint/format config workspace-wide (matches the pnpm CLIs).
+	// Without these, only files under tools/repo get our config via nested discovery;
+	// elsewhere oxc falls back to defaults.
+	"oxc.configPath": "tools/repo/oxlint.config.ts",
+	"oxc.fmt.configPath": "tools/repo/oxfmt.config.ts",
+	"oxc.lint.run": "onType",
+
+	// Hide noise and skip generated / vendored paths from search.
+	"files.exclude": { "**/.DS_Store": true },
+	"search.exclude": {
+		"**/node_modules/**": true,
+		"**/dist/**": true,
+		"**/pnpm-lock.yaml": true,
+	},
+
+	// Type-check with tsgo — install the "TypeScript (Native Preview)" extension.
+	"js/ts.experimental.useTsgo": true,
+}

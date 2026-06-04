@@ -1,0 +1,18 @@
+{
+	// Runs on folder open (gated by VS Code Workspace Trust) to install the repo's
+	// recommended settings. It only writes/updates a managed `.vscode/settings.json`
+	// (see settings.dist.jsonc) and never clobbers a developer's own customizations.
+	// Runs via plain `node` (node:* builtins only), so it works before `pnpm install`.
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Install recommended VS Code settings",
+			"detail": "Copies .vscode/settings.dist.jsonc to .vscode/settings.json (opt-in, managed).",
+			"type": "shell",
+			"command": "node tools/repo/scripts/install-vscode-settings.ts",
+			"runOptions": { "runOn": "folderOpen" },
+			"problemMatcher": [],
+			"presentation": { "reveal": "silent", "close": true }
+		}
+	]
+}

@@ -16,6 +16,23 @@ pnpm install
 pnpm verify   # the full local gate
 ```
 
+### Editor setup (optional)
+
+Recommended VS Code settings are **opt-in**. Install the suggested extensions (VS Code
+will prompt from `.vscode/extensions.json`). The recommended settings are installed
+automatically: a `.vscode/tasks.json` task runs on **folder open** (once you grant VS Code
+Workspace Trust) and copies `.vscode/settings.dist.jsonc` to your local (gitignored)
+`.vscode/settings.json` — oxc as the formatter, format-on-save, and tsgo type-checking. You
+can also run it manually:
+
+```sh
+pnpm vscode:setup
+```
+
+It only writes/updates a `settings.json` that still carries the
+`@mawesome/managed-vscode-settings` marker, so your personal edits are never overwritten
+(delete the marker to take full ownership and opt out of updates).
+
 ## Repository layout
 
 - `packages/*` — published `@mawesome/*` packages (each declares all of its own deps).
