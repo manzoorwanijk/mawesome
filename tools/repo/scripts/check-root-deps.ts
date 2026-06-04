@@ -6,23 +6,31 @@
  * Run directly on Node (type-stripped): `node tools/repo/scripts/check-root-deps.ts`.
  */
 import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
 
 /** Scope prefixes allowed in the root `devDependencies`. */
 const ALLOWED_DEV_DEP_PREFIXES = ['@changesets/'];
 
-interface RootManifest {
-	dependencies?: Record<string, string>;
+/** Manifest fields that must be empty at the root (no runtime/peer/optional deps). */
+const FORBIDDEN_FIELDS = ['dependencies', 'peerDependencies', 'optionalDependencies'] as const;
+
+type DependencyField = (typeof FORBIDDEN_FIELDS)[number];
+
+type RootManifest = {
 	devDependencies?: Record<string, string>;
-}
+} & Partial<Record<DependencyField, Record<string, string>>>;
 
 /** Returns a list of policy violations (empty when the manifest is compliant). */
 export function findRootDepViolations(pkg: RootManifest): string[] {
 	const violations: string[] = [];
 
-	const deps = Object.keys(pkg.dependencies ?? {});
-	if (deps.length > 0) {
-		violations.push(`root "dependencies" must be empty, found: ${deps.join(', ')}`);
+	for (const field of FORBIDDEN_FIELDS) {
+		const names = Object.keys(pkg[field] ?? {});
+		if (names.length > 0) {
+			violations.push(`root "${field}" must be empty, found: ${names.join(', ')}`);
+		}
 	}
 
 	for (const name of Object.keys(pkg.devDependencies ?? {})) {
@@ -35,10 +43,10 @@ export function findRootDepViolations(pkg: RootManifest): string[] {
 	return violations;
 }
 
-/** Resolves the manifest to check: `--manifest <path>` (cwd-relative) or the repo root. */
+/** Resolves the manifest to check: `--manifest <path>` or the repo root. */
 function resolveManifestUrl(manifest: string | undefined): URL {
 	if (manifest !== undefined) {
-		return new URL(manifest, `file://${process.cwd()}/`);
+		return pathToFileURL(resolve(manifest));
 	}
 	return new URL('../../../package.json', import.meta.url);
 }

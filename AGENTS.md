@@ -57,7 +57,9 @@ Repo-level CLIs (oxlint, oxfmt, syncpack, tsgo) and their typed configs live in 
   explicit review. Dependency build scripts are blocked by default (`strictDepBuilds`).
 - **Every dependency goes through the catalog** (`pnpm-workspace.yaml`) as a **caret
   range**; internal `@mawesome/*` deps use **`workspace:*`**. syncpack enforces both.
-  Catalog pins must already satisfy the 3-day `minimumReleaseAge`.
+  Catalog pins must already satisfy the 3-day `minimumReleaseAge`. (Exception:
+  `@typescript/native-preview` is a fast-moving preview, so it's pinned to an **exact**
+  build and bumped deliberately.)
 - **Config-file format preference: `.ts` → `.mjs` → JSON/YAML.** Prefer a typed `.ts`
   config (oxlint, oxfmt, tsdown, vitest, syncpack); drop to `.mjs`, then JSON/YAML, only
   when the tool supports nothing better (changesets → JSON, `tsconfig.json`,

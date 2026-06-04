@@ -18,6 +18,11 @@ describe('findRootDepViolations', () => {
 		expect(violations[0]).toContain('dependencies');
 	});
 
+	it('flags peerDependencies and optionalDependencies', () => {
+		expect(findRootDepViolations({ peerDependencies: { react: '^18.0.0' } })).toHaveLength(1);
+		expect(findRootDepViolations({ optionalDependencies: { fsevents: '^2.3.0' } })).toHaveLength(1);
+	});
+
 	it('flags devDependencies outside the allowlist', () => {
 		const violations = findRootDepViolations({ devDependencies: { oxlint: '^1.0.0' } });
 		expect(violations).toHaveLength(1);

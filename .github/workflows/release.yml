@@ -20,15 +20,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
+      # No pnpm cache on the publish job (fresh deps for a release build).
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-          cache: pnpm
       - run: pnpm install --frozen-lockfile
       # Full gate must pass before anything is versioned or published.
       - run: pnpm verify
-      # npm >= 11.5.1 is required for OIDC trusted publishing.
-      - run: npm install -g npm@latest
+      # npm >= 11.5.1 is required for OIDC trusted publishing; pin the major.
+      - run: npm install -g npm@11
       - name: Create Version PR or publish
         uses: changesets/action@v1.9.0
         with:
