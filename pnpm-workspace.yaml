@@ -20,9 +20,9 @@ publicHoistPattern: []
 
 # --- pnpm client settings (kept here, not in .npmrc) ---
 engineStrict: true
-autoInstallPeers: true
+autoInstallPeers: false
 dedupePeerDependents: true
-strictPeerDependencies: false
+strictPeerDependencies: true
 
 # --- one lockfile covers every CI OS/CPU for the native tools (oxlint/oxfmt/rolldown) ---
 supportedArchitectures:
@@ -40,16 +40,17 @@ supportedArchitectures:
 # catalogMode: strict steers `pnpm add` to the catalog; syncpack enforces it on manual edits.
 catalogMode: strict
 catalog:
-  oxlint: ^1.67.0
-  oxfmt: ^0.52.0 # ^0.x is patch-only; bump to ^0.53.0 once it clears the release-age window
-  tsdown: ^0.22.1
-  vitest: ^4.1.7
-  syncpack: ^15.3.1
+  # Keep alphabetically sorted (matches oxfmt's package.json dependency ordering).
   '@arethetypeswrong/cli': ^0.18.3
-  publint: ^0.3.21
-  '@changesets/cli': ^2.31.0
   '@changesets/changelog-github': ^0.7.0
-  '@tsconfig/strictest': ^2.0.8
+  '@changesets/cli': ^2.31.0
   '@tsconfig/node24': ^24.0.4
+  '@tsconfig/strictest': ^2.0.8
   '@types/node': ^24.12.4
   '@typescript/native-preview': 7.0.0-dev.20260527.2 # tsgo (exact preview pin; bump as builds age)
+  oxfmt: ^0.52.0 # ^0.x is patch-only; bump to ^0.53.0 once it clears the release-age window
+  oxlint: ^1.67.0
+  publint: ^0.3.21
+  syncpack: ^15.3.1
+  tsdown: ^0.22.1
+  vitest: ^4.1.7
