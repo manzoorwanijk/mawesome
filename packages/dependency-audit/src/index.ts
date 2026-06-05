@@ -17,6 +17,7 @@ export type {
 	AuditResult,
 	Finding,
 	FindingKind,
+	IgnoreRule,
 	RegistryProvider,
 	ResolvedDependency,
 	Surface,

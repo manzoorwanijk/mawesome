@@ -83,4 +83,26 @@ describe('audit (type surface)', () => {
 		expect(node?.surface).toBe('types');
 		expect(node?.suggestion).toContain('@types/node');
 	});
+
+	it('suppresses findings matched by an ignore rule and surfaces them as ignored', async () => {
+		const result = await audit(join(targetsRoot, 'missing'), {
+			provider: fixtureProvider,
+			ignore: [{ package: 'csstype' }],
+		});
+		// csstype is suppressed; react remains and still fails the audit.
+		expect(result.findings.some((f) => f.packageName === 'csstype')).toBe(false);
+		expect(result.ignored.some((f) => f.packageName === 'csstype')).toBe(true);
+		expect(result.findings.some((f) => f.packageName === 'react')).toBe(true);
+		expect(result.ok).toBe(false);
+	});
+
+	it('is ok when an ignore rule suppresses every finding', async () => {
+		const result = await audit(join(targetsRoot, 'missing'), {
+			provider: fixtureProvider,
+			ignore: [{ surface: 'types' }],
+		});
+		expect(result.findings).toEqual([]);
+		expect(result.ignored.length).toBeGreaterThan(0);
+		expect(result.ok).toBe(true);
+	});
 });

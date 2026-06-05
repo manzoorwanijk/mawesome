@@ -1,4 +1,5 @@
 import type { FileSystem } from './fs.ts';
+import { partitionIgnored } from './ignore.ts';
 import { declaredDependencies, readManifest } from './manifest.ts';
 import { normalizeSpecifier, typesPackageFor } from './normalize.ts';
 import { createTypeResolver, materializeDeps } from './resolve.ts';
@@ -9,6 +10,7 @@ import type {
 	AcquiredSource,
 	AuditResult,
 	Finding,
+	IgnoreRule,
 	RegistryProvider,
 	Surface,
 	UncheckedSpecifier,
@@ -24,6 +26,8 @@ export interface AuditPackageOptions {
 	target?: string;
 	/** How the package was acquired (recorded on the result). Defaults to `directory`. */
 	source?: AcquiredSource;
+	/** Rules that suppress intentional findings (moved to `result.ignored`). */
+	ignore?: IgnoreRule[];
 }
 
 /** A specifier seen on a surface — the shared shape findings are built from. */
@@ -98,13 +102,15 @@ export async function auditPackage(
 		}
 	}
 
+	const partitioned = partitionIgnored(findings, options.ignore ?? []);
 	return {
 		target: options.target ?? root,
 		source: options.source ?? { kind: 'directory' },
 		packageName: manifest.name,
 		packageVersion: manifest.version,
-		ok: findings.length === 0,
-		findings,
+		ok: partitioned.findings.length === 0,
+		findings: partitioned.findings,
+		ignored: partitioned.ignored,
 		unchecked,
 		resolvedDeps: resolved,
 	};

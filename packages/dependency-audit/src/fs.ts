@@ -32,15 +32,15 @@ interface MemoryNode {
 	content?: string;
 }
 
+// Strip trailing slashes so `/a` and `/a/` are the same key; `/` stays `/`.
+const norm = (path: string): string => (path === '/' ? '/' : path.replace(/\/+$/, ''));
+
 /**
  * An in-memory filesystem keyed by absolute POSIX paths — the browser adapter, and the
  * substrate for hermetic tests. Seed files with {@link WritableFileSystem.writeFile}.
  */
 export function createMemoryFileSystem(): WritableFileSystem {
 	const nodes = new Map<string, MemoryNode>([['/', { type: 'dir' }]]);
-
-	// Strip trailing slashes so `/a` and `/a/` are the same key; `/` stays `/`.
-	const norm = (path: string): string => (path === '/' ? '/' : path.replace(/\/+$/, ''));
 
 	const ensureDir = (dir: string): void => {
 		const parts = norm(dir).split('/').filter(Boolean);

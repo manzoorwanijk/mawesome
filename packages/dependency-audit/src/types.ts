@@ -58,6 +58,22 @@ export interface AcquiredSource {
 	};
 }
 
+/**
+ * Suppresses intentional findings (e.g. an optional/plugin import static analysis can't
+ * prove). A rule matches a finding when every field it specifies equals the finding's;
+ * an empty rule matches nothing. Suppressed findings are echoed in {@link AuditResult.ignored}.
+ */
+export interface IgnoreRule {
+	/** Match by owning package name (e.g. `react`). */
+	package?: string;
+	/** Match by exact specifier (e.g. `react/jsx-runtime`). */
+	specifier?: string;
+	/** Match by surface (`types` or `runtime`). */
+	surface?: Surface;
+	/** Match by finding kind. */
+	kind?: FindingKind;
+}
+
 /** The result of auditing a single target. */
 export interface AuditResult {
 	/** The target as passed in (directory, `.tgz` path, or package spec). */
@@ -66,9 +82,11 @@ export interface AuditResult {
 	source: AcquiredSource;
 	packageName: string | undefined;
 	packageVersion: string | undefined;
-	/** `true` when there are no findings. */
+	/** `true` when there are no non-ignored findings. */
 	ok: boolean;
 	findings: Finding[];
+	/** Findings suppressed by an {@link IgnoreRule}, surfaced for auditability. */
+	ignored: Finding[];
 	unchecked: UncheckedSpecifier[];
 	resolvedDeps: ResolvedDependency[];
 }
@@ -87,4 +105,6 @@ export interface RegistryProvider {
 export interface AuditOptions {
 	/** Override the dependency artifact provider (tests inject a hermetic one). */
 	provider?: RegistryProvider;
+	/** Rules that suppress intentional findings. */
+	ignore?: IgnoreRule[];
 }

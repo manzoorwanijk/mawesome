@@ -22,6 +22,7 @@ export async function audit(target: string, options: AuditOptions = {}): Promise
 			workDir,
 			target,
 			source: acquired.source,
+			ignore: options.ignore ?? [],
 		});
 	} finally {
 		rmSync(workDir, { recursive: true, force: true });

@@ -16,8 +16,8 @@ installing it from npm can't resolve it. The motivating case: an emitted declara
 > graph, and honors each dep's own `exports`/`main` per call form. Node builtins need no
 > declaration at runtime; on the type surface they imply `@types/node`.
 >
-> **Deferred:** install lifecycle scripts, the `browser` profile, `require.resolve`/
-> `createRequire`/import-attribute call forms, and config-driven ignores.
+> **Deferred:** the `browser` resolution profile + `--condition`, and the
+> `require.resolve`/`createRequire`/import-attribute runtime call forms.
 >
 > **Known limitations** (correct results, narrower coverage): entry discovery does not
 > apply `typesVersions` remapping or expand `exports` subpath _patterns_ (`"./*"`); the
@@ -50,6 +50,33 @@ Exit codes: `0` clean, `1` findings, `2` error.
 
 1 package, 1 finding.
 ```
+
+### Ignoring intentional findings
+
+Suppress findings static analysis can't prove are fine (an optional/plugin import, a
+known false positive). Suppressed findings are still listed (`– ignored`) and echoed in
+`--json`, so suppressions stay auditable; they do not fail the audit.
+
+```sh
+# --ignore <value> matches a finding by package OR exact specifier (repeatable)
+dependency-audit --ignore optional-plugin --ignore react/jsx-runtime ./packages/my-lib
+```
+
+Or a JSON config (`./dependency-audit.config.json` by default, or `--config <path>`). A
+rule matches a finding when every field it sets equals the finding's; an empty rule matches
+nothing:
+
+```json
+{
+	"ignore": [
+		{ "package": "optional-plugin" },
+		{ "specifier": "react/jsx-runtime", "surface": "types" },
+		{ "surface": "runtime", "kind": "unresolved" }
+	]
+}
+```
+
+The programmatic API takes the same rules: `audit(target, { ignore: [{ package: 'x' }] })`.
 
 ## Programmatic API
 
