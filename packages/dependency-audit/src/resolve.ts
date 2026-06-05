@@ -43,11 +43,17 @@ export async function materializeDeps(
  * Resolution uses NodeNext from an ESM (`.d.mts`) probe context, so `react` falls
  * back to `@types/react` exactly as a consumer's type-checker would.
  */
-export function createTypeResolver(fs: FileSystem, workDir: string): TypeResolver {
+export function createTypeResolver(
+	fs: FileSystem,
+	workDir: string,
+	conditions: readonly string[] = [],
+): TypeResolver {
 	const options: ts.CompilerOptions = {
 		moduleResolution: ts.ModuleResolutionKind.NodeNext,
 		module: ts.ModuleKind.NodeNext,
 		target: ts.ScriptTarget.ESNext,
+		// Activate extra `exports` conditions (e.g. `browser`) on top of NodeNext's defaults.
+		...(conditions.length > 0 ? { customConditions: [...conditions] } : {}),
 	};
 	// The resolution host reads through the FS port, so resolution is identical over the
 	// real Node filesystem or an in-memory tree (browser).

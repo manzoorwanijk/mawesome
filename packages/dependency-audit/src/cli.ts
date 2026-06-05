@@ -21,6 +21,8 @@ Options:
                     (repeatable). Suppressed findings are still listed.
   --config <path>   Load ignore rules from a JSON config (default:
                     ./dependency-audit.config.json if present).
+  --condition <name>  Activate an extra resolution condition (e.g. browser) for
+                    entry discovery and resolution (repeatable).
   --json            Emit machine-readable JSON (one AuditResult per target).
   -v, --version     Print the version.
   -h, --help        Show this help.
@@ -47,6 +49,7 @@ async function main(): Promise<number> {
 		options: {
 			ignore: { type: 'string', multiple: true },
 			config: { type: 'string' },
+			condition: { type: 'string', multiple: true },
 			json: { type: 'boolean', default: false },
 			version: { type: 'boolean', short: 'v', default: false },
 			help: { type: 'boolean', short: 'h', default: false },
@@ -67,10 +70,11 @@ async function main(): Promise<number> {
 	}
 
 	const ignore = [...loadConfigRules(values.config), ...cliIgnoreRules(values.ignore ?? [])];
+	const conditions = values.condition ?? [];
 
 	// Each audit is self-contained (its own temp dirs); run targets concurrently.
 	const results: AuditResult[] = await Promise.all(
-		positionals.map((target) => audit(target, { ignore })),
+		positionals.map((target) => audit(target, { ignore, conditions })),
 	);
 
 	if (values.json) {

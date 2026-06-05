@@ -21,8 +21,13 @@ interface DepManifest {
  * declared dep it honors the package's own `exports` for the active condition set
  * (`import` vs `require`), falling back to legacy `main`/`module` + index probing.
  */
-export function createRuntimeResolver(fs: FileSystem, workDir: string): RuntimeResolver {
+export function createRuntimeResolver(
+	fs: FileSystem,
+	workDir: string,
+	conditions: readonly string[] = [],
+): RuntimeResolver {
 	const nodeModules = join(workDir, 'node_modules');
+	const extraConditions = conditions.length > 0 ? [...conditions] : undefined;
 
 	return {
 		resolvesRuntime(specifier: string, form: CallForm): boolean {
@@ -38,7 +43,10 @@ export function createRuntimeResolver(fs: FileSystem, workDir: string): RuntimeR
 				// `exports` encapsulates the package: only mapped subpaths resolve. An
 				// array target is a fallback list — the first that exists as a file wins.
 				try {
-					const targets = resolveExports(pkg, specifier, { require: form === 'require' });
+					const targets = resolveExports(pkg, specifier, {
+						require: form === 'require',
+						...(extraConditions !== undefined ? { conditions: extraConditions } : {}),
+					});
 					return Array.isArray(targets) && targets.some((t) => fs.isFile(join(depDir, t)));
 				} catch {
 					return false;

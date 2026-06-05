@@ -117,4 +117,6 @@ export interface AuditOptions {
 	ignore?: IgnoreRule[];
 	/** Override the tarball extraction caps for the acquired target (defaults apply otherwise). */
 	extractLimits?: ExtractLimits;
+	/** Extra resolution conditions to activate (e.g. `["browser"]`), added to the defaults. */
+	conditions?: readonly string[];
 }

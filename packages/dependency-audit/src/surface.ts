@@ -38,12 +38,18 @@ const ACTIVE_CONDITIONS = new Set(['import', 'node', 'default']);
  * from the manifest, then follows relative imports between `.d.ts` files,
  * collecting every external specifier reachable on the way.
  */
-export function scanTypeSurface(fs: FileSystem, root: string, manifest: Manifest): SurfaceScan {
+export function scanTypeSurface(
+	fs: FileSystem,
+	root: string,
+	manifest: Manifest,
+	conditions: readonly string[] = [],
+): SurfaceScan {
 	const externals: ExternalSpecifier[] = [];
 	const unchecked: UncheckedSpecifier[] = [];
 	const seenExternal = new Set<string>();
 	const visited = new Set<string>();
-	const queue = [...typeEntryPoints(fs, root, manifest)];
+	const active = new Set([...ACTIVE_CONDITIONS, ...conditions]);
+	const queue = [...typeEntryPoints(fs, root, manifest, active)];
 
 	while (queue.length > 0) {
 		const file = queue.shift();
@@ -77,7 +83,12 @@ export function scanTypeSurface(fs: FileSystem, root: string, manifest: Manifest
 }
 
 /** Discovers absolute paths of the declaration entry points from the manifest. */
-function typeEntryPoints(fs: FileSystem, root: string, manifest: Manifest): string[] {
+function typeEntryPoints(
+	fs: FileSystem,
+	root: string,
+	manifest: Manifest,
+	active: ReadonlySet<string>,
+): string[] {
 	const found = new Set<string>();
 	const addTarget = (target: string | undefined): void => {
 		const dts = target === undefined ? undefined : toDeclarationPath(target);
@@ -93,7 +104,7 @@ function typeEntryPoints(fs: FileSystem, root: string, manifest: Manifest): stri
 		// `exports` encapsulates the package: only its (profile-selected) targets are the
 		// surface. Legacy `types`/`typings` and `typesVersions` are ignored when `exports`
 		// is present (TS does extension substitution from the JS target instead).
-		for (const target of exportsTypeTargets(manifest.exports)) {
+		for (const target of exportsTypeTargets(manifest.exports, active)) {
 			expandPatternTarget(fs, root, target).forEach(addTarget);
 		}
 		return [...found];
@@ -128,19 +139,19 @@ function typeEntryPoints(fs: FileSystem, root: string, manifest: Manifest): stri
 }
 
 /** Selects the type-surface target(s) from an `exports` field for the v1 profile. */
-function exportsTypeTargets(exportsField: unknown): string[] {
+function exportsTypeTargets(exportsField: unknown, active: ReadonlySet<string>): string[] {
 	if (isSubpathMap(exportsField)) {
 		const targets: string[] = [];
 		for (const value of Object.values(exportsField)) {
 			// Pattern subpath keys (`./*`) are included; their target is expanded later.
-			const target = selectConditionTarget(value);
+			const target = selectConditionTarget(value, active);
 			if (target !== undefined) {
 				targets.push(target);
 			}
 		}
 		return targets;
 	}
-	const target = selectConditionTarget(exportsField);
+	const target = selectConditionTarget(exportsField, active);
 	return target === undefined ? [] : [target];
 }
 
@@ -155,13 +166,13 @@ function isSubpathMap(node: unknown): node is Record<string, unknown> {
 }
 
 /** Resolves a conditional `exports` value to one target, `types` first then ESM order. */
-function selectConditionTarget(node: unknown): string | undefined {
+function selectConditionTarget(node: unknown, active: ReadonlySet<string>): string | undefined {
 	if (typeof node === 'string') {
 		return node;
 	}
 	if (Array.isArray(node)) {
 		for (const item of node) {
-			const target = selectConditionTarget(item);
+			const target = selectConditionTarget(item, active);
 			if (target !== undefined) {
 				return target;
 			}
@@ -171,14 +182,14 @@ function selectConditionTarget(node: unknown): string | undefined {
 	if (node !== null && typeof node === 'object') {
 		const record = node as Record<string, unknown>;
 		if ('types' in record) {
-			const target = selectConditionTarget(record['types']);
+			const target = selectConditionTarget(record['types'], active);
 			if (target !== undefined) {
 				return target;
 			}
 		}
 		for (const [key, value] of Object.entries(record)) {
-			if (!key.startsWith('.') && key !== 'types' && ACTIVE_CONDITIONS.has(key)) {
-				const target = selectConditionTarget(value);
+			if (!key.startsWith('.') && key !== 'types' && active.has(key)) {
+				const target = selectConditionTarget(value, active);
 				if (target !== undefined) {
 					return target;
 				}

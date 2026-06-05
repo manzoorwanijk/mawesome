@@ -34,12 +34,17 @@ const REQUIRE_CONDITIONS = ['require', 'node', 'default'];
  * manifest (both runtime profiles, plus `bin`), then follows relative imports across
  * JS files, collecting every external specifier with its call form.
  */
-export function scanRuntimeSurface(fs: FileSystem, root: string, manifest: Manifest): RuntimeScan {
+export function scanRuntimeSurface(
+	fs: FileSystem,
+	root: string,
+	manifest: Manifest,
+	conditions: readonly string[] = [],
+): RuntimeScan {
 	const externals: RuntimeSpecifier[] = [];
 	const unchecked: UncheckedSpecifier[] = [];
 	const seen = new Set<string>();
 	const visited = new Set<string>();
-	const queue = [...runtimeEntryPoints(fs, root, manifest)];
+	const queue = [...runtimeEntryPoints(fs, root, manifest, conditions)];
 	const rootIsModule = manifest.type === 'module';
 
 	while (queue.length > 0) {
@@ -74,7 +79,12 @@ export function scanRuntimeSurface(fs: FileSystem, root: string, manifest: Manif
 }
 
 /** Discovers absolute paths of the runtime entry points from the manifest. */
-function runtimeEntryPoints(fs: FileSystem, root: string, manifest: Manifest): string[] {
+function runtimeEntryPoints(
+	fs: FileSystem,
+	root: string,
+	manifest: Manifest,
+	conditions: readonly string[],
+): string[] {
 	const found = new Set<string>();
 	const add = (target: string | undefined): void => {
 		if (target !== undefined && JS_RE.test(target)) {
@@ -87,8 +97,8 @@ function runtimeEntryPoints(fs: FileSystem, root: string, manifest: Manifest): s
 
 	if (manifest.exports !== undefined) {
 		const expand = (target: string): void => expandPatternTarget(fs, root, target).forEach(add);
-		exportsRuntimeTargets(manifest.exports, IMPORT_CONDITIONS).forEach(expand);
-		exportsRuntimeTargets(manifest.exports, REQUIRE_CONDITIONS).forEach(expand);
+		exportsRuntimeTargets(manifest.exports, [...IMPORT_CONDITIONS, ...conditions]).forEach(expand);
+		exportsRuntimeTargets(manifest.exports, [...REQUIRE_CONDITIONS, ...conditions]).forEach(expand);
 	} else {
 		// No `exports`: any published JS is deep-importable.
 		add(manifest.main);

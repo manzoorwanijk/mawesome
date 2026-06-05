@@ -1,0 +1,18 @@
+{
+	"name": "@fixture/browser-condition",
+	"version": "1.0.0",
+	"type": "module",
+	"exports": {
+		".": {
+			"types": {
+				"browser": "./index.browser.d.ts",
+				"default": "./index.d.ts"
+			},
+			"browser": "./index.browser.js",
+			"default": "./index.js"
+		}
+	},
+	"dependencies": {
+		"cond-dep": "^1.0.0"
+	}
+}

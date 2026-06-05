@@ -30,6 +30,8 @@ export interface AuditPackageOptions {
 	ignore?: IgnoreRule[];
 	/** Node builtin names (the Node entry injects the live `builtinModules`; default hardcoded). */
 	builtins?: readonly string[];
+	/** Extra resolution conditions to activate (e.g. `["browser"]`), added to the defaults. */
+	conditions?: readonly string[];
 }
 
 /** A specifier seen on a surface — the shared shape findings are built from. */
@@ -58,15 +60,16 @@ export async function auditPackage(
 	const materialized = new Set(
 		resolved.filter((dep) => dep.version !== undefined).map((dep) => dep.name),
 	);
-	const typeResolver = createTypeResolver(fs, workDir);
-	const runtimeResolver = createRuntimeResolver(fs, workDir);
+	const conditions = options.conditions ?? [];
+	const typeResolver = createTypeResolver(fs, workDir, conditions);
+	const runtimeResolver = createRuntimeResolver(fs, workDir, conditions);
 	const normalizeSpecifier = createNormalizer(options.builtins);
 
 	const findings: Finding[] = [];
 	const unchecked: UncheckedSpecifier[] = [];
 	const isSelf = (name: string): boolean => manifest.name !== undefined && name === manifest.name;
 
-	const typeSurface = scanTypeSurface(fs, root, manifest);
+	const typeSurface = scanTypeSurface(fs, root, manifest, conditions);
 	unchecked.push(...typeSurface.unchecked);
 	for (const external of typeSurface.externals) {
 		const normalized = normalizeSpecifier(external.specifier);
@@ -92,7 +95,7 @@ export async function auditPackage(
 		}
 	}
 
-	const runtimeSurface = scanRuntimeSurface(fs, root, manifest);
+	const runtimeSurface = scanRuntimeSurface(fs, root, manifest, conditions);
 	unchecked.push(...runtimeSurface.unchecked);
 	for (const external of runtimeSurface.externals) {
 		const normalized = normalizeSpecifier(external.specifier);

@@ -28,6 +28,7 @@ export async function audit(target: string, options: AuditOptions = {}): Promise
 			target,
 			source: acquired.source,
 			ignore: options.ignore ?? [],
+			conditions: options.conditions ?? [],
 			// Use the running Node's live builtin list (the core defaults to a hardcoded one).
 			builtins: builtinModules,
 		});
