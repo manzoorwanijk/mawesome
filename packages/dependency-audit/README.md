@@ -8,6 +8,8 @@ Catches the bug class where a published package imports a module — at runtime 
 >
 > **Known limitations** (correct results, narrower coverage): `typesVersions` is applied for the **current** TypeScript version only (not the per-consumer-version matrix); the type surface resolves a single ESM/NodeNext profile (no per-file require context or `bundler` mode); the legacy `browser` **field** remap (`{ "browser": { "./a": "./b" } }`) is not applied — only the `browser` **export condition** is honored via `--condition browser`; and self-reference / `#imports` specifiers are skipped.
 
+📚 **Full documentation** lives in [`docs/`](./docs/) — [concepts](./docs/concepts.md), the [CLI](./docs/cli.md) and [API](./docs/api.md) references, the [output format](./docs/output-format.md) (text grammar + `--json` schema), a [findings & notices](./docs/findings.md) reference, the [resolution model](./docs/resolution.md), [limitations & troubleshooting](./docs/limitations.md), and how it [compares to publint/attw](./docs/comparison.md).
+
 ## Install
 
 ```sh
@@ -131,6 +133,18 @@ await audit('./packages/my-lib', { provider });
    - _Runtime_ — `exports` runtime targets (`import` + `require` profiles), legacy `main`/`module`, and `bin`; then follow the relative JS import graph, tagging each specifier with its call form.
 3. **Materialize declared deps** (production + peer + optional, never dev) at their declared ranges into one fresh tree, shared by both passes. Registry ranges are fetched from npm; **monorepo-local deps** (`file:../sibling`, or `workspace:*` resolved by name through `pnpm-workspace.yaml` / `package.json#workspaces`) link the local already-built sibling — no rebuild, fully static.
 4. **Resolve** each external specifier. Type specifiers go through the bundled `typescript` (so `react` falls back to `@types/react`); runtime specifiers go through the dep's own `exports`/`main` for the matching call form. A specifier that doesn't resolve is a finding — `undeclared` (nothing provides it), `missing-types` (declared, ships no declarations), or `unresolved` (declared, but the runtime subpath/file is not reachable). Node builtins need no declaration at runtime; on the type surface they imply `@types/node`.
+
+## Complementary tools
+
+`dependency-audit` answers one focused question — _does the released artifact declare and resolve every package it imports?_ It pairs naturally with two excellent, narrowly-scoped publishing checks; run all three before you publish:
+
+| Tool                                                                                                 | Asks                                                                                              | Catches                                                                                                                                                                      |
+| ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [**publint**](https://publint.dev)                                                                   | Is the **manifest** well-formed for publishing?                                                   | bad `exports`/`main`/`types` paths, missing files, wrong file extensions, `module` field mistakes                                                                            |
+| [**attw**](https://github.com/arethetypeswrong/arethetypeswrong.github.io) (`@arethetypeswrong/cli`) | Do **your own types** resolve correctly across module-resolution modes (node16 CJS/ESM, bundler)? | `.d.ts` that resolve under ESM but not CJS, masquerading CJS/ESM, missing type entry points                                                                                  |
+| **dependency-audit**                                                                                 | Do the imports in the released artifact resolve through **declared dependencies**?                | a `.d.ts` that does `import('react')` with no `@types/react` declared; a runtime `require('x')` of an undeclared package; a deep import of a subpath the dep does not export |
+
+They barely overlap. publint validates the _shape_ of your package; attw validates that _your_ types are consumable; dependency-audit validates that the _dependencies your code reaches_ are all declared and installable. A package can pass publint and attw and still ship a `.d.ts` importing an undeclared transitive — which is exactly the gap this tool closes. If you only adopt one of the three, still try the others — they're quick and they each catch a different class of "works on my machine" bug. (This repo runs publint + attw on itself via `pnpm check:exports`.)
 
 ## Security
 
