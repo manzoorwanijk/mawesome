@@ -11,17 +11,17 @@ from any individual package.
 
 ## Toolchain
 
-| Concern         | Tool                                                           |
-| --------------- | -------------------------------------------------------------- |
-| Package manager | **pnpm 10** (Node `>=24.12`, no Corepack — see Provisioning)   |
-| Lint            | **oxlint** (oxc)                                               |
-| Format          | **oxfmt** (oxc) — the single source of truth for formatting    |
-| Dependencies    | **syncpack** — enforces catalog usage + `workspace:*` protocol |
-| Type-check      | **tsgo** (`@typescript/native-preview`) — fast native checker  |
-| Bundle (pkgs)   | **tsdown** (rolldown + oxc) — dual ESM/CJS + `.d.ts`           |
-| Test            | **vitest**                                                     |
-| Publish hygiene | **@arethetypeswrong/cli (attw)** + **publint**                 |
-| Releases        | **changesets** + GitHub Actions, npm OIDC trusted publishing   |
+| Concern         | Tool                                                               |
+| --------------- | ------------------------------------------------------------------ |
+| Package manager | **pnpm 10** (Node `>=24.12`, no Corepack — see Provisioning)       |
+| Lint            | **oxlint** (oxc)                                                   |
+| Format          | **oxfmt** (oxc) — the single source of truth for formatting        |
+| Dependencies    | **syncpack** — one version per dependency + `workspace:*` protocol |
+| Type-check      | **tsgo** (`@typescript/native-preview`) — fast native checker      |
+| Bundle (pkgs)   | **tsdown** (rolldown + oxc) — dual ESM/CJS + `.d.ts`               |
+| Test            | **vitest**                                                         |
+| Publish hygiene | **@arethetypeswrong/cli (attw)** + **publint**                     |
+| Releases        | **changesets** + GitHub Actions, npm OIDC trusted publishing       |
 
 Repo-level CLIs (oxlint, oxfmt, syncpack, tsgo) and their typed configs live in the private
 `tools/repo` workspace; the shared TypeScript base lives in `tools/tsconfig`
@@ -55,11 +55,11 @@ Repo-level CLIs (oxlint, oxfmt, syncpack, tsgo) and their typed configs live in 
   "fix" a missing dependency. Add the real declaration instead.
 - **Never add to `onlyBuiltDependencies`** or set `dangerouslyAllowAllBuilds` without
   explicit review. Dependency build scripts are blocked by default (`strictDepBuilds`).
-- **Every dependency goes through the catalog** (`pnpm-workspace.yaml`) as a **caret
-  range**; internal `@mawesome/*` deps use **`workspace:*`**. syncpack enforces both.
-  Catalog pins must already satisfy the 3-day `minimumReleaseAge`. (Exception:
-  `@typescript/native-preview` is a fast-moving preview, so it's pinned to an **exact**
-  build and bumped deliberately.)
+- **Every dependency uses a single caret range, identical across the repo** — syncpack
+  enforces one version per dependency (`pnpm deps:lint`/`deps:fix`); internal `@mawesome/*`
+  deps use **`workspace:*`**. New versions must already satisfy the 3-day `minimumReleaseAge`.
+  (Exception: `@typescript/native-preview` is a fast-moving preview, so it's pinned to an
+  **exact** build and bumped deliberately.)
 - **Config-file format preference: `.ts` → `.mjs` → JSON/YAML.** Prefer a typed `.ts`
   config (oxlint, oxfmt, tsdown, vitest, syncpack); drop to `.mjs`, then JSON/YAML, only
   when the tool supports nothing better (changesets → JSON, `tsconfig.json`,
@@ -91,7 +91,7 @@ Repo-level CLIs (oxlint, oxfmt, syncpack, tsgo) and their typed configs live in 
 
 Use `/add-package <name>` (or copy `templates/package/`) — see CONTRIBUTING.md. A new
 package extends `@mawesome/tsconfig`, builds with tsdown (dual ESM/CJS + `.d.ts`), declares
-all of its own dependencies via the catalog, and ships a `check:exports` gate.
+all of its own dependencies (matching the repo-wide version), and ships a `check:exports` gate.
 
 ## Provisioning (no Corepack)
 

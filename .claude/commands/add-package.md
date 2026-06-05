@@ -13,11 +13,12 @@ Use the `scaffold-package` skill for the authoritative steps. In summary:
 2. Copy `templates/package/` to `packages/$1/`.
 3. Replace the `PACKAGE_NAME` placeholder with `$1` in the new package's `package.json`,
    `README.md`, and `src/index.ts`.
-4. For any dependency the package needs, add it to the catalog in `pnpm-workspace.yaml`
-   first (caret range, already older than the 3-day `minimumReleaseAge`), then reference it
-   as `catalog:` in the package.
+4. Declare each dependency the package needs as a **caret range** (already older than the
+   3-day `minimumReleaseAge`); reuse the **exact same range** for any dependency already used
+   elsewhere in the repo. Run `pnpm deps:fix` to align versions (syncpack enforces one
+   version per dependency).
 5. Run `pnpm install`, then `pnpm verify`. Fix any issues until green.
 6. Create a changeset (`pnpm changeset`) for the new package.
 
-Follow every rule in AGENTS.md — especially: no root dependencies, catalog-only versions,
-and the `.ts` config preference. Do not push or open a PR unless asked.
+Follow every rule in AGENTS.md — especially: no root dependencies, one repo-wide version per
+dependency, and the `.ts` config preference. Do not push or open a PR unless asked.

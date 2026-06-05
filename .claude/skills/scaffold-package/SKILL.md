@@ -23,12 +23,12 @@ follow every hard rule.
    - `packages/<name>/package.json` (`name`, `description`)
    - `packages/<name>/README.md`
    - `packages/<name>/src/index.ts` (the example export/comment)
-4. **Declare dependencies (catalog-first).** For each dependency the package needs:
-   - add it to `catalog:` in `pnpm-workspace.yaml` (a caret range, already older than the
-     3-day `minimumReleaseAge`),
-   - reference it as `"<dep>": "catalog:"` in the package's `dependencies`/`devDependencies`.
-   - Internal `@mawesome/*` deps use `"workspace:*"`.
-   - Never add anything to the root `package.json`.
+4. **Declare dependencies.** For each dependency the package needs:
+   - use a **caret range** (already older than the 3-day `minimumReleaseAge`); if the
+     dependency is already used elsewhere in the repo, use the **exact same range**,
+   - internal `@mawesome/*` deps use `"workspace:*"`,
+   - never add anything to the root `package.json`,
+   - run `pnpm deps:fix` afterwards — syncpack enforces one identical version per dependency.
 5. **Install + verify.** `pnpm install`, then `pnpm verify`. Resolve failures:
    - formatting → `pnpm format`
    - dependency mismatches → `pnpm deps:fix`

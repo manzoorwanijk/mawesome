@@ -12,7 +12,7 @@
 		"./base.json": "./base.json"
 	},
 	"dependencies": {
-		"@tsconfig/node24": "catalog:",
-		"@tsconfig/strictest": "catalog:"
+		"@tsconfig/node24": "^24.0.4",
+		"@tsconfig/strictest": "^2.0.8"
 	}
 }

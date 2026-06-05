@@ -18,11 +18,11 @@
 	},
 	"devDependencies": {
 		"@mawesome/tsconfig": "workspace:*",
-		"@types/node": "catalog:",
-		"@typescript/native-preview": "catalog:",
-		"oxfmt": "catalog:",
-		"oxlint": "catalog:",
-		"syncpack": "catalog:",
-		"vitest": "catalog:"
+		"@types/node": "^24.12.4",
+		"@typescript/native-preview": "7.0.0-dev.20260527.2",
+		"oxfmt": "^0.52.0",
+		"oxlint": "^1.67.0",
+		"syncpack": "^15.3.1",
+		"vitest": "^4.1.7"
 	}
 }

@@ -46,18 +46,20 @@ It only writes/updates a `settings.json` that still carries the
 Run `/add-package <name>` (or copy `templates/package/` to `packages/<name>`), then:
 
 1. Set the package `name` to `@mawesome/<name>` and fill in `description`.
-2. Add any dependencies **to the catalog** in `pnpm-workspace.yaml` first (caret range,
-   already older than the 3-day `minimumReleaseAge`), then reference them as `catalog:`.
-   Internal `@mawesome/*` deps use `workspace:*`.
+2. Declare dependencies as **caret ranges**. If a dependency is already used elsewhere in
+   the repo, use the **exact same range** (syncpack enforces one version per dependency —
+   `pnpm deps:fix` aligns them). Pick versions already older than the 3-day
+   `minimumReleaseAge`. Internal `@mawesome/*` deps use `workspace:*`.
 3. `pnpm install`, then `pnpm verify` until green.
 4. Add a changeset (below).
 
 ## Dependencies
 
-- Every dependency version lives in the **catalog** (`pnpm-workspace.yaml`). Packages
-  reference it as `catalog:`; syncpack (`pnpm deps:lint`) enforces this.
-- Use **caret ranges** so security patches flow in; the lockfile pins exact resolved
-  versions for reproducibility.
+- **syncpack** (`pnpm deps:lint`) enforces that every dependency uses **one identical
+  version across the whole repo**, that the ranges are **caret**, and that internal
+  `@mawesome/*` deps use `workspace:*`. Run `pnpm deps:fix` to auto-align mismatches.
+- Caret ranges let security patches flow in; the committed lockfile pins exact resolved
+  versions for reproducibility. (`@typescript/native-preview` is the exception — pinned exact.)
 - A new dependency that ships an install/build script will fail `pnpm install`
   (`strictDepBuilds`). If it genuinely needs to build, raise a PR to add it to
   `onlyBuiltDependencies` in `pnpm-workspace.yaml` with justification.

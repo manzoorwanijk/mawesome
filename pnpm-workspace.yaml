@@ -7,7 +7,7 @@ packageManagerStrictVersion: true # pnpm 10 setting (pnpm 11 renames it to `pmOn
 
 # --- security / supply-chain ---
 minimumReleaseAge: 4320 # 3 days; defers any release younger than this at resolution time
-minimumReleaseAgeExclude: [] # every catalog pin is already older than the window
+minimumReleaseAgeExclude: [] # every pinned version is already older than the window
 onlyBuiltDependencies: [] # allowlist for dependency build scripts (start empty; add only reviewed entries)
 ignoredBuiltDependencies: [] # reviewed + deliberately not built
 strictDepBuilds: true # fail install if an un-allowlisted dep wants to run a build script
@@ -35,22 +35,3 @@ supportedArchitectures:
     - current
     - x64
     - arm64
-
-# --- centralized versions via catalog; caret ranges so security patches flow in ---
-# catalogMode: strict steers `pnpm add` to the catalog; syncpack enforces it on manual edits.
-catalogMode: strict
-catalog:
-  # Keep alphabetically sorted (matches oxfmt's package.json dependency ordering).
-  '@arethetypeswrong/cli': ^0.18.3
-  '@changesets/changelog-github': ^0.7.0
-  '@changesets/cli': ^2.31.0
-  '@tsconfig/node24': ^24.0.4
-  '@tsconfig/strictest': ^2.0.8
-  '@types/node': ^24.12.4
-  '@typescript/native-preview': 7.0.0-dev.20260527.2 # tsgo (exact preview pin; bump as builds age)
-  oxfmt: ^0.52.0 # ^0.x is patch-only; bump to ^0.53.0 once it clears the release-age window
-  oxlint: ^1.67.0
-  publint: ^0.3.21
-  syncpack: ^15.3.1
-  tsdown: ^0.22.1
-  vitest: ^4.1.7

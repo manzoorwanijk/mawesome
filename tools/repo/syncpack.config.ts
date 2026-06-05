@@ -20,17 +20,23 @@ export default {
 			policy: 'sameRange',
 		},
 		{
-			label: 'All external dependencies are sourced from the pnpm catalog.',
+			label: 'Every other dependency uses one identical version across the whole repo.',
 			dependencies: ['**'],
 			packages: ['**'],
-			policy: 'catalog',
 		},
 	],
 	semverGroups: [
 		{
-			label: 'Catalog entries use caret ranges so security patches flow in.',
-			dependencyTypes: ['pnpmCatalog'],
+			label: 'The TypeScript native preview (tsgo) is pinned to an exact build (fast-moving).',
+			dependencies: ['@typescript/native-preview'],
 			packages: ['**'],
+			range: '',
+		},
+		{
+			label: 'All other dependencies use caret ranges so security patches flow in.',
+			dependencies: ['**'],
+			packages: ['**'],
+			dependencyTypes: ['prod', 'dev'],
 			range: '^',
 		},
 	],

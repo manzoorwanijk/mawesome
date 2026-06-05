@@ -41,13 +41,13 @@
 		"check:exports": "attw --pack . && publint --strict"
 	},
 	"devDependencies": {
-		"@arethetypeswrong/cli": "catalog:",
+		"@arethetypeswrong/cli": "^0.18.3",
 		"@mawesome/tsconfig": "workspace:*",
-		"@types/node": "catalog:",
-		"@typescript/native-preview": "catalog:",
-		"publint": "catalog:",
-		"tsdown": "catalog:",
-		"vitest": "catalog:"
+		"@types/node": "^24.12.4",
+		"@typescript/native-preview": "7.0.0-dev.20260527.2",
+		"publint": "^0.3.21",
+		"tsdown": "^0.22.1",
+		"vitest": "^4.1.7"
 	},
 	"engines": {
 		"node": ">=24.12.0"

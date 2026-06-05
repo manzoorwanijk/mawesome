@@ -5,8 +5,8 @@ describe('findRootDepViolations', () => {
 	it('passes for empty dependencies and only @changesets/* devDependencies', () => {
 		const violations = findRootDepViolations({
 			devDependencies: {
-				'@changesets/cli': 'catalog:',
-				'@changesets/changelog-github': 'catalog:',
+				'@changesets/cli': '^2.31.0',
+				'@changesets/changelog-github': '^0.7.0',
 			},
 		});
 		expect(violations).toEqual([]);

@@ -4,10 +4,10 @@ A pnpm monorepo for publishing packages under the `@mawesome/*` scope, with a st
 
 ## Toolchain
 
-- **pnpm 10** workspaces with supply-chain hardening (strict catalog, 3-day release
-  cooldown, blocked dependency build scripts, no hoisting, no root dependencies).
+- **pnpm 10** workspaces with supply-chain hardening (3-day release cooldown, blocked
+  dependency build scripts, no hoisting, no root dependencies).
 - **oxlint** + **oxfmt** (oxc) for linting and formatting.
-- **syncpack** for dependency-version consistency (catalog + `workspace:*` enforcement).
+- **syncpack** for dependency-version consistency (one version per dependency + `workspace:*`).
 - **tsgo** (`@typescript/native-preview`) for fast type-checking.
 - **tsdown** (rolldown + oxc) for dual ESM/CJS package builds with `.d.ts`.
 - **vitest** for tests; **attw** + **publint** for publish hygiene.

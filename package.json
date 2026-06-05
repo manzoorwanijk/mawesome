@@ -32,8 +32,8 @@
 		"vscode:setup": "node tools/repo/scripts/install-vscode-settings.ts"
 	},
 	"devDependencies": {
-		"@changesets/changelog-github": "catalog:",
-		"@changesets/cli": "catalog:"
+		"@changesets/changelog-github": "^0.7.0",
+		"@changesets/cli": "^2.31.0"
 	},
 	"devEngines": {
 		"packageManager": {
