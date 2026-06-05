@@ -24,8 +24,9 @@ function runCli(args: string[]): { status: number; stdout: string } {
 describe('cli batch isolation', () => {
 	it('reports a failed target without discarding the others (exit 2)', () => {
 		const { status, stdout } = runCli([okTarget, badTarget]);
-		// The good target is still audited and printed...
+		// The good target is still audited and printed, with the specifier in the headline...
 		expect(stdout).toContain('require-forms');
+		expect(stdout).toMatch(/✗ runtime\s+\[undeclared]\s+res-dep/);
 		// ...and the bad one is surfaced as a per-target error, not a fatal crash.
 		expect(stdout).toMatch(/error/i);
 		expect(status).toBe(2);

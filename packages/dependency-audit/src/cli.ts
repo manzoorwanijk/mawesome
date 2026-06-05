@@ -5,7 +5,7 @@ import { parseArgs } from 'node:util';
 import { audit } from './audit.ts';
 import { mapLimit } from './concurrency.ts';
 import { parseIgnoreRules } from './ignore.ts';
-import type { AuditResult, IgnoreRule } from './types.ts';
+import type { AuditResult, Finding, IgnoreRule } from './types.ts';
 
 /** Max targets audited in parallel; each target itself fans out to its own deps. */
 const TARGET_CONCURRENCY = 6;
@@ -164,22 +164,34 @@ function printResult(result: AuditResult): void {
 		console.log('  ✓ no undeclared imports');
 	}
 	for (const notice of result.notices) {
-		console.log(`  ℹ ${notice.surface}  ${notice.message}`);
+		console.log(`  ℹ ${notice.surface.padEnd(SURFACE_WIDTH)}  ${notice.message}`);
 	}
 	for (const finding of result.findings) {
-		console.log(
-			`  ✗ ${finding.surface}  ${finding.packageName}  [${finding.kind}]  ${finding.firstSeenIn}`,
-		);
+		console.log(findingRow('✗', finding));
 		console.log(`      → ${finding.suggestion}`);
 	}
 	for (const finding of result.ignored) {
-		console.log(
-			`  – ignored  ${finding.surface}  ${finding.packageName}  [${finding.kind}]  ${finding.firstSeenIn}`,
-		);
+		console.log(findingRow('–', finding, '  — ignored'));
 	}
 	for (const item of result.unchecked) {
-		console.log(`  ? unchecked  ${item.specifier}  (${item.reason})  ${item.firstSeenIn}`);
+		console.log(
+			`  ? ${'unchecked'.padEnd(SURFACE_WIDTH)}  ${item.specifier}  (${item.reason}; ${item.firstSeenIn})`,
+		);
 	}
+}
+
+const SURFACE_WIDTH = 'unchecked'.length;
+const KIND_WIDTH = '[missing-types]'.length;
+
+/**
+ * One aligned finding row: `<symbol> <surface> [<kind>] <specifier> (<file>)`.
+ * The headline carries the full *specifier* (e.g. `react/jsx-runtime`), not just the
+ * owning package, so deep-import findings on the same package stay distinguishable.
+ */
+function findingRow(symbol: string, finding: Finding, suffix = ''): string {
+	const surface = finding.surface.padEnd(SURFACE_WIDTH);
+	const kind = `[${finding.kind}]`.padEnd(KIND_WIDTH);
+	return `  ${symbol} ${surface}  ${kind}  ${finding.specifier}  (${finding.firstSeenIn})${suffix}`;
 }
 
 /** Reports a target whose audit could not run at all (acquisition/fetch failure). */

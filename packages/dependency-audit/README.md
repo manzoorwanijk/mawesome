@@ -21,6 +21,10 @@ pnpm add -D @mawesome/dependency-audit
 dependency-audit ./packages/my-lib
 dependency-audit ./my-lib-1.2.3.tgz
 
+# Audit a package straight from npm — by version, tag, or scope
+dependency-audit lodash@4.17.21
+dependency-audit @sindresorhus/is@latest
+
 # Several at once; machine-readable output for CI
 dependency-audit --json ./packages/a ./packages/b
 
@@ -34,7 +38,7 @@ Exit codes: `0` clean, `1` findings, `2` error.
 
 ```
 @acme/widget@1.2.3  ./packages/widget
-  ✗ types  react  [undeclared]  dist/index.d.ts
+  ✗ types      [undeclared]     react  (dist/index.d.ts)
       → declare "@types/react" (or "react" if it ships its own types)
 
 1 package, 1 finding.
