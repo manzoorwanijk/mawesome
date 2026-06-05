@@ -45,3 +45,19 @@ describe('cli batch isolation', () => {
 		expect(stdout.trim()).toMatch(/^\d+\.\d+\.\d+/);
 	});
 });
+
+describe('cli coverage notices', () => {
+	const unreachable = join(targets, 'types-unreachable');
+
+	it('shows a coverage notice but still exits 0 by default', () => {
+		const { status, stdout } = runCli([unreachable]);
+		expect(stdout).toMatch(/ℹ/);
+		expect(stdout).toMatch(/1 notice/);
+		expect(status).toBe(0);
+	});
+
+	it('fails (exit 1) on a coverage notice under --require-types', () => {
+		const { status } = runCli(['--require-types', unreachable]);
+		expect(status).toBe(1);
+	});
+});

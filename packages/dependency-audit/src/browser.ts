@@ -15,6 +15,8 @@ export type {
 	Finding,
 	FindingKind,
 	IgnoreRule,
+	Notice,
+	NoticeKind,
 	RegistryProvider,
 	ResolvedDependency,
 	Surface,

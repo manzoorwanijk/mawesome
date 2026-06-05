@@ -17,11 +17,21 @@ export interface ExternalSpecifier {
 	firstSeenIn: string;
 }
 
+/**
+ * Whether the type surface had anything to analyze:
+ * - `covered` — at least one declaration entry point resolved and was scanned;
+ * - `not-built` — types are declared but none resolve (build output missing);
+ * - `unreachable` — `.d.ts` ship but no manifest entry exposes them;
+ * - `none` — the package legitimately declares and ships no types.
+ */
+export type TypeCoverage = 'covered' | 'not-built' | 'unreachable' | 'none';
+
 /** The discovered type surface: scanned files and the specifiers they reference. */
 export interface SurfaceScan {
 	files: string[];
 	externals: ExternalSpecifier[];
 	unchecked: UncheckedSpecifier[];
+	coverage: TypeCoverage;
 }
 
 const DTS_RE = /\.d\.[mc]?ts$/;
@@ -79,7 +89,55 @@ export function scanTypeSurface(
 		}
 	}
 
-	return { files: [...visited].map((f) => relative(root, f)), externals, unchecked };
+	const coverage = typeCoverage(fs, root, manifest, visited.size > 0);
+	return { files: [...visited].map((f) => relative(root, f)), externals, unchecked, coverage };
+}
+
+/** Classifies why a type surface was empty, so "clean" is never confused with "nothing to audit". */
+function typeCoverage(
+	fs: FileSystem,
+	root: string,
+	manifest: Manifest,
+	scannedAny: boolean,
+): TypeCoverage {
+	if (scannedAny) {
+		return 'covered';
+	}
+	// A declared types entry that did not resolve means the build output is absent.
+	if (manifestDeclaresTypes(manifest)) {
+		return 'not-built';
+	}
+	// Declarations exist on disk but nothing in the manifest exposes them.
+	if (allDeclarationFiles(fs, root).length > 0) {
+		return 'unreachable';
+	}
+	return 'none';
+}
+
+/** `true` when the manifest explicitly declares type declarations (field or `types` condition). */
+function manifestDeclaresTypes(manifest: Manifest): boolean {
+	if (manifest.types !== undefined || manifest.typings !== undefined) {
+		return true;
+	}
+	if (manifest.typesVersions !== undefined) {
+		return true;
+	}
+	return manifest.exports !== undefined && exportsDeclaresTypes(manifest.exports);
+}
+
+/** `true` if any conditional `exports` branch carries a `types` condition. */
+function exportsDeclaresTypes(node: unknown): boolean {
+	if (node === null || typeof node !== 'object') {
+		return false;
+	}
+	if (Array.isArray(node)) {
+		return node.some(exportsDeclaresTypes);
+	}
+	const record = node as Record<string, unknown>;
+	if ('types' in record) {
+		return true;
+	}
+	return Object.values(record).some(exportsDeclaresTypes);
 }
 
 /** Discovers absolute paths of the declaration entry points from the manifest. */

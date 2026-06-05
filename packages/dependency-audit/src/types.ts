@@ -35,6 +35,23 @@ export interface UncheckedSpecifier {
 	firstSeenIn: string;
 }
 
+/**
+ * Why a surface had nothing to analyze — so "audited, clean" is never confused with
+ * "nothing to audit."
+ * - `types-not-built`: the manifest declares type declarations, but none resolve from
+ *   the package root (the build output is missing — build before auditing).
+ * - `types-unreachable`: the package ships `.d.ts` files, but no `types` field or
+ *   `exports` `types` condition exposes them (a likely packaging gap).
+ */
+export type NoticeKind = 'types-not-built' | 'types-unreachable';
+
+/** A non-fatal coverage notice: a surface that could not be analyzed, and why. */
+export interface Notice {
+	kind: NoticeKind;
+	surface: Surface;
+	message: string;
+}
+
 /** A declared dependency materialized for resolution, with the version selected. */
 export interface ResolvedDependency {
 	name: string;
@@ -88,6 +105,8 @@ export interface AuditResult {
 	/** Findings suppressed by an {@link IgnoreRule}, surfaced for auditability. */
 	ignored: Finding[];
 	unchecked: UncheckedSpecifier[];
+	/** Non-fatal coverage notices (e.g. a package whose types were not built / unreachable). */
+	notices: Notice[];
 	resolvedDeps: ResolvedDependency[];
 }
 

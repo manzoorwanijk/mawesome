@@ -5,12 +5,13 @@ import { createNormalizer, typesPackageFor } from './normalize.ts';
 import { createTypeResolver, materializeDeps } from './resolve.ts';
 import { createRuntimeResolver } from './runtime-resolve.ts';
 import { scanRuntimeSurface } from './runtime-surface.ts';
-import { scanTypeSurface } from './surface.ts';
+import { scanTypeSurface, type TypeCoverage } from './surface.ts';
 import type {
 	AcquiredSource,
 	AuditResult,
 	Finding,
 	IgnoreRule,
+	Notice,
 	RegistryProvider,
 	Surface,
 	UncheckedSpecifier,
@@ -71,6 +72,7 @@ export async function auditPackage(
 
 	const typeSurface = scanTypeSurface(fs, root, manifest, conditions);
 	unchecked.push(...typeSurface.unchecked);
+	const notices = typeCoverageNotices(typeSurface.coverage);
 	for (const external of typeSurface.externals) {
 		const normalized = normalizeSpecifier(external.specifier);
 		if (normalized === null || isSelf(normalized.packageName)) {
@@ -118,8 +120,34 @@ export async function auditPackage(
 		findings: partitioned.findings,
 		ignored: partitioned.ignored,
 		unchecked,
+		notices,
 		resolvedDeps: resolved,
 	};
+}
+
+/** Maps a type-surface coverage verdict to a user-facing notice (none when fully covered). */
+function typeCoverageNotices(coverage: TypeCoverage): Notice[] {
+	if (coverage === 'not-built') {
+		return [
+			{
+				kind: 'types-not-built',
+				surface: 'types',
+				message:
+					'declares type declarations, but none resolve from the package root — the build output looks missing (build the package before auditing, or fix the declared types path)',
+			},
+		];
+	}
+	if (coverage === 'unreachable') {
+		return [
+			{
+				kind: 'types-unreachable',
+				surface: 'types',
+				message:
+					'ships .d.ts files, but no "types" field or "exports" types condition exposes them — consumers cannot resolve its types (a likely packaging gap)',
+			},
+		];
+	}
+	return [];
 }
 
 function builtinTypeFinding(seen: Seen, packageName: string): Finding {

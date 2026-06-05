@@ -63,6 +63,10 @@ Or a JSON config (`./dependency-audit.config.json` by default, or `--config <pat
 
 The programmatic API takes the same rules: `audit(target, { ignore: [{ package: 'x' }] })`.
 
+### Coverage notices
+
+So "audited, clean" is never confused with "nothing to audit," the tool emits a per-target **notice** (not a finding — it does not fail the audit) when a package has no analyzable type surface: `types-not-built` (the manifest declares types but none resolve — build the package first) or `types-unreachable` (it ships `.d.ts` files but no `types` field / `exports` `types` condition exposes them — a likely packaging gap). Notices appear in the text output (`ℹ`) and in each result's `notices` array under `--json`. Pass `--require-types` to treat such a notice as a failure (exit 1).
+
 ## Programmatic API
 
 ```ts

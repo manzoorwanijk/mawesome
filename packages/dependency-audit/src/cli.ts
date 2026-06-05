@@ -30,6 +30,8 @@ Options:
                     ./dependency-audit.config.json if present).
   --condition <name>  Activate an extra resolution condition (e.g. browser) for
                     entry discovery and resolution (repeatable).
+  --require-types   Treat a missing/unreachable type surface (a coverage notice)
+                    as a failure rather than just a notice.
   --json            Emit machine-readable JSON: one entry per target (an
                     AuditResult, or { target, error } for a failed audit).
   -v, --version     Print the version.
@@ -58,6 +60,7 @@ async function main(): Promise<number> {
 			ignore: { type: 'string', multiple: true },
 			config: { type: 'string' },
 			condition: { type: 'string', multiple: true },
+			'require-types': { type: 'boolean', default: false },
 			json: { type: 'boolean', default: false },
 			version: { type: 'boolean', short: 'v', default: false },
 			help: { type: 'boolean', short: 'h', default: false },
@@ -110,8 +113,12 @@ async function main(): Promise<number> {
 
 	const anyError = outcomes.some((outcome) => 'error' in outcome);
 	const anyFinding = outcomes.some((outcome) => 'result' in outcome && !outcome.result.ok);
+	// `--require-types` promotes a coverage notice (no/unreachable types) to a failure.
+	const anyCoverageGap =
+		(values['require-types'] ?? false) &&
+		outcomes.some((outcome) => 'result' in outcome && outcome.result.notices.length > 0);
 	// An audit that could not run at all is a harder failure (exit 2) than findings (exit 1).
-	return anyError ? 2 : anyFinding ? 1 : 0;
+	return anyError ? 2 : anyFinding || anyCoverageGap ? 1 : 0;
 }
 
 /** The JSON shape per target: the full result, or `{ target, error }` for a failed audit. */
@@ -153,8 +160,11 @@ function printResult(result: AuditResult): void {
 		console.log(`  integrity: ${resolved.integrity}`);
 	}
 
-	if (result.ok && result.findings.length === 0) {
+	if (result.ok && result.findings.length === 0 && result.notices.length === 0) {
 		console.log('  ✓ no undeclared imports');
+	}
+	for (const notice of result.notices) {
+		console.log(`  ℹ ${notice.surface}  ${notice.message}`);
 	}
 	for (const finding of result.findings) {
 		console.log(
@@ -183,10 +193,14 @@ function printSummary(outcomes: Outcome[]): void {
 	const errors = outcomes.length - results.length;
 	const findings = results.reduce((sum, result) => sum + result.findings.length, 0);
 	const ignored = results.reduce((sum, result) => sum + result.ignored.length, 0);
+	const notices = results.reduce((sum, result) => sum + result.notices.length, 0);
 	const noun = outcomes.length === 1 ? 'package' : 'packages';
 	const parts = [`${findings} finding${findings === 1 ? '' : 's'}`];
 	if (ignored > 0) {
 		parts.push(`${ignored} ignored`);
+	}
+	if (notices > 0) {
+		parts.push(`${notices} notice${notices === 1 ? '' : 's'}`);
 	}
 	if (errors > 0) {
 		parts.push(`${errors} error${errors === 1 ? '' : 's'}`);
