@@ -12,6 +12,7 @@ export { createMemoryFileSystem, type FileSystem, type WritableFileSystem } from
 export { nodeFileSystem } from './fs-node.ts';
 export { pacoteProvider } from './provider.ts';
 export type {
+	AcquiredSource,
 	AuditOptions,
 	AuditResult,
 	Finding,

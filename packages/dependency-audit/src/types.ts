@@ -43,10 +43,27 @@ export interface ResolvedDependency {
 	version: string | undefined;
 }
 
+/** How a target was acquired, and (for fetched specs) what it resolved to. */
+export interface AcquiredSource {
+	/** `directory` (local dir), `tarball` (local `.tgz`), or `spec` (registry/URL). */
+	kind: 'directory' | 'tarball' | 'spec';
+	/** For a fetched spec: the resolved identity and integrity (a tag moves over time). */
+	resolved?: {
+		name: string | undefined;
+		version: string | undefined;
+		/** The tarball URL pacote resolved to. */
+		tarball: string;
+		/** The Subresource Integrity (SRI) string of the fetched tarball. */
+		integrity: string;
+	};
+}
+
 /** The result of auditing a single target. */
 export interface AuditResult {
-	/** The target as passed in (directory or `.tgz` path). */
+	/** The target as passed in (directory, `.tgz` path, or package spec). */
 	target: string;
+	/** How the target was acquired (and what a spec resolved to). */
+	source: AcquiredSource;
 	packageName: string | undefined;
 	packageVersion: string | undefined;
 	/** `true` when there are no findings. */

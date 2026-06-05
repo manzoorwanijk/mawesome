@@ -17,7 +17,12 @@ export async function audit(target: string, options: AuditOptions = {}): Promise
 	const acquired = await acquire(target);
 	const workDir = mkdtempSync(join(tmpdir(), 'dep-audit-deps-'));
 	try {
-		return await auditPackage(nodeFileSystem, acquired.root, { provider, workDir, target });
+		return await auditPackage(nodeFileSystem, acquired.root, {
+			provider,
+			workDir,
+			target,
+			source: acquired.source,
+		});
 	} finally {
 		rmSync(workDir, { recursive: true, force: true });
 		acquired.cleanup();

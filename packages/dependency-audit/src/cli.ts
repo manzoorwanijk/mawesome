@@ -3,12 +3,13 @@ import { parseArgs } from 'node:util';
 import { audit } from './audit.ts';
 import type { AuditResult } from './types.ts';
 
-const USAGE = `dependency-audit — verify a package's released .d.ts imports are all declared
+const USAGE = `dependency-audit — verify a package's released imports are all declared
 
 Usage:
   dependency-audit [options] <target...>
 
-A target is a package directory or a .tgz path.
+A target is a package directory, a .tgz path, a published spec (name@version,
+name@tag, @scope/name), or an http(s) tarball URL.
 
 Options:
   --json      Emit machine-readable JSON (one AuditResult per target).
@@ -53,6 +54,13 @@ function printResult(result: AuditResult): void {
 	const label = result.packageName ?? result.target;
 	const version = result.packageVersion === undefined ? '' : `@${result.packageVersion}`;
 	console.log(`\n${label}${version}  ${result.target}`);
+
+	const resolved = result.source.resolved;
+	if (resolved !== undefined) {
+		// A spec/tag is a moving target — show exactly what was fetched.
+		console.log(`  resolved: ${resolved.tarball}`);
+		console.log(`  integrity: ${resolved.integrity}`);
+	}
 
 	if (result.ok) {
 		console.log('  ✓ no undeclared imports');

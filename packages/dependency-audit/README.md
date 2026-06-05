@@ -7,16 +7,17 @@ emitted `.d.ts` — that resolves only via the author's hoisted dev tree, so a c
 installing it from npm can't resolve it. The motivating case: an emitted declaration does
 `import('react')` but `@types/react` was never declared.
 
-> **Scope:** both the **type (`.d.ts`)** and **runtime (JS)** surfaces. Resolution runs
-> against the package's _declared_ dependency ranges (materialized fresh), never the
-> author's ambient `node_modules`. The runtime pass discovers entry points from `exports`
-> (both `import`/`require` profiles), legacy `main`/`module`, and `bin`, follows the JS
-> import graph, and honors each dep's own `exports`/`main` per call form. Node builtins
-> need no declaration at runtime; on the type surface they imply `@types/node`.
+> **Scope:** both the **type (`.d.ts`)** and **runtime (JS)** surfaces, against a local
+> directory, a `.tgz`, or **any published spec** (`name@version`/tag, `@scope/name`, or an
+> `http(s)` tarball URL — fetched via npm's cache/auth). Resolution runs against the
+> package's _declared_ dependency ranges (materialized fresh), never the author's ambient
+> `node_modules`. The runtime pass discovers entry points from `exports` (both
+> `import`/`require` profiles), legacy `main`/`module`, and `bin`, follows the JS import
+> graph, and honors each dep's own `exports`/`main` per call form. Node builtins need no
+> declaration at runtime; on the type surface they imply `@types/node`.
 >
-> **Deferred:** published-spec targets (`name@version`), install lifecycle scripts, the
-> `browser` profile, `require.resolve`/`createRequire`/import-attribute call forms, and
-> config-driven ignores.
+> **Deferred:** install lifecycle scripts, the `browser` profile, `require.resolve`/
+> `createRequire`/import-attribute call forms, and config-driven ignores.
 >
 > **Known limitations** (correct results, narrower coverage): entry discovery does not
 > apply `typesVersions` remapping or expand `exports` subpath _patterns_ (`"./*"`); the

@@ -6,6 +6,7 @@ import { createRuntimeResolver } from './runtime-resolve.ts';
 import { scanRuntimeSurface } from './runtime-surface.ts';
 import { scanTypeSurface } from './surface.ts';
 import type {
+	AcquiredSource,
 	AuditResult,
 	Finding,
 	RegistryProvider,
@@ -21,6 +22,8 @@ export interface AuditPackageOptions {
 	workDir: string;
 	/** Label for the result's `target` field. Defaults to `root`. */
 	target?: string;
+	/** How the package was acquired (recorded on the result). Defaults to `directory`. */
+	source?: AcquiredSource;
 }
 
 /** A specifier seen on a surface — the shared shape findings are built from. */
@@ -97,6 +100,7 @@ export async function auditPackage(
 
 	return {
 		target: options.target ?? root,
+		source: options.source ?? { kind: 'directory' },
 		packageName: manifest.name,
 		packageVersion: manifest.version,
 		ok: findings.length === 0,

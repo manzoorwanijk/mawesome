@@ -10,6 +10,7 @@
 export { auditPackage, type AuditPackageOptions } from './audit-core.ts';
 export { createMemoryFileSystem, type FileSystem, type WritableFileSystem } from './fs.ts';
 export type {
+	AcquiredSource,
 	AuditResult,
 	Finding,
 	FindingKind,
