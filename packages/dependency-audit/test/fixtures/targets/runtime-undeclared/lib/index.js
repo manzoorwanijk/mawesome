@@ -1,3 +1,4 @@
+/* oxlint-disable import/no-unassigned-import -- fixture: intentional imports under audit */
 import leftpad from 'leftpad';
 import { readFile } from 'node:fs/promises';
 

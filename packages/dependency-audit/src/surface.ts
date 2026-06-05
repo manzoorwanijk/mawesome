@@ -31,7 +31,7 @@ const DTS_RE = /\.d\.[mc]?ts$/;
  * `require`, `browser`, `development`, `production` are intentionally excluded —
  * the entry surface is profile-driven, never the union of all branches.
  */
-const ACTIVE_CONDITIONS = ['import', 'node', 'default'];
+const ACTIVE_CONDITIONS = new Set(['import', 'node', 'default']);
 
 /**
  * Scans the package's released type surface: discovers declaration entry points
@@ -177,7 +177,7 @@ function selectConditionTarget(node: unknown): string | undefined {
 			}
 		}
 		for (const [key, value] of Object.entries(record)) {
-			if (!key.startsWith('.') && key !== 'types' && ACTIVE_CONDITIONS.includes(key)) {
+			if (!key.startsWith('.') && key !== 'types' && ACTIVE_CONDITIONS.has(key)) {
 				const target = selectConditionTarget(value);
 				if (target !== undefined) {
 					return target;

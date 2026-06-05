@@ -15,7 +15,7 @@ describe('expandPatternTarget', () => {
 	}
 
 	it('expands a single-star target against matching files (`*` spans `/`)', () => {
-		expect(expandPatternTarget(fs, '/pkg', './dist/*.js').sort()).toEqual([
+		expect(expandPatternTarget(fs, '/pkg', './dist/*.js').toSorted()).toEqual([
 			'./dist/a.js',
 			'./dist/b.js',
 			'./dist/sub/c.js',
