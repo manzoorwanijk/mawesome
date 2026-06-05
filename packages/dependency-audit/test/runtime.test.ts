@@ -74,4 +74,16 @@ describe('audit (runtime surface)', () => {
 			kind: 'undeclared',
 		});
 	});
+
+	it('extracts require.resolve, createRequire(...)(), and import-attributes specifiers', async () => {
+		const result = await run('require-forms');
+		const undeclared = (pkg: string) =>
+			result.findings.find((f) => f.packageName === pkg && f.surface === 'runtime');
+		expect(undeclared('res-dep')).toBeDefined(); // require.resolve('res-dep') (CJS)
+		expect(undeclared('cr-dep')).toBeDefined(); // createRequire(__filename)('cr-dep') (CJS)
+		expect(undeclared('cr-esm-dep')).toBeDefined(); // createRequire(import.meta.url)('…') (ESM)
+		expect(undeclared('attr-dep')).toBeDefined(); // import … from 'attr-dep' with { type: 'json' }
+		// `module` is a Node builtin — never a finding.
+		expect(result.findings.some((f) => f.packageName === 'module')).toBe(false);
+	});
 });

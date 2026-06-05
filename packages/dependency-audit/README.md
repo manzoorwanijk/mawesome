@@ -6,7 +6,7 @@ Catches the bug class where a published package imports a module — at runtime 
 
 > **Scope:** both the **type (`.d.ts`)** and **runtime (JS)** surfaces, against a local directory, a `.tgz`, or **any published spec** (`name@version`/tag, `@scope/name`, or an `http(s)` tarball URL — fetched via npm's cache/auth). Resolution runs against the package's _declared_ dependency ranges (materialized fresh), never the author's ambient `node_modules`. The runtime pass discovers entry points from `exports` (both `import`/`require` profiles), legacy `main`/`module`, and `bin`, follows the JS import graph, and honors each dep's own `exports`/`main` per call form. Node builtins need no declaration at runtime; on the type surface they imply `@types/node`.
 >
-> **Deferred:** the `browser` resolution profile + `--condition`, and the `require.resolve`/`createRequire`/import-attribute runtime call forms.
+> **Deferred:** the `browser` resolution profile + `--condition`.
 >
 > **Known limitations** (correct results, narrower coverage): `typesVersions` is applied for the **current** TypeScript version only (not the per-consumer-version matrix); the type surface resolves a single ESM/NodeNext profile (no per-file require context or `bundler` mode); and self-reference / `#imports` specifiers are skipped.
 

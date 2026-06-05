@@ -1,0 +1,11 @@
+{
+	"name": "@fixture/require-forms",
+	"version": "1.0.0",
+	"exports": {
+		".": {
+			"require": "./index.cjs",
+			"import": "./index.mjs"
+		}
+	},
+	"dependencies": {}
+}
