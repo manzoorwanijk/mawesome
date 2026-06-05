@@ -3,6 +3,8 @@
 	"version": "0.0.0",
 	"description": "TODO: describe @mawesome/PACKAGE_NAME",
 	"keywords": [],
+	"homepage": "https://github.com/manzoorwanijk/mawesome/tree/main/packages/PACKAGE_NAME#readme",
+	"bugs": "https://github.com/manzoorwanijk/mawesome/issues",
 	"license": "MIT",
 	"author": "Manzoor Ahmad Wani",
 	"repository": {
