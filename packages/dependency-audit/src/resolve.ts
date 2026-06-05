@@ -1,5 +1,7 @@
 import { join } from 'node:path';
 import ts from 'typescript';
+import type { FileSystem } from './fs.ts';
+import { subdirectories } from './fsutil.ts';
 import type { DeclaredDependency } from './manifest.ts';
 import type { RegistryProvider, ResolvedDependency } from './types.ts';
 
@@ -41,20 +43,22 @@ export async function materializeDeps(
  * Resolution uses NodeNext from an ESM (`.d.mts`) probe context, so `react` falls
  * back to `@types/react` exactly as a consumer's type-checker would.
  */
-export function createTypeResolver(workDir: string): TypeResolver {
+export function createTypeResolver(fs: FileSystem, workDir: string): TypeResolver {
 	const options: ts.CompilerOptions = {
 		moduleResolution: ts.ModuleResolutionKind.NodeNext,
 		module: ts.ModuleKind.NodeNext,
 		target: ts.ScriptTarget.ESNext,
 	};
+	// The resolution host reads through the FS port, so resolution is identical over the
+	// real Node filesystem or an in-memory tree (browser).
 	const host: ts.ModuleResolutionHost = {
-		fileExists: ts.sys.fileExists,
-		readFile: ts.sys.readFile,
-		directoryExists: ts.sys.directoryExists,
-		getDirectories: ts.sys.getDirectories,
-		realpath: ts.sys.realpath ?? ((path: string) => path),
+		fileExists: (path) => fs.isFile(path),
+		readFile: (path) => (fs.isFile(path) ? fs.readFile(path) : undefined),
+		directoryExists: (path) => fs.isDirectory(path),
+		getDirectories: (path) => subdirectories(fs, path),
+		realpath: (path) => fs.realpath(path),
 		getCurrentDirectory: () => workDir,
-		useCaseSensitiveFileNames: ts.sys.useCaseSensitiveFileNames,
+		useCaseSensitiveFileNames: true,
 	};
 	// The probe is never read; its path only sets the (ESM) resolution context.
 	const containingFile = join(workDir, '__dependency_audit_probe__.d.mts');

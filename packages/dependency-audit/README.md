@@ -63,6 +63,36 @@ if (!result.ok) {
 }
 ```
 
+### Browser / custom filesystem
+
+The core is filesystem-agnostic. `@mawesome/dependency-audit/browser` exports `auditPackage`
+over an injectable [`FileSystem`](src/fs.ts) — no `node:fs`/`os`/`module`, no `pacote` (the
+only `node:` import is `node:path`, which bundlers alias to `path-browserify`). Seed an
+in-memory tree and supply a provider that materializes deps into it:
+
+```ts
+import { auditPackage, createMemoryFileSystem } from '@mawesome/dependency-audit/browser';
+
+const fs = createMemoryFileSystem();
+fs.writeFile('/pkg/package.json' /* … */);
+// … write the package's .d.ts / .js files …
+
+const result = await auditPackage(fs, '/pkg', {
+	provider: {
+		async materialize(name, range, intoDir) {
+			/* fetch from a CDN into fs */
+		},
+	},
+	workDir: '/work',
+});
+```
+
+The Node `audit(target)` is just this core wrapped with `.tgz`/directory acquisition and a
+temp dir. A browser host supplies its own acquisition (fetch + untar) and a CDN-backed
+provider (jsDelivr/unpkg).
+
+### Injectable provider (Node)
+
 The dependency artifact provider is injectable — supply your own to resolve against a
 local cache or an offline mirror instead of the npm registry:
 

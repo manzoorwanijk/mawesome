@@ -40,6 +40,16 @@
 				"default": "./dist/index.cjs"
 			}
 		},
+		"./browser": {
+			"import": {
+				"types": "./dist/browser.d.ts",
+				"default": "./dist/browser.js"
+			},
+			"require": {
+				"types": "./dist/browser.d.cts",
+				"default": "./dist/browser.cjs"
+			}
+		},
 		"./package.json": "./package.json"
 	},
 	"publishConfig": {
@@ -51,7 +61,7 @@
 		"dev": "tsdown --watch",
 		"typecheck": "tsgo",
 		"test": "vitest run",
-		"check:exports": "attw --pack . && publint --strict"
+		"check:exports": "attw --pack . --profile node16 && publint --strict"
 	},
 	"dependencies": {
 		"pacote": "^21.5.0",

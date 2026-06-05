@@ -1,5 +1,5 @@
-import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import type { FileSystem } from './fs.ts';
 
 /** The subset of `package.json` fields the audit reads. */
 export interface Manifest {
@@ -25,9 +25,8 @@ export interface DeclaredDependency {
 }
 
 /** Reads and parses the `package.json` at the package root. */
-export function readManifest(root: string): Manifest {
-	const raw = readFileSync(join(root, 'package.json'), 'utf8');
-	return JSON.parse(raw) as Manifest;
+export function readManifest(fs: FileSystem, root: string): Manifest {
+	return JSON.parse(fs.readFile(join(root, 'package.json'))) as Manifest;
 }
 
 /**

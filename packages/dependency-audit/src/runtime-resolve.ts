@@ -1,7 +1,6 @@
-import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { exports as resolveExports, legacy as resolveLegacyFields } from 'resolve.exports';
-import { isFile } from './fsutil.ts';
+import type { FileSystem } from './fs.ts';
 import type { CallForm } from './runtime-surface.ts';
 
 /** Resolves runtime specifiers against the materialized declared-dependency tree. */
@@ -22,7 +21,7 @@ interface DepManifest {
  * declared dep it honors the package's own `exports` for the active condition set
  * (`import` vs `require`), falling back to legacy `main`/`module` + index probing.
  */
-export function createRuntimeResolver(workDir: string): RuntimeResolver {
+export function createRuntimeResolver(fs: FileSystem, workDir: string): RuntimeResolver {
 	const nodeModules = join(workDir, 'node_modules');
 
 	return {
@@ -30,28 +29,29 @@ export function createRuntimeResolver(workDir: string): RuntimeResolver {
 			const { name, subpath } = splitSpecifier(specifier);
 			const depDir = join(nodeModules, name);
 			const manifestPath = join(depDir, 'package.json');
-			if (!existsSync(manifestPath)) {
+			if (!fs.isFile(manifestPath)) {
 				return false;
 			}
-			const pkg = JSON.parse(readFileSync(manifestPath, 'utf8')) as DepManifest;
+			const pkg = JSON.parse(fs.readFile(manifestPath)) as DepManifest;
 
 			if (pkg.exports !== undefined) {
 				// `exports` encapsulates the package: only mapped subpaths resolve. An
 				// array target is a fallback list — the first that exists as a file wins.
 				try {
 					const targets = resolveExports(pkg, specifier, { require: form === 'require' });
-					return Array.isArray(targets) && targets.some((t) => isFile(join(depDir, t)));
+					return Array.isArray(targets) && targets.some((t) => fs.isFile(join(depDir, t)));
 				} catch {
 					return false;
 				}
 			}
-			return resolvesLegacy(depDir, pkg, subpath, form);
+			return resolvesLegacy(fs, depDir, pkg, subpath, form);
 		},
 	};
 }
 
 /** Legacy resolution (no `exports`): `main`/`module` for the bare entry, else file probe. */
 function resolvesLegacy(
+	fs: FileSystem,
 	depDir: string,
 	pkg: DepManifest,
 	subpath: string,
@@ -61,13 +61,13 @@ function resolvesLegacy(
 		const fields = form === 'require' ? ['main'] : ['module', 'main'];
 		const main = resolveLegacyFields(pkg, { browser: false, fields });
 		const candidates = [main, 'index.js', 'index.cjs', 'index.mjs'];
-		return candidates.some((c) => typeof c === 'string' && probeFile(join(depDir, c)));
+		return candidates.some((c) => typeof c === 'string' && probeFile(fs, join(depDir, c)));
 	}
-	return probeFile(join(depDir, subpath));
+	return probeFile(fs, join(depDir, subpath));
 }
 
 /** `true` if `base` resolves as a file directly, by extension, or as a directory index. */
-function probeFile(base: string): boolean {
+function probeFile(fs: FileSystem, base: string): boolean {
 	const candidates = [
 		base,
 		`${base}.js`,
@@ -78,8 +78,8 @@ function probeFile(base: string): boolean {
 		join(base, 'index.cjs'),
 		join(base, 'index.mjs'),
 	];
-	// `isFile` (not `existsSync`) so a bare directory does not short-circuit probing.
-	return candidates.some((c) => isFile(c));
+	// `isFile` (not mere existence) so a bare directory does not short-circuit probing.
+	return candidates.some((c) => fs.isFile(c));
 }
 
 /** Splits a specifier into its owning package name and the subpath after it. */

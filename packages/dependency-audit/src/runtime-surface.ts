@@ -1,7 +1,7 @@
-import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, extname, join, relative, resolve, sep } from 'node:path';
 import ts from 'typescript';
-import { isFile, isWithin } from './fsutil.ts';
+import type { FileSystem } from './fs.ts';
+import { isWithin } from './fsutil.ts';
 import type { Manifest } from './manifest.ts';
 import type { UncheckedSpecifier } from './types.ts';
 
@@ -34,12 +34,12 @@ const REQUIRE_CONDITIONS = ['require', 'node', 'default'];
  * manifest (both runtime profiles, plus `bin`), then follows relative imports across
  * JS files, collecting every external specifier with its call form.
  */
-export function scanRuntimeSurface(root: string, manifest: Manifest): RuntimeScan {
+export function scanRuntimeSurface(fs: FileSystem, root: string, manifest: Manifest): RuntimeScan {
 	const externals: RuntimeSpecifier[] = [];
 	const unchecked: UncheckedSpecifier[] = [];
 	const seen = new Set<string>();
 	const visited = new Set<string>();
-	const queue = [...runtimeEntryPoints(root, manifest)];
+	const queue = [...runtimeEntryPoints(fs, root, manifest)];
 	const rootIsModule = manifest.type === 'module';
 
 	while (queue.length > 0) {
@@ -50,9 +50,9 @@ export function scanRuntimeSurface(root: string, manifest: Manifest): RuntimeSca
 		visited.add(file);
 		const rel = relative(root, file);
 
-		for (const ref of specifiersInJs(file, isEsmFile(file, rootIsModule))) {
+		for (const ref of specifiersInJs(fs, file, isEsmFile(file, rootIsModule))) {
 			if (isRelative(ref.specifier)) {
-				const target = resolveRelativeJs(file, ref.specifier, root);
+				const target = resolveRelativeJs(fs, file, ref.specifier, root);
 				if (target !== undefined && !visited.has(target)) {
 					queue.push(target);
 				}
@@ -74,12 +74,12 @@ export function scanRuntimeSurface(root: string, manifest: Manifest): RuntimeSca
 }
 
 /** Discovers absolute paths of the runtime entry points from the manifest. */
-function runtimeEntryPoints(root: string, manifest: Manifest): string[] {
+function runtimeEntryPoints(fs: FileSystem, root: string, manifest: Manifest): string[] {
 	const found = new Set<string>();
 	const add = (target: string | undefined): void => {
 		if (target !== undefined && JS_RE.test(target)) {
 			const abs = resolve(root, target);
-			if (isFile(abs)) {
+			if (fs.isFile(abs)) {
 				found.add(abs);
 			}
 		}
@@ -92,7 +92,7 @@ function runtimeEntryPoints(root: string, manifest: Manifest): string[] {
 		// No `exports`: any published JS is deep-importable.
 		add(manifest.main);
 		add(manifest.module);
-		for (const file of allJsFiles(root)) {
+		for (const file of allJsFiles(fs, root)) {
 			found.add(file);
 		}
 	}
@@ -100,7 +100,7 @@ function runtimeEntryPoints(root: string, manifest: Manifest): string[] {
 	// extensionless with a `#!/usr/bin/env node` shebang, so accept those too.
 	for (const target of binTargets(manifest)) {
 		const abs = resolve(root, target);
-		if (isFile(abs) && (JS_RE.test(target) || hasNodeShebang(abs))) {
+		if (fs.isFile(abs) && (JS_RE.test(target) || hasNodeShebang(fs, abs))) {
 			found.add(abs);
 		}
 	}
@@ -108,8 +108,8 @@ function runtimeEntryPoints(root: string, manifest: Manifest): string[] {
 }
 
 /** `true` if the file begins with a `#!...node` shebang (an executable JS bin). */
-function hasNodeShebang(file: string): boolean {
-	const firstLine = readFileSync(file, 'utf8').split('\n', 1)[0] ?? '';
+function hasNodeShebang(fs: FileSystem, file: string): boolean {
+	const firstLine = fs.readFile(file).split('\n', 1)[0] ?? '';
 	return firstLine.startsWith('#!') && /\bnode\b/.test(firstLine);
 }
 
@@ -182,10 +182,9 @@ function binTargets(manifest: Manifest): string[] {
 }
 
 /** Lists every JS file in the extracted tarball, excluding bundled deps. */
-function allJsFiles(root: string): string[] {
+function allJsFiles(fs: FileSystem, root: string): string[] {
 	const out: string[] = [];
-	for (const entry of readdirSync(root, { recursive: true })) {
-		const rel = String(entry);
+	for (const rel of fs.readdirRecursive(root)) {
 		if (rel.split(sep).includes('node_modules')) {
 			continue;
 		}
@@ -220,8 +219,8 @@ function isEsmFile(file: string, rootIsModule: boolean): boolean {
  * only in ESM context, so a local identifier named `require` in an ESM file (or stray
  * syntax) does not manufacture a false specifier.
  */
-function specifiersInJs(file: string, isEsm: boolean): RawSpecifier[] {
-	const text = readFileSync(file, 'utf8');
+function specifiersInJs(fs: FileSystem, file: string, isEsm: boolean): RawSpecifier[] {
+	const text = fs.readFile(file);
 	const sf = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
 	const out: RawSpecifier[] = [];
 
@@ -280,7 +279,12 @@ function isRelative(specifier: string): boolean {
 }
 
 /** Resolves a relative specifier from a JS file to the file it targets (node-like). */
-function resolveRelativeJs(fromFile: string, specifier: string, root: string): string | undefined {
+function resolveRelativeJs(
+	fs: FileSystem,
+	fromFile: string,
+	specifier: string,
+	root: string,
+): string | undefined {
 	const base = resolve(dirname(fromFile), specifier);
 	const candidates = [
 		base,
@@ -293,5 +297,5 @@ function resolveRelativeJs(fromFile: string, specifier: string, root: string): s
 		join(base, 'index.mjs'),
 	];
 	// Stay inside the package root and require an actual JS file.
-	return candidates.find((c) => JS_RE.test(c) && isWithin(root, c) && isFile(c));
+	return candidates.find((c) => JS_RE.test(c) && isWithin(root, c) && fs.isFile(c));
 }

@@ -16,6 +16,14 @@ describe('normalizeSpecifier', () => {
 		});
 	});
 
+	it('treats prefix-only builtins as builtin only under the node: scheme', () => {
+		// A bare `test`/`sqlite` import is a real npm package, not the Node builtin.
+		expect(normalizeSpecifier('test')).toEqual({ packageName: 'test', isBuiltin: false });
+		expect(normalizeSpecifier('sqlite')).toEqual({ packageName: 'sqlite', isBuiltin: false });
+		expect(normalizeSpecifier('node:test')).toEqual({ packageName: 'test', isBuiltin: true });
+		expect(normalizeSpecifier('node:sqlite')).toEqual({ packageName: 'sqlite', isBuiltin: true });
+	});
+
 	it('reduces scoped and subpath specifiers to their owning package', () => {
 		expect(normalizeSpecifier('react/jsx-runtime')?.packageName).toBe('react');
 		expect(normalizeSpecifier('@scope/pkg/sub')?.packageName).toBe('@scope/pkg');

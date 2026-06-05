@@ -1,17 +1,13 @@
-import { statSync } from 'node:fs';
-import { isAbsolute, relative, resolve } from 'node:path';
-
-/** `true` if `path` exists and is a regular file (not a directory). */
-export function isFile(path: string): boolean {
-	try {
-		return statSync(path).isFile();
-	} catch {
-		return false;
-	}
-}
+import { isAbsolute, join, relative, resolve } from 'node:path';
+import type { FileSystem } from './fs.ts';
 
 /** `true` if `target` is strictly inside `root` (guards against `../` escapes). */
 export function isWithin(root: string, target: string): boolean {
 	const rel = relative(resolve(root), resolve(target));
 	return rel !== '' && !rel.startsWith('..') && !isAbsolute(rel);
+}
+
+/** Immediate subdirectories of `path` (used by the TS module-resolution host). */
+export function subdirectories(fs: FileSystem, path: string): string[] {
+	return fs.listDir(path).filter((name) => fs.isDirectory(join(path, name)));
 }

@@ -1,7 +1,7 @@
-import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import ts from 'typescript';
-import { isFile, isWithin } from './fsutil.ts';
+import type { FileSystem } from './fs.ts';
+import { isWithin } from './fsutil.ts';
 import type { Manifest } from './manifest.ts';
 import type { UncheckedSpecifier } from './types.ts';
 
@@ -37,12 +37,12 @@ const ACTIVE_CONDITIONS = ['import', 'node', 'default'];
  * from the manifest, then follows relative imports between `.d.ts` files,
  * collecting every external specifier reachable on the way.
  */
-export function scanTypeSurface(root: string, manifest: Manifest): SurfaceScan {
+export function scanTypeSurface(fs: FileSystem, root: string, manifest: Manifest): SurfaceScan {
 	const externals: ExternalSpecifier[] = [];
 	const unchecked: UncheckedSpecifier[] = [];
 	const seenExternal = new Set<string>();
 	const visited = new Set<string>();
-	const queue = [...typeEntryPoints(root, manifest)];
+	const queue = [...typeEntryPoints(fs, root, manifest)];
 
 	while (queue.length > 0) {
 		const file = queue.shift();
@@ -52,9 +52,9 @@ export function scanTypeSurface(root: string, manifest: Manifest): SurfaceScan {
 		visited.add(file);
 		const rel = relative(root, file);
 
-		for (const ref of specifiersIn(file)) {
+		for (const ref of specifiersIn(fs, file)) {
 			if (ref.kind === 'module' && isRelative(ref.specifier)) {
-				const target = resolveRelativeDts(file, ref.specifier, root);
+				const target = resolveRelativeDts(fs, file, ref.specifier, root);
 				if (target !== undefined && !visited.has(target)) {
 					queue.push(target);
 				}
@@ -76,13 +76,13 @@ export function scanTypeSurface(root: string, manifest: Manifest): SurfaceScan {
 }
 
 /** Discovers absolute paths of the declaration entry points from the manifest. */
-function typeEntryPoints(root: string, manifest: Manifest): string[] {
+function typeEntryPoints(fs: FileSystem, root: string, manifest: Manifest): string[] {
 	const found = new Set<string>();
 	const addTarget = (target: string | undefined): void => {
 		const dts = target === undefined ? undefined : toDeclarationPath(target);
 		if (dts !== undefined) {
 			const abs = resolve(root, dts);
-			if (isFile(abs)) {
+			if (fs.isFile(abs)) {
 				found.add(abs);
 			}
 		}
@@ -101,7 +101,7 @@ function typeEntryPoints(root: string, manifest: Manifest): string[] {
 	addTarget(manifest.typings);
 	addTarget(manifest.module);
 	addTarget(manifest.main);
-	for (const file of allDeclarationFiles(root)) {
+	for (const file of allDeclarationFiles(fs, root)) {
 		found.add(file);
 	}
 	return [...found];
@@ -171,10 +171,9 @@ function selectConditionTarget(node: unknown): string | undefined {
 }
 
 /** Lists every declaration file in the extracted tarball, excluding bundled deps. */
-function allDeclarationFiles(root: string): string[] {
+function allDeclarationFiles(fs: FileSystem, root: string): string[] {
 	const out: string[] = [];
-	for (const entry of readdirSync(root, { recursive: true })) {
-		const rel = String(entry);
+	for (const rel of fs.readdirRecursive(root)) {
 		if (rel.split(sep).includes('node_modules')) {
 			continue;
 		}
@@ -209,8 +208,8 @@ interface RawSpecifier {
 }
 
 /** Extracts all module specifiers and type references from a declaration file. */
-function specifiersIn(file: string): RawSpecifier[] {
-	const text = readFileSync(file, 'utf8');
+function specifiersIn(fs: FileSystem, file: string): RawSpecifier[] {
+	const text = fs.readFile(file);
 	const sf = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
 	const out: RawSpecifier[] = [];
 	const isModule = ts.isExternalModule(sf);
@@ -260,7 +259,12 @@ function isRelative(specifier: string): boolean {
 }
 
 /** Resolves a relative specifier from a `.d.ts` to the declaration file it targets. */
-function resolveRelativeDts(fromFile: string, specifier: string, root: string): string | undefined {
+function resolveRelativeDts(
+	fs: FileSystem,
+	fromFile: string,
+	specifier: string,
+	root: string,
+): string | undefined {
 	const base = resolve(dirname(fromFile), specifier);
 	const candidates = DTS_RE.test(specifier)
 		? [base]
@@ -274,7 +278,7 @@ function resolveRelativeDts(fromFile: string, specifier: string, root: string): 
 				join(base, 'index.d.cts'),
 			];
 	// Stay inside the package root and require an actual file.
-	return candidates.find((c) => c !== undefined && isWithin(root, c) && isFile(c));
+	return candidates.find((c) => c !== undefined && isWithin(root, c) && fs.isFile(c));
 }
 
 /** For a relative `./x.js`-style import, the adjacent declaration path. */
