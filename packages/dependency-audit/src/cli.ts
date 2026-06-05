@@ -6,7 +6,9 @@ import { audit } from './audit.ts';
 import { parseIgnoreRules } from './ignore.ts';
 import type { AuditResult, IgnoreRule } from './types.ts';
 
-const USAGE = `dependency-audit — verify a package's released imports are all declared
+const VERSION = readSelfVersion();
+
+const USAGE = `dependency-audit v${VERSION} — verify a package's released imports are all declared
 
 Usage:
   dependency-audit [options] <target...>
@@ -20,11 +22,24 @@ Options:
   --config <path>   Load ignore rules from a JSON config (default:
                     ./dependency-audit.config.json if present).
   --json            Emit machine-readable JSON (one AuditResult per target).
+  -v, --version     Print the version.
   -h, --help        Show this help.
 
 Exit codes: 0 = clean, 1 = findings, 2 = error.`;
 
 const DEFAULT_CONFIG = 'dependency-audit.config.json';
+
+/** Reads this package's own version from its manifest (next to the built bin). */
+function readSelfVersion(): string {
+	try {
+		const manifest = JSON.parse(
+			readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
+		) as { version?: string };
+		return manifest.version ?? '0.0.0';
+	} catch {
+		return '0.0.0';
+	}
+}
 
 async function main(): Promise<number> {
 	const { values, positionals } = parseArgs({
@@ -33,10 +48,15 @@ async function main(): Promise<number> {
 			ignore: { type: 'string', multiple: true },
 			config: { type: 'string' },
 			json: { type: 'boolean', default: false },
+			version: { type: 'boolean', short: 'v', default: false },
 			help: { type: 'boolean', short: 'h', default: false },
 		},
 	});
 
+	if (values.version) {
+		console.log(VERSION);
+		return 0;
+	}
 	if (values.help) {
 		console.log(USAGE);
 		return 0;
