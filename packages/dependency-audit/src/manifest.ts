@@ -10,6 +10,7 @@ export interface Manifest {
 	module?: string;
 	types?: string;
 	typings?: string;
+	bin?: string | Record<string, string>;
 	exports?: unknown;
 	dependencies?: Record<string, string>;
 	peerDependencies?: Record<string, string>;

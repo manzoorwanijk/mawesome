@@ -17,32 +17,31 @@ export interface TypeResolver {
 	resolvesTypeReference(name: string): boolean;
 }
 
-/** A {@link TypeResolver} plus the versions its dependencies materialized to. */
-export interface ResolverSetup {
-	resolver: TypeResolver;
-	resolved: ResolvedDependency[];
-}
-
 /**
- * Materializes every declared dependency into `<workDir>/node_modules` and returns
- * a TypeScript-accurate resolver over that tree. Resolution uses NodeNext from an
- * ESM (`.d.mts`) probe context, so `react` falls back to `@types/react` exactly as
- * a consumer's type-checker would.
+ * Materializes every declared dependency into `<workDir>/node_modules`, in parallel.
+ * Both the type and runtime resolvers then run against this one shared tree, derived
+ * from the target's declared ranges — never the author's ambient `node_modules`.
  */
-export async function createTypeResolver(
+export async function materializeDeps(
 	deps: DeclaredDependency[],
 	provider: RegistryProvider,
 	workDir: string,
-): Promise<ResolverSetup> {
-	// Independent fetches into distinct node_modules subpaths — materialize in parallel.
-	const resolved: ResolvedDependency[] = await Promise.all(
+): Promise<ResolvedDependency[]> {
+	return Promise.all(
 		deps.map(async (dep) => ({
 			name: dep.name,
 			range: dep.range,
 			version: await provider.materialize(dep.name, dep.range, workDir),
 		})),
 	);
+}
 
+/**
+ * Builds a TypeScript-accurate resolver over an already-materialized `<workDir>`.
+ * Resolution uses NodeNext from an ESM (`.d.mts`) probe context, so `react` falls
+ * back to `@types/react` exactly as a consumer's type-checker would.
+ */
+export function createTypeResolver(workDir: string): TypeResolver {
 	const options: ts.CompilerOptions = {
 		moduleResolution: ts.ModuleResolutionKind.NodeNext,
 		module: ts.ModuleKind.NodeNext,
@@ -86,5 +85,5 @@ export async function createTypeResolver(
 		},
 	};
 
-	return { resolver, resolved };
+	return resolver;
 }

@@ -1,16 +1,18 @@
-/** Public types for the dependency audit. v1 covers the type (`.d.ts`) surface only. */
+/** Public types for the dependency audit (type `.d.ts` + runtime JS surfaces). */
 
-/** The released surface a finding was discovered on. v1 audits only `types`. */
-export type Surface = 'types';
+/** The released surface a finding was discovered on. */
+export type Surface = 'types' | 'runtime';
 
 /**
  * Why a reachable specifier failed the audit.
  * - `undeclared`: the owning package is not declared in any non-dev manifest field.
  * - `missing-types`: the package is declared but provides no resolvable declarations
- *   for the exact specifier (the headline bug — e.g. a `.d.ts` `import('react')`
+ *   for the exact specifier (the headline type bug — e.g. a `.d.ts` `import('react')`
  *   with no `@types/react` declared).
+ * - `unresolved`: the package is declared but the runtime specifier does not resolve
+ *   to a file (e.g. a deep import of a subpath the dep's `exports` does not expose).
  */
-export type FindingKind = 'undeclared' | 'missing-types';
+export type FindingKind = 'undeclared' | 'missing-types' | 'unresolved';
 
 /** A single undeclared/unresolvable import on a released surface. */
 export interface Finding {

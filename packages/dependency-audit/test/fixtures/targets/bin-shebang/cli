@@ -1,0 +1,4 @@
+#!/usr/bin/env node
+import leftpad from 'leftpad';
+
+console.log(leftpad('x'));

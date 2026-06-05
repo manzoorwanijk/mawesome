@@ -55,7 +55,7 @@ function printResult(result: AuditResult): void {
 	console.log(`\n${label}${version}  ${result.target}`);
 
 	if (result.ok) {
-		console.log('  ✓ no undeclared type imports');
+		console.log('  ✓ no undeclared imports');
 	}
 	for (const finding of result.findings) {
 		console.log(

@@ -1,6 +1,7 @@
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import ts from 'typescript';
+import { isFile, isWithin } from './fsutil.ts';
 import type { Manifest } from './manifest.ts';
 import type { UncheckedSpecifier } from './types.ts';
 
@@ -53,7 +54,7 @@ export function scanTypeSurface(root: string, manifest: Manifest): SurfaceScan {
 
 		for (const ref of specifiersIn(file)) {
 			if (ref.kind === 'module' && isRelative(ref.specifier)) {
-				const target = resolveRelativeDts(file, ref.specifier);
+				const target = resolveRelativeDts(file, ref.specifier, root);
 				if (target !== undefined && !visited.has(target)) {
 					queue.push(target);
 				}
@@ -81,7 +82,7 @@ function typeEntryPoints(root: string, manifest: Manifest): string[] {
 		const dts = target === undefined ? undefined : toDeclarationPath(target);
 		if (dts !== undefined) {
 			const abs = resolve(root, dts);
-			if (existsSync(abs)) {
+			if (isFile(abs)) {
 				found.add(abs);
 			}
 		}
@@ -259,7 +260,7 @@ function isRelative(specifier: string): boolean {
 }
 
 /** Resolves a relative specifier from a `.d.ts` to the declaration file it targets. */
-function resolveRelativeDts(fromFile: string, specifier: string): string | undefined {
+function resolveRelativeDts(fromFile: string, specifier: string, root: string): string | undefined {
 	const base = resolve(dirname(fromFile), specifier);
 	const candidates = DTS_RE.test(specifier)
 		? [base]
@@ -272,7 +273,8 @@ function resolveRelativeDts(fromFile: string, specifier: string): string | undef
 				join(base, 'index.d.mts'),
 				join(base, 'index.d.cts'),
 			];
-	return candidates.find((c) => c !== undefined && existsSync(c));
+	// Stay inside the package root and require an actual file.
+	return candidates.find((c) => c !== undefined && isWithin(root, c) && isFile(c));
 }
 
 /** For a relative `./x.js`-style import, the adjacent declaration path. */
