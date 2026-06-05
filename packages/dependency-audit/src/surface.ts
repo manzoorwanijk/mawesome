@@ -1,7 +1,7 @@
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import ts from 'typescript';
 import type { FileSystem } from './fs.ts';
-import { isWithin } from './fsutil.ts';
+import { expandPatternTarget, isWithin } from './fsutil.ts';
 import type { Manifest } from './manifest.ts';
 import type { UncheckedSpecifier } from './types.ts';
 
@@ -91,7 +91,9 @@ function typeEntryPoints(fs: FileSystem, root: string, manifest: Manifest): stri
 	if (manifest.exports !== undefined) {
 		// `exports` encapsulates the package: only its (profile-selected) targets are
 		// the surface. Legacy `types`/`typings` are ignored when `exports` is present.
-		exportsTypeTargets(manifest.exports).forEach(addTarget);
+		for (const target of exportsTypeTargets(manifest.exports)) {
+			expandPatternTarget(fs, root, target).forEach(addTarget);
+		}
 		return [...found];
 	}
 
@@ -111,13 +113,11 @@ function typeEntryPoints(fs: FileSystem, root: string, manifest: Manifest): stri
 function exportsTypeTargets(exportsField: unknown): string[] {
 	if (isSubpathMap(exportsField)) {
 		const targets: string[] = [];
-		for (const [key, value] of Object.entries(exportsField)) {
-			// Subpath patterns (`./*`) are a documented v1 limitation.
-			if (!key.includes('*')) {
-				const target = selectConditionTarget(value);
-				if (target !== undefined) {
-					targets.push(target);
-				}
+		for (const value of Object.values(exportsField)) {
+			// Pattern subpath keys (`./*`) are included; their target is expanded later.
+			const target = selectConditionTarget(value);
+			if (target !== undefined) {
+				targets.push(target);
 			}
 		}
 		return targets;

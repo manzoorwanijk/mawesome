@@ -20,9 +20,9 @@ installing it from npm can't resolve it. The motivating case: an emitted declara
 > `require.resolve`/`createRequire`/import-attribute runtime call forms.
 >
 > **Known limitations** (correct results, narrower coverage): entry discovery does not
-> apply `typesVersions` remapping or expand `exports` subpath _patterns_ (`"./*"`); the
-> type surface resolves a single ESM/NodeNext profile (no per-file require context or
-> `bundler` mode); and self-reference / `#imports` specifiers are skipped.
+> apply `typesVersions` remapping; the type surface resolves a single ESM/NodeNext profile
+> (no per-file require context or `bundler` mode); and self-reference / `#imports`
+> specifiers are skipped.
 
 ## Install
 

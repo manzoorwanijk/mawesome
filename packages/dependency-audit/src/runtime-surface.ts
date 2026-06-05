@@ -1,7 +1,7 @@
 import { dirname, extname, join, relative, resolve, sep } from 'node:path';
 import ts from 'typescript';
 import type { FileSystem } from './fs.ts';
-import { isWithin } from './fsutil.ts';
+import { expandPatternTarget, isWithin } from './fsutil.ts';
 import type { Manifest } from './manifest.ts';
 import type { UncheckedSpecifier } from './types.ts';
 
@@ -86,8 +86,9 @@ function runtimeEntryPoints(fs: FileSystem, root: string, manifest: Manifest): s
 	};
 
 	if (manifest.exports !== undefined) {
-		exportsRuntimeTargets(manifest.exports, IMPORT_CONDITIONS).forEach(add);
-		exportsRuntimeTargets(manifest.exports, REQUIRE_CONDITIONS).forEach(add);
+		const expand = (target: string): void => expandPatternTarget(fs, root, target).forEach(add);
+		exportsRuntimeTargets(manifest.exports, IMPORT_CONDITIONS).forEach(expand);
+		exportsRuntimeTargets(manifest.exports, REQUIRE_CONDITIONS).forEach(expand);
 	} else {
 		// No `exports`: any published JS is deep-importable.
 		add(manifest.main);
@@ -117,13 +118,11 @@ function hasNodeShebang(fs: FileSystem, file: string): boolean {
 function exportsRuntimeTargets(exportsField: unknown, conditions: string[]): string[] {
 	if (isSubpathMap(exportsField)) {
 		const targets: string[] = [];
-		for (const [key, value] of Object.entries(exportsField)) {
-			// Subpath patterns (`./*`) are a documented v1 limitation.
-			if (!key.includes('*')) {
-				const target = selectConditionTarget(value, conditions);
-				if (target !== undefined) {
-					targets.push(target);
-				}
+		for (const value of Object.values(exportsField)) {
+			// Pattern subpath keys (`./*`) are included; their target is expanded later.
+			const target = selectConditionTarget(value, conditions);
+			if (target !== undefined) {
+				targets.push(target);
 			}
 		}
 		return targets;

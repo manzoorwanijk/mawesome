@@ -105,4 +105,11 @@ describe('audit (type surface)', () => {
 		expect(result.ignored.length).toBeGreaterThan(0);
 		expect(result.ok).toBe(true);
 	});
+
+	it('expands `exports` subpath patterns (./*) to reach wildcard-only entry points', async () => {
+		const result = await run('wildcard');
+		// Both files are reachable only via the `./*` pattern export.
+		expect(result.findings.find((f) => f.packageName === 'csstype')?.surface).toBe('types');
+		expect(result.findings.find((f) => f.packageName === 'ghost')?.surface).toBe('runtime');
+	});
 });

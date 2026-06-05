@@ -1,0 +1,14 @@
+{
+	"name": "@fixture/wildcard",
+	"version": "1.0.0",
+	"type": "module",
+	"exports": {
+		"./*": {
+			"import": {
+				"types": "./lib/*.d.ts",
+				"default": "./lib/*.js"
+			}
+		}
+	},
+	"dependencies": {}
+}
