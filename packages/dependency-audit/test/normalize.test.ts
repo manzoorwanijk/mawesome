@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeSpecifier, typesPackageFor } from '../src/normalize.ts';
+import { createNormalizer, normalizeSpecifier, typesPackageFor } from '../src/normalize.ts';
 
 describe('normalizeSpecifier', () => {
 	it('classifies exact builtins, including real slash subpaths', () => {
@@ -38,5 +38,21 @@ describe('normalizeSpecifier', () => {
 	it('maps packages to their DefinitelyTyped name', () => {
 		expect(typesPackageFor('react')).toBe('@types/react');
 		expect(typesPackageFor('@scope/pkg')).toBe('@types/scope__pkg');
+	});
+});
+
+describe('createNormalizer (injected builtins)', () => {
+	it('classifies builtins from the injected set (e.g. a newer Node adds one)', () => {
+		const normalize = createNormalizer(['fs', 'newcore']);
+		expect(normalize('newcore')?.isBuiltin).toBe(true);
+		expect(normalize('node:newcore')?.isBuiltin).toBe(true);
+		// Not in the injected set → audited as a package.
+		expect(normalize('os')?.isBuiltin).toBe(false);
+	});
+
+	it('keeps prefix-only builtins package-classified even if the injected set lists them bare', () => {
+		const normalize = createNormalizer(['test', 'sqlite']);
+		expect(normalize('test')).toEqual({ packageName: 'test', isBuiltin: false });
+		expect(normalize('node:test')).toEqual({ packageName: 'test', isBuiltin: true });
 	});
 });

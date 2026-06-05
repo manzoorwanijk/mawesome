@@ -1,7 +1,7 @@
 import type { FileSystem } from './fs.ts';
 import { partitionIgnored } from './ignore.ts';
 import { declaredDependencies, readManifest } from './manifest.ts';
-import { normalizeSpecifier, typesPackageFor } from './normalize.ts';
+import { createNormalizer, typesPackageFor } from './normalize.ts';
 import { createTypeResolver, materializeDeps } from './resolve.ts';
 import { createRuntimeResolver } from './runtime-resolve.ts';
 import { scanRuntimeSurface } from './runtime-surface.ts';
@@ -28,6 +28,8 @@ export interface AuditPackageOptions {
 	source?: AcquiredSource;
 	/** Rules that suppress intentional findings (moved to `result.ignored`). */
 	ignore?: IgnoreRule[];
+	/** Node builtin names (the Node entry injects the live `builtinModules`; default hardcoded). */
+	builtins?: readonly string[];
 }
 
 /** A specifier seen on a surface — the shared shape findings are built from. */
@@ -58,6 +60,7 @@ export async function auditPackage(
 	);
 	const typeResolver = createTypeResolver(fs, workDir);
 	const runtimeResolver = createRuntimeResolver(fs, workDir);
+	const normalizeSpecifier = createNormalizer(options.builtins);
 
 	const findings: Finding[] = [];
 	const unchecked: UncheckedSpecifier[] = [];

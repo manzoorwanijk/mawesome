@@ -1,9 +1,10 @@
 /*
- * Node builtin module specifiers (including real slash subpaths). Hardcoded rather than
- * read from `node:module` so the core stays browser-safe. A `node:` prefix is normalized
- * before lookup; this list is the unprefixed form.
+ * Default Node builtin module specifiers (including real slash subpaths). The core is
+ * browser-safe and can't read `node:module`, so this hardcoded list is the fallback; the
+ * Node entry injects the live `builtinModules` via `createNormalizer` to avoid drift.
+ * Specifiers are the unprefixed form; a `node:` prefix is normalized before lookup.
  */
-const NODE_BUILTINS = [
+export const DEFAULT_NODE_BUILTINS: readonly string[] = [
 	'assert',
 	'assert/strict',
 	'async_hooks',
@@ -67,9 +68,6 @@ const NODE_BUILTINS = [
  */
 const NODE_PREFIX_ONLY = new Set<string>(['sea', 'sqlite', 'test', 'test/reporters']);
 
-/** Exact bare builtin specifiers, including real slash subpaths like `fs/promises`. */
-const BUILTINS = new Set<string>(NODE_BUILTINS);
-
 /** A specifier classified into its owning package. */
 export interface NormalizedSpecifier {
 	/** The owning package name (`@scope/x/sub` → `@scope/x`, `react/jsx-runtime` → `react`). */
@@ -79,34 +77,45 @@ export interface NormalizedSpecifier {
 	isBuiltin: boolean;
 }
 
-/**
- * Classifies a bare import specifier into its owning package, or returns `null`
- * for specifiers that are not package imports (relative/absolute paths, URLs).
- */
-export function normalizeSpecifier(specifier: string): NormalizedSpecifier | null {
-	if (specifier.startsWith('node:')) {
-		// The `node:` scheme is the builtin namespace; classify by exact membership so a
-		// non-builtin like `node:events/foo` is not waved through as a real builtin. Both
-		// regular and prefix-only builtins are valid under the `node:` scheme.
-		const stripped = specifier.slice('node:'.length);
-		const isBuiltin = BUILTINS.has(stripped) || NODE_PREFIX_ONLY.has(stripped);
-		return { packageName: bareName(stripped), isBuiltin };
-	}
-	if (
-		specifier === '' ||
-		specifier.startsWith('.') ||
-		specifier.startsWith('/') ||
-		specifier.startsWith('#') ||
-		/^[a-z][a-z0-9+.-]*:/i.test(specifier)
-	) {
-		// Relative/absolute paths, `#imports`, and URI-scheme specifiers (data:, http:, file:)
-		// are not external package imports for v1 (self/#imports resolution is deferred).
-		return null;
-	}
+/** Classifies a specifier into its owning package, or `null` for non-package imports. */
+export type Normalizer = (specifier: string) => NormalizedSpecifier | null;
 
-	// Builtins match the exact specifier (so `fs/promises` is builtin, `events/foo` is not).
-	return { packageName: bareName(specifier), isBuiltin: BUILTINS.has(specifier) };
+/**
+ * Builds a {@link Normalizer} over a Node builtins set (default {@link DEFAULT_NODE_BUILTINS};
+ * the Node entry passes the live `builtinModules`). Prefix-only builtins (`test`/`sqlite`/
+ * `sea`) are matched only under the `node:` scheme regardless of the injected set, so a bare
+ * `import 'test'` is always audited as an npm package.
+ */
+export function createNormalizer(builtins: Iterable<string> = DEFAULT_NODE_BUILTINS): Normalizer {
+	const set = new Set(builtins);
+	return (specifier) => {
+		if (specifier.startsWith('node:')) {
+			// The `node:` scheme is the builtin namespace; classify by exact membership so a
+			// non-builtin like `node:events/foo` is not waved through as a real builtin.
+			const stripped = specifier.slice('node:'.length);
+			const isBuiltin = set.has(stripped) || NODE_PREFIX_ONLY.has(stripped);
+			return { packageName: bareName(stripped), isBuiltin };
+		}
+		if (
+			specifier === '' ||
+			specifier.startsWith('.') ||
+			specifier.startsWith('/') ||
+			specifier.startsWith('#') ||
+			/^[a-z][a-z0-9+.-]*:/i.test(specifier)
+		) {
+			// Relative/absolute paths, `#imports`, and URI-scheme specifiers (data:, http:, file:)
+			// are not external package imports (self/#imports resolution is deferred).
+			return null;
+		}
+		// Bare builtins match the exact specifier (so `fs/promises` is builtin, `events/foo`
+		// is not), excluding prefix-only names which are only builtins under `node:`.
+		const isBuiltin = set.has(specifier) && !NODE_PREFIX_ONLY.has(specifier);
+		return { packageName: bareName(specifier), isBuiltin };
+	};
 }
+
+/** The default normalizer, bound to {@link DEFAULT_NODE_BUILTINS} (browser-safe). */
+export const normalizeSpecifier: Normalizer = createNormalizer();
 
 /** Extracts the package name from a (possibly scoped, possibly subpath) specifier. */
 function bareName(specifier: string): string {

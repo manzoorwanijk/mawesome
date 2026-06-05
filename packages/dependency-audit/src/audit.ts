@@ -1,4 +1,5 @@
 import { mkdtempSync, rmSync } from 'node:fs';
+import { builtinModules } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { acquire } from './acquire.ts';
@@ -23,6 +24,8 @@ export async function audit(target: string, options: AuditOptions = {}): Promise
 			target,
 			source: acquired.source,
 			ignore: options.ignore ?? [],
+			// Use the running Node's live builtin list (the core defaults to a hardcoded one).
+			builtins: builtinModules,
 		});
 	} finally {
 		rmSync(workDir, { recursive: true, force: true });
