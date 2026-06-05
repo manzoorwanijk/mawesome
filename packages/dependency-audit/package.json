@@ -11,6 +11,8 @@
 		"publint",
 		"types"
 	],
+	"homepage": "https://github.com/manzoorwanijk/mawesome/tree/main/packages/dependency-audit#readme",
+	"bugs": "https://github.com/manzoorwanijk/mawesome/issues",
 	"license": "MIT",
 	"author": "Manzoor Ahmad Wani",
 	"repository": {
