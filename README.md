@@ -4,8 +4,7 @@ A pnpm monorepo for publishing packages under the `@mawesome/*` scope, with a st
 
 ## Toolchain
 
-- **pnpm 10** workspaces with supply-chain hardening (3-day release cooldown, blocked
-  dependency build scripts, no hoisting, no root dependencies).
+- **pnpm 10** workspaces with supply-chain hardening (3-day release cooldown, blocked dependency build scripts, no hoisting, no root dependencies).
 - **oxlint** + **oxfmt** (oxc) for linting and formatting.
 - **syncpack** for dependency-version consistency (one version per dependency + `workspace:*`).
 - **tsgo** (`@typescript/native-preview`) for fast type-checking.
@@ -29,9 +28,7 @@ pnpm verify   # lint, format, deps, typecheck, test, build, exports — the full
 
 ## Contributing
 
-See [CONTRIBUTING.md](./CONTRIBUTING.md) for the add-a-package recipe and release flow, and
-[AGENTS.md](./AGENTS.md) for the authoritative command and rule reference (it applies to
-human contributors and AI agents alike).
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for the add-a-package recipe and release flow, and [AGENTS.md](./AGENTS.md) for the authoritative command and rule reference (it applies to human contributors and AI agents alike).
 
 ## License
 
