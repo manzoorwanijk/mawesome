@@ -1,9 +1,9 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { isAbsolute, join, resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
 import pacote from 'pacote';
-import type { AcquiredSource } from './types.ts';
+import { DEFAULT_EXTRACT_LIMITS, extractTarball } from './extract.ts';
+import type { AcquiredSource, ExtractLimits } from './types.ts';
 
 /** An acquired package root, plus a cleanup for any temp directory created. */
 export interface AcquiredPackage {
@@ -21,11 +21,16 @@ const RECURSIVE = { recursive: true, force: true } as const;
  * - A **directory** containing `package.json` is used in place.
  * - A local **`.tgz`** is extracted to a fresh temp directory.
  * - A **published spec** (`name`, `name@version`, `name@tag`, `@scope/name@…`) or an
- *   **`http(s)` tarball URL** is fetched and extracted via pacote (reusing npm's
- *   auth/cache/dist-tag resolution); the resolved name, version, tarball URL, and
+ *   **`http(s)` tarball URL** is fetched via pacote (reusing npm's auth/cache/dist-tag
+ *   resolution and integrity verification); the resolved name, version, tarball URL, and
  *   integrity are recorded (a tag is a moving version).
+ *
+ * Tarball extraction is bounded by `limits` (a decompression-bomb guard).
  */
-export async function acquire(target: string): Promise<AcquiredPackage> {
+export async function acquire(
+	target: string,
+	limits: ExtractLimits = DEFAULT_EXTRACT_LIMITS,
+): Promise<AcquiredPackage> {
 	const abs = resolve(target);
 
 	if (existsSync(abs) && statSync(abs).isDirectory()) {
@@ -36,7 +41,7 @@ export async function acquire(target: string): Promise<AcquiredPackage> {
 	}
 
 	if (existsSync(abs) && TARBALL_RE.test(abs)) {
-		const root = await extractTo(pathToFileURL(abs).href);
+		const root = await extractInto(readFileSync(abs), limits);
 		return { root, source: { kind: 'tarball' }, cleanup: () => rmSync(root, RECURSIVE) };
 	}
 
@@ -47,35 +52,30 @@ export async function acquire(target: string): Promise<AcquiredPackage> {
 		);
 	}
 
-	// Registry spec or remote tarball — pacote resolves and fetches it.
-	const dest = mkdtempSync(join(tmpdir(), 'dep-audit-'));
-	try {
-		const fetched = await pacote.extract(target, dest);
-		const pkg = readPackageJson(dest);
-		return {
-			root: dest,
-			source: {
-				kind: 'spec',
-				resolved: {
-					name: pkg.name,
-					version: pkg.version,
-					tarball: fetched.resolved,
-					integrity: fetched.integrity,
-				},
+	// Registry spec or remote tarball — pacote resolves, verifies, and returns the bytes.
+	const fetched = await pacote.tarball(target);
+	const root = await extractInto(fetched, limits);
+	const pkg = readPackageJson(root);
+	return {
+		root,
+		source: {
+			kind: 'spec',
+			resolved: {
+				name: pkg.name,
+				version: pkg.version,
+				tarball: fetched.resolved,
+				integrity: fetched.integrity,
 			},
-			cleanup: () => rmSync(dest, RECURSIVE),
-		};
-	} catch (error) {
-		rmSync(dest, RECURSIVE);
-		throw error;
-	}
+		},
+		cleanup: () => rmSync(root, RECURSIVE),
+	};
 }
 
-/** Extracts a file/URL tarball into a fresh temp dir, cleaning up on failure. */
-async function extractTo(spec: string): Promise<string> {
+/** Extracts a tarball buffer into a fresh temp dir, cleaning up on failure. */
+async function extractInto(tarball: Uint8Array, limits: ExtractLimits): Promise<string> {
 	const dest = mkdtempSync(join(tmpdir(), 'dep-audit-'));
 	try {
-		await pacote.extract(spec, dest);
+		await extractTarball(tarball, dest, limits);
 		return dest;
 	} catch (error) {
 		rmSync(dest, RECURSIVE);

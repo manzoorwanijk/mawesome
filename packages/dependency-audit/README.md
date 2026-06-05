@@ -155,6 +155,19 @@ await audit('./packages/my-lib', { provider });
    reachable). Node builtins need no declaration at runtime; on the type surface they
    imply `@types/node`.
 
+## Security
+
+The audit is **fully static**: tarballs are only _extracted_ and files only _parsed_ — no
+target or dependency code is ever executed (no install scripts run). Registry fetches
+verify integrity (the resolved tarball URL + SRI are reported). Extraction skips
+symlink/hardlink entries and blocks path traversal, runs in throwaway temp dirs, and is
+bounded by a decompression-bomb guard (`maxBytes` / `maxEntries`, overridable via
+`audit(target, { extractLimits })`). Resolution runs against the target's _declared_ ranges
+in a fresh tree, never the author's ambient `node_modules`. When pointing the tool at an
+untrusted `http(s)` tarball URL in a service context, treat it as you would any
+fetch-by-URL: the _compressed_ download size is not separately capped (registry artifacts
+are size-bounded by npm), and SSRF is the caller's responsibility.
+
 ## License
 
 [MIT](../../LICENSE) © 2026 Manzoor Ahmad Wani

@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { acquire } from './acquire.ts';
 import { auditPackage } from './audit-core.ts';
 import { nodeFileSystem } from './fs-node.ts';
-import { pacoteProvider } from './provider.ts';
+import { createPacoteProvider } from './provider.ts';
 import type { AuditOptions, AuditResult } from './types.ts';
 
 /**
@@ -14,8 +14,9 @@ import type { AuditOptions, AuditResult } from './types.ts';
  * {@link auditPackage} core over the real filesystem.
  */
 export async function audit(target: string, options: AuditOptions = {}): Promise<AuditResult> {
-	const provider = options.provider ?? pacoteProvider;
-	const acquired = await acquire(target);
+	// The default provider honors the same extraction caps for dependency materialization.
+	const provider = options.provider ?? createPacoteProvider(options.extractLimits);
+	const acquired = await acquire(target, options.extractLimits);
 	const workDir = mkdtempSync(join(tmpdir(), 'dep-audit-deps-'));
 	try {
 		return await auditPackage(nodeFileSystem, acquired.root, {

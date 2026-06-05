@@ -101,10 +101,20 @@ export interface RegistryProvider {
 	materialize(name: string, range: string, intoDir: string): Promise<string | undefined>;
 }
 
+/** Caps on tarball extraction, to bound decompression bombs. */
+export interface ExtractLimits {
+	/** Maximum total uncompressed bytes before extraction aborts. */
+	maxBytes: number;
+	/** Maximum number of entries before extraction aborts. */
+	maxEntries: number;
+}
+
 /** Options for {@link audit}. */
 export interface AuditOptions {
 	/** Override the dependency artifact provider (tests inject a hermetic one). */
 	provider?: RegistryProvider;
 	/** Rules that suppress intentional findings. */
 	ignore?: IgnoreRule[];
+	/** Override the tarball extraction caps for the acquired target (defaults apply otherwise). */
+	extractLimits?: ExtractLimits;
 }
