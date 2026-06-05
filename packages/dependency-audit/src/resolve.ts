@@ -1,9 +1,13 @@
 import { join } from 'node:path';
 import ts from 'typescript';
+import { mapLimit } from './concurrency.ts';
 import type { FileSystem } from './fs.ts';
 import { subdirectories } from './fsutil.ts';
 import type { DeclaredDependency } from './manifest.ts';
 import type { RegistryProvider, ResolvedDependency } from './types.ts';
+
+/** Cap on concurrent dependency materializations, to bound load on the shared registry cache. */
+const MATERIALIZE_CONCURRENCY = 12;
 
 const DECLARATION_EXTENSIONS = new Set<string>([
 	ts.Extension.Dts,
@@ -29,13 +33,11 @@ export async function materializeDeps(
 	provider: RegistryProvider,
 	workDir: string,
 ): Promise<ResolvedDependency[]> {
-	return Promise.all(
-		deps.map(async (dep) => ({
-			name: dep.name,
-			range: dep.range,
-			version: await provider.materialize(dep.name, dep.range, workDir),
-		})),
-	);
+	return mapLimit(deps, MATERIALIZE_CONCURRENCY, async (dep) => ({
+		name: dep.name,
+		range: dep.range,
+		version: await provider.materialize(dep.name, dep.range, workDir),
+	}));
 }
 
 /**

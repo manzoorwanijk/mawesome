@@ -3,8 +3,15 @@ import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { audit } from './audit.ts';
+import { mapLimit } from './concurrency.ts';
 import { parseIgnoreRules } from './ignore.ts';
 import type { AuditResult, IgnoreRule } from './types.ts';
+
+/** Max targets audited in parallel; each target itself fans out to its own deps. */
+const TARGET_CONCURRENCY = 6;
+
+/** A target that produced a result, or one that failed to audit (isolated, never fatal). */
+type Outcome = { target: string; result: AuditResult } | { target: string; error: string };
 
 const VERSION = readSelfVersion();
 
@@ -23,7 +30,8 @@ Options:
                     ./dependency-audit.config.json if present).
   --condition <name>  Activate an extra resolution condition (e.g. browser) for
                     entry discovery and resolution (repeatable).
-  --json            Emit machine-readable JSON (one AuditResult per target).
+  --json            Emit machine-readable JSON: one entry per target (an
+                    AuditResult, or { target, error } for a failed audit).
   -v, --version     Print the version.
   -h, --help        Show this help.
 
@@ -72,21 +80,43 @@ async function main(): Promise<number> {
 	const ignore = [...loadConfigRules(values.config), ...cliIgnoreRules(values.ignore ?? [])];
 	const conditions = values.condition ?? [];
 
-	// Each audit is self-contained (its own temp dirs); run targets concurrently.
-	const results: AuditResult[] = await Promise.all(
-		positionals.map((target) => audit(target, { ignore, conditions })),
+	/* Each audit is self-contained (its own temp dirs), so targets run concurrently —
+	 * but bounded, and each isolated, so one target's failure reports as an error for
+	 * that target instead of discarding every other target's result. */
+	const outcomes = await mapLimit(
+		positionals,
+		TARGET_CONCURRENCY,
+		async (target): Promise<Outcome> => {
+			try {
+				return { target, result: await audit(target, { ignore, conditions }) };
+			} catch (error) {
+				return { target, error: error instanceof Error ? error.message : String(error) };
+			}
+		},
 	);
 
 	if (values.json) {
-		console.log(JSON.stringify(results, null, 2));
+		console.log(JSON.stringify(outcomes.map(jsonEntry), null, 2));
 	} else {
-		for (const result of results) {
-			printResult(result);
+		for (const outcome of outcomes) {
+			if ('result' in outcome) {
+				printResult(outcome.result);
+			} else {
+				printError(outcome);
+			}
 		}
-		printSummary(results);
+		printSummary(outcomes);
 	}
 
-	return results.some((result) => !result.ok) ? 1 : 0;
+	const anyError = outcomes.some((outcome) => 'error' in outcome);
+	const anyFinding = outcomes.some((outcome) => 'result' in outcome && !outcome.result.ok);
+	// An audit that could not run at all is a harder failure (exit 2) than findings (exit 1).
+	return anyError ? 2 : anyFinding ? 1 : 0;
+}
+
+/** The JSON shape per target: the full result, or `{ target, error }` for a failed audit. */
+function jsonEntry(outcome: Outcome): AuditResult | { target: string; error: string } {
+	return 'result' in outcome ? outcome.result : outcome;
 }
 
 /** A CLI `--ignore <value>` matches a finding by package OR exact specifier. */
@@ -142,14 +172,26 @@ function printResult(result: AuditResult): void {
 	}
 }
 
-function printSummary(results: AuditResult[]): void {
+/** Reports a target whose audit could not run at all (acquisition/fetch failure). */
+function printError(outcome: { target: string; error: string }): void {
+	console.log(`\n${outcome.target}`);
+	console.log(`  ⚠ error  ${outcome.error}`);
+}
+
+function printSummary(outcomes: Outcome[]): void {
+	const results = outcomes.flatMap((o) => ('result' in o ? [o.result] : []));
+	const errors = outcomes.length - results.length;
 	const findings = results.reduce((sum, result) => sum + result.findings.length, 0);
 	const ignored = results.reduce((sum, result) => sum + result.ignored.length, 0);
-	const noun = results.length === 1 ? 'package' : 'packages';
-	const suffix = ignored > 0 ? `, ${ignored} ignored` : '';
-	console.log(
-		`\n${results.length} ${noun}, ${findings} finding${findings === 1 ? '' : 's'}${suffix}.`,
-	);
+	const noun = outcomes.length === 1 ? 'package' : 'packages';
+	const parts = [`${findings} finding${findings === 1 ? '' : 's'}`];
+	if (ignored > 0) {
+		parts.push(`${ignored} ignored`);
+	}
+	if (errors > 0) {
+		parts.push(`${errors} error${errors === 1 ? '' : 's'}`);
+	}
+	console.log(`\n${outcomes.length} ${noun}, ${parts.join(', ')}.`);
 }
 
 main()

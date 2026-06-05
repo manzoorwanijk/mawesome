@@ -19,6 +19,7 @@ export interface PacoteProviderOptions {
 }
 
 const FILE_PREFIX = 'file:';
+const LINK_PREFIX = 'link:';
 const WORKSPACE_PREFIX = 'workspace:';
 
 /**
@@ -44,8 +45,13 @@ export function createPacoteProvider(options: PacoteProviderOptions = {}): Regis
 		async materialize(name: string, range: string, intoDir: string): Promise<string | undefined> {
 			const dest = join(intoDir, 'node_modules', name);
 			try {
-				if (range.startsWith(FILE_PREFIX) && where !== undefined) {
-					return materializeLocal(resolve(where, filePath(range)), dest, limits);
+				/* `file:`/`link:` ranges point at a local directory or tarball — resolve them
+				 * ourselves so a local spec never reaches pacote's `DirFetcher` (which would
+				 * need an Arborist tree to pack a directory that has its own dependencies). */
+				if (range.startsWith(FILE_PREFIX) || range.startsWith(LINK_PREFIX)) {
+					return where === undefined
+						? undefined
+						: materializeLocal(resolve(where, localPath(range)), dest, limits);
 				}
 				if (range.startsWith(WORKSPACE_PREFIX)) {
 					const dir = workspaceDir(workspaceTarget(name, range));
@@ -91,9 +97,10 @@ function readVersion(dir: string): string | undefined {
 	return pkg.version;
 }
 
-/** The local path of a `file:` range, expanding a leading `~` to the home directory. */
-function filePath(range: string): string {
-	const spec = range.slice(FILE_PREFIX.length);
+/** The local path of a `file:`/`link:` range, expanding a leading `~` to the home directory. */
+function localPath(range: string): string {
+	const prefix = range.startsWith(LINK_PREFIX) ? LINK_PREFIX : FILE_PREFIX;
+	const spec = range.slice(prefix.length);
 	return spec.startsWith('~') ? homedir() + spec.slice(1) : spec;
 }
 
