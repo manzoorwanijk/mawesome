@@ -19,10 +19,10 @@ installing it from npm can't resolve it. The motivating case: an emitted declara
 > **Deferred:** the `browser` resolution profile + `--condition`, and the
 > `require.resolve`/`createRequire`/import-attribute runtime call forms.
 >
-> **Known limitations** (correct results, narrower coverage): entry discovery does not
-> apply `typesVersions` remapping; the type surface resolves a single ESM/NodeNext profile
-> (no per-file require context or `bundler` mode); and self-reference / `#imports`
-> specifiers are skipped.
+> **Known limitations** (correct results, narrower coverage): `typesVersions` is applied
+> for the **current** TypeScript version only (not the per-consumer-version matrix); the
+> type surface resolves a single ESM/NodeNext profile (no per-file require context or
+> `bundler` mode); and self-reference / `#imports` specifiers are skipped.
 
 ## Install
 

@@ -112,4 +112,12 @@ describe('audit (type surface)', () => {
 		expect(result.findings.find((f) => f.packageName === 'csstype')?.surface).toBe('types');
 		expect(result.findings.find((f) => f.packageName === 'ghost')?.surface).toBe('runtime');
 	});
+
+	it('scopes the type surface to a typesVersions catch-all, excluding sibling dirs', async () => {
+		const result = await run('typesversions');
+		// `typesVersions: { "*": { "*": ["dist/*"] } }` redirects all types into dist/, so the
+		// undeclared `ghost` import in src/legacy.d.ts is outside the surface and not flagged.
+		expect(result.findings.some((f) => f.packageName === 'ghost')).toBe(false);
+		expect(result.ok).toBe(true);
+	});
 });

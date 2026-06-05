@@ -81,7 +81,9 @@ function loadConfigRules(configPath: string | undefined): IgnoreRule[] {
 	try {
 		return parseIgnoreRules(parsed.ignore);
 	} catch (error) {
-		throw new Error(`Invalid config ${path}: ${error instanceof Error ? error.message : error}`);
+		throw new Error(`Invalid config ${path}: ${error instanceof Error ? error.message : error}`, {
+			cause: error,
+		});
 	}
 }
 

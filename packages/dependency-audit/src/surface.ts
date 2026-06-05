@@ -4,6 +4,7 @@ import type { FileSystem } from './fs.ts';
 import { expandPatternTarget, isWithin } from './fsutil.ts';
 import type { Manifest } from './manifest.ts';
 import type { UncheckedSpecifier } from './types.ts';
+import { activeTypesVersions } from './typesversions.ts';
 
 /** How an external requirement was expressed — affects how it is resolved. */
 export type SpecifierKind = 'module' | 'type-reference';
@@ -89,20 +90,37 @@ function typeEntryPoints(fs: FileSystem, root: string, manifest: Manifest): stri
 	};
 
 	if (manifest.exports !== undefined) {
-		// `exports` encapsulates the package: only its (profile-selected) targets are
-		// the surface. Legacy `types`/`typings` are ignored when `exports` is present.
+		// `exports` encapsulates the package: only its (profile-selected) targets are the
+		// surface. Legacy `types`/`typings` and `typesVersions` are ignored when `exports`
+		// is present (TS does extension substitution from the JS target instead).
 		for (const target of exportsTypeTargets(manifest.exports)) {
 			expandPatternTarget(fs, root, target).forEach(addTarget);
 		}
 		return [...found];
 	}
 
-	// No `exports`: consumers can deep-import any published declaration file, so the
-	// reachable set is every `.d.ts` in the tarball (plus the legacy entry points).
+	// No `exports`: `typesVersions` (current TS) may redirect where declarations live.
+	const tv = activeTypesVersions(manifest.typesVersions, ts.version);
+	if (tv?.catchAll) {
+		// A `"*"` catch-all governs every subpath, so the active mapping's targets are the
+		// whole reachable surface — scan exactly those (excluding sibling/older-TS dirs that
+		// whole-tarball scanning would otherwise over-include).
+		for (const target of tv.targets) {
+			expandPatternTarget(fs, root, target).forEach(addTarget);
+		}
+		return [...found];
+	}
+
+	// Otherwise consumers can deep-import any published declaration file: the reachable set
+	// is every `.d.ts` in the tarball, plus the legacy entry points and any `typesVersions`
+	// targets (additive, so a non-catch-all mapping never causes under-scanning).
 	addTarget(manifest.types);
 	addTarget(manifest.typings);
 	addTarget(manifest.module);
 	addTarget(manifest.main);
+	for (const target of tv?.targets ?? []) {
+		expandPatternTarget(fs, root, target).forEach(addTarget);
+	}
 	for (const file of allDeclarationFiles(fs, root)) {
 		found.add(file);
 	}
