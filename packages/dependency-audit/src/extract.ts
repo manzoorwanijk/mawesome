@@ -67,8 +67,8 @@ export async function extractTarball(
 	});
 
 	await pipeline(Readable.from(Buffer.from(tarball)), sink);
-	// Belt and suspenders: destroy() rejects the pipeline above; this covers any path
-	// where the stream still drains cleanly after a breach.
+	// `sink.abort(error)` already rejects the pipeline above (verified), so this is a
+	// safety net for any path where the stream drains cleanly after a breach.
 	if (exceeded) {
 		throw new ExtractLimitError(limits);
 	}
