@@ -14,9 +14,12 @@ import type { AuditOptions, AuditResult } from './types.ts';
  * {@link auditPackage} core over the real filesystem.
  */
 export async function audit(target: string, options: AuditOptions = {}): Promise<AuditResult> {
-	// The default provider honors the same extraction caps for dependency materialization.
-	const provider = options.provider ?? createPacoteProvider(options.extractLimits);
 	const acquired = await acquire(target, options.extractLimits);
+	// The default provider honors the extraction caps and resolves `file:` deps relative to
+	// the acquired package (so a monorepo's `file:../sibling` deps materialize locally).
+	const provider =
+		options.provider ??
+		createPacoteProvider({ limits: options.extractLimits, where: acquired.root });
 	const workDir = mkdtempSync(join(tmpdir(), 'dep-audit-deps-'));
 	try {
 		return await auditPackage(nodeFileSystem, acquired.root, {

@@ -118,7 +118,7 @@ await audit('./packages/my-lib', { provider });
 2. **Discover both surfaces** from the _manifest_ (never hardcoded `build/` names):
    - _Type_ — `exports` `types` conditions, legacy `types`/`typings`, `.js`→`.d.ts` substitution; then follow relative imports across `.d.ts` files.
    - _Runtime_ — `exports` runtime targets (`import` + `require` profiles), legacy `main`/`module`, and `bin`; then follow the relative JS import graph, tagging each specifier with its call form.
-3. **Materialize declared deps** (production + peer + optional, never dev) at their declared ranges into one fresh tree, shared by both passes.
+3. **Materialize declared deps** (production + peer + optional, never dev) at their declared ranges into one fresh tree, shared by both passes. Registry ranges are fetched from npm; **monorepo-local deps** (`file:../sibling`, or `workspace:*` resolved by name through `pnpm-workspace.yaml` / `package.json#workspaces`) link the local already-built sibling — no rebuild, fully static.
 4. **Resolve** each external specifier. Type specifiers go through the bundled `typescript` (so `react` falls back to `@types/react`); runtime specifiers go through the dep's own `exports`/`main` for the matching call form. A specifier that doesn't resolve is a finding — `undeclared` (nothing provides it), `missing-types` (declared, ships no declarations), or `unresolved` (declared, but the runtime subpath/file is not reachable). Node builtins need no declaration at runtime; on the type surface they imply `@types/node`.
 
 ## Security

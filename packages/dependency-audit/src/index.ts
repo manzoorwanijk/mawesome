@@ -11,7 +11,7 @@ export { auditPackage, type AuditPackageOptions } from './audit-core.ts';
 export { DEFAULT_EXTRACT_LIMITS, ExtractLimitError } from './extract.ts';
 export { createMemoryFileSystem, type FileSystem, type WritableFileSystem } from './fs.ts';
 export { nodeFileSystem } from './fs-node.ts';
-export { createPacoteProvider, pacoteProvider } from './provider.ts';
+export { createPacoteProvider, type PacoteProviderOptions, pacoteProvider } from './provider.ts';
 export type {
 	AcquiredSource,
 	AuditOptions,
