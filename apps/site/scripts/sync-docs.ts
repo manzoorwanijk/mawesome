@@ -109,7 +109,11 @@ function syncTool(tool: Tool): number {
 		const order = isIndex ? 0 : docOrder.indexOf(base) + 1 || docOrder.length + 1;
 		const { title, body: stripped } = splitLeadingH1(source, file);
 		const head = frontmatter(title, `${blobBase}/docs/${file}`, order, isIndex);
-		const body = rewriteLinks(stripped, slug, blobBase);
+		const linked = rewriteLinks(stripped, slug, blobBase);
+		// The section overview (README) leads with the current published version, linked to npm.
+		const body = isIndex
+			? `[\`${tool.npm}@${pkgJson.version}\`](https://www.npmjs.com/package/${tool.npm})\n\n${linked}`
+			: linked;
 		const outName = isIndex ? 'index.md' : file;
 		writeFileSync(join(outDir, outName), `${head}\n${body}`);
 	}
