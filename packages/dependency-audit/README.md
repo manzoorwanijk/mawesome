@@ -46,6 +46,8 @@ Exit codes: `0` clean, `1` findings, `2` error.
 1 package, 1 finding.
 ```
 
+Output is colorized by severity on a terminal (red findings, yellow notices, green clean) and auto-plain when piped or under `--json`; `NO_COLOR` / `FORCE_COLOR` are respected.
+
 ### Ignoring intentional findings
 
 Suppress findings static analysis can't prove are fine (an optional/plugin import, a known false positive). Suppressed findings are still listed (`– ignored`) and echoed in `--json`, so suppressions stay auditable; they do not fail the audit.
