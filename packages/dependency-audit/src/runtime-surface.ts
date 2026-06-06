@@ -343,7 +343,6 @@ function resolveRelativeJs(
 		`${base}.js`,
 		`${base}.cjs`,
 		`${base}.mjs`,
-		`${base}.json`,
 		join(base, 'index.js'),
 		join(base, 'index.cjs'),
 		join(base, 'index.mjs'),

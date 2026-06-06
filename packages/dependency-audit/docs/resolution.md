@@ -40,7 +40,7 @@ Both runtime profiles are audited, because a dual package can expose different s
 ## How each surface resolves
 
 - **Type specifiers** go through the bundled `typescript` (`ts.resolveModuleName` and `ts.resolveTypeReferenceDirective`) under `moduleResolution: nodenext`, with `customConditions` for any extra conditions. This gives exact `@types/*` fallback (`react` → `@types/react`) and `typesVersions` handling, identical to a consumer's checker.
-- **Runtime specifiers** go through the dependency's own `exports` via `resolve.exports` for the matching call form (`require` flag set for `require`-form imports), with the active extra conditions. With no `exports`, it falls back to legacy `main`/`module` plus extension/index probing (`require` probes `.js`/`.cjs`/`.mjs`/`.json` and `index.*`; `import` does not index-probe).
+- **Runtime specifiers** go through the dependency's own `exports` via `resolve.exports` for the matching call form (`require` flag set for `require`-form imports), with the active extra conditions. With no `exports`, it falls back to legacy `main`/`module` plus extension/index probing — `.js`/`.cjs`/`.mjs`/`.json` and `index.*` — for **both** call forms; the form only selects the entry field (`main` for `require`, `module` then `main` for `import`). This probing is deliberately lenient, to avoid false-positive `unresolved` findings rather than mirror Node's stricter ESM resolution exactly.
 
 ## Node builtins
 

@@ -153,8 +153,9 @@ function loadConfigRules(configPath: string | undefined): IgnoreRule[] {
 	if (configPath === undefined && !existsSync(abs)) {
 		return [];
 	}
-	const parsed = JSON.parse(readFileSync(abs, 'utf8')) as { ignore?: unknown };
 	try {
+		// Parse inside the try so a malformed JSON file gets the same `Invalid config` context.
+		const parsed = JSON.parse(readFileSync(abs, 'utf8')) as { ignore?: unknown };
 		return parseIgnoreRules(parsed.ignore);
 	} catch (error) {
 		throw new Error(`Invalid config ${path}: ${error instanceof Error ? error.message : error}`, {

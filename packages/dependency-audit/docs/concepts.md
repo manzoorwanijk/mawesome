@@ -58,7 +58,7 @@ The point of the tool is to resolve against the package's **declared** dependenc
 Then each specifier is resolved against that tree:
 
 - **type** specifiers go through the bundled `typescript` (`ts.resolveModuleName` / `ts.resolveTypeReferenceDirective`) under NodeNext, so `@types/*` fallback works exactly as a consumer's checker would;
-- **runtime** specifiers go through the dependency's own `exports`/`main` for the matching call form, with extension/index probing for `require`.
+- **runtime** specifiers go through the dependency's own `exports`/`main` for the matching call form, with lenient extension/index probing on the legacy (no-`exports`) fallback (see [Resolution model](./resolution.md)).
 
 Node builtins (`node:fs`, `fs`, …) need no declaration at run time; on the type surface they imply `@types/node`.
 

@@ -1,4 +1,6 @@
 import { execFileSync } from 'node:child_process';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
@@ -10,14 +12,14 @@ const targets = join(here, 'fixtures', 'targets');
 const okTarget = join(targets, 'require-forms');
 const badTarget = join(targets, '__no_such_target__');
 
-/** Runs the CLI as a subprocess (Node strips the TS types), capturing status + stdout. */
-function runCli(args: string[]): { status: number; stdout: string } {
+/** Runs the CLI as a subprocess (Node strips the TS types), capturing status + stdout + stderr. */
+function runCli(args: string[]): { status: number; stdout: string; stderr: string } {
 	try {
 		const stdout = execFileSync('node', [cli, ...args], { encoding: 'utf8' });
-		return { status: 0, stdout };
+		return { status: 0, stdout, stderr: '' };
 	} catch (error) {
-		const e = error as { status: number | null; stdout: string };
-		return { status: e.status ?? -1, stdout: e.stdout };
+		const e = error as { status: number | null; stdout: string; stderr: string };
+		return { status: e.status ?? -1, stdout: e.stdout ?? '', stderr: e.stderr ?? '' };
 	}
 }
 
@@ -44,6 +46,15 @@ describe('cli batch isolation', () => {
 		const { status, stdout } = runCli(['--version']);
 		expect(status).toBe(0);
 		expect(stdout.trim()).toMatch(/^\d+\.\d+\.\d+/);
+	});
+
+	it('reports a malformed --config with the "Invalid config" context', () => {
+		const dir = mkdtempSync(join(tmpdir(), 'da-cfg-'));
+		const cfg = join(dir, 'bad.json');
+		writeFileSync(cfg, '{ not: valid json');
+		const { status, stderr } = runCli(['--config', cfg, okTarget]);
+		expect(status).toBe(2);
+		expect(stderr).toContain(`Invalid config ${cfg}`);
 	});
 });
 
