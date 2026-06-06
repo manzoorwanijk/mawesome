@@ -5,7 +5,7 @@ This document is the human-facing guide. [AGENTS.md](./AGENTS.md) is the authori
 ## Prerequisites
 
 - **Node `>=24.12`** (see `.nvmrc`).
-- **pnpm 10**. Install pnpm standalone with `npm i -g pnpm@10`, the [pnpm install script](https://pnpm.io/installation), or a version manager (mise/proto). `devEngines` will error if your Node or pnpm version is wrong.
+- **pnpm 10**. Install pnpm standalone with `npm i -g pnpm@10`, the [pnpm install script](https://pnpm.io/installation), or a version manager (mise/proto). `devEngines` errors on a wrong Node version and warns (not errors) if you use a non-pnpm package manager — the release publishes through npm, so a hard error there would block it.
 
 ```sh
 pnpm install
