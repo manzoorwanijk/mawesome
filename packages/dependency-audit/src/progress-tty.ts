@@ -151,10 +151,16 @@ export function createTtyReporter(options: TtyReporterOptions): TtyReporter {
 		if (startedAt === undefined) {
 			// Start the spinner only once work is actually under way.
 			startedAt = now();
-			cancel = schedule(() => {
-				tick++;
-				render();
-			}, FRAME_MS);
+			try {
+				cancel = schedule(() => {
+					tick++;
+					render();
+				}, FRAME_MS);
+			} catch {
+				// A scheduler failure must not abort the audit — disable, as with a failed write.
+				disable();
+				return;
+			}
 		}
 		apply(states, event);
 		if (event.type === 'target:done' && !finished.has(event.target)) {

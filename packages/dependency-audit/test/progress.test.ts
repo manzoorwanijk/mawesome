@@ -348,6 +348,25 @@ describe('createTtyReporter', () => {
 		expect(() => stop()).not.toThrow();
 	});
 
+	it('disables itself without throwing when the scheduler throws', () => {
+		const stream = fakeStream(true);
+		const { reporter, stop } = createTtyReporter({
+			total: 1,
+			stream,
+			env: {},
+			now: () => 0,
+			schedule: () => {
+				throw new Error('cannot schedule');
+			},
+		});
+		// A throwing scheduler must be swallowed (progress is decorative), not abort the caller.
+		expect(() => reporter({ type: 'acquire:start', target: 'x' })).not.toThrow();
+		const after = stream.writes.length;
+		reporter({ type: 'materialize:start', target: 'x', total: 1 });
+		expect(stream.writes.length).toBe(after);
+		expect(() => stop()).not.toThrow();
+	});
+
 	it('omits ANSI styling under NO_COLOR but still renders', () => {
 		const stream = fakeStream(true);
 		const { reporter } = createTtyReporter({
