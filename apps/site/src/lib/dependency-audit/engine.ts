@@ -20,9 +20,6 @@ import type {
 const REGISTRY = 'https://registry.npmjs.org';
 const JSDELIVR_RESOLVE = 'https://data.jsdelivr.com/v1/packages/npm';
 
-/** npm tarballs root every entry under `package/`. */
-const TAR_ROOT = 'package/';
-
 /** Bounds so a huge package or a decompression bomb can't freeze or OOM the tab. */
 const MAX_COMPRESSED_BYTES = 32 * 1024 * 1024;
 const MAX_DECOMPRESSED_BYTES = 96 * 1024 * 1024;
@@ -126,10 +123,13 @@ async function extractInto(
 	if (files.length > MAX_ENTRIES)
 		throw new Error('Package has too many files to audit in the browser.');
 	for (const file of files) {
-		// npm roots every entry under `package/`; ignore anything else (pax headers, odd layouts).
 		if (file.type && file.type !== 'file') continue;
-		if (!file.name.startsWith(TAR_ROOT)) continue;
-		const rel = file.name.slice(TAR_ROOT.length);
+		/* Strip the leading path segment (tar `strip: 1`), like pacote/npm does. The root is
+		 * conventionally `package/` but isn't guaranteed — DefinitelyTyped `@types/*` tarballs
+		 * root under names like `react v18.3/` — so strip by position, not by a fixed prefix. */
+		const slash = file.name.indexOf('/');
+		if (slash === -1) continue;
+		const rel = file.name.slice(slash + 1);
 		// Reject `..` as a path *segment* (traversal) but keep names that merely contain `..`.
 		if (rel && !rel.split('/').includes('..')) fs.writeFile(`${destDir}/${rel}`, file.text);
 	}
