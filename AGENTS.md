@@ -64,4 +64,4 @@ Use `/add-package <name>` (or copy `templates/package/`) — see CONTRIBUTING.md
 
 ## Provisioning (no Corepack)
 
-Corepack is being unbundled from Node, so we don't rely on it. CI installs pnpm with `pnpm/action-setup@v4` (it reads the version from the `packageManager` field). Locally, install pnpm standalone (`npm i -g pnpm@10`, the pnpm install script, or a version manager like mise/proto). `devEngines` errors on a mismatched Node or pnpm.
+Corepack is being unbundled from Node, so we don't rely on it. CI installs pnpm with `pnpm/action-setup@v4` (it reads the version from the `packageManager` field). Locally, install pnpm standalone (`npm i -g pnpm@10`, the pnpm install script, or a version manager like mise/proto). `devEngines` **errors** on a mismatched Node; it only **warns** on a non-pnpm package manager, because the release pipeline publishes through npm (`changeset publish` → `npm publish`) and a hard error there would block publishing.
