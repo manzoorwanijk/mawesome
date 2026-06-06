@@ -129,14 +129,27 @@ const examples = ['react', 'lodash@4', 'chalk@5', 'debug@4'];
 				</div>`;
 		};
 
+		// The audited spec is mirrored in the URL's `?spec=` query param so a result is shareable.
+		const PARAM = 'spec';
+		const specFromUrl = (): string =>
+			new URL(location.href).searchParams.get(PARAM)?.trim() ?? '';
+
 		// Supersede an in-flight audit when a new one starts: abort its fetches and ignore its result.
 		let controller: AbortController | null = null;
 		let runSeq = 0;
 
-		const run = async (spec: string): Promise<void> => {
+		// `push` adds a history entry (user-initiated runs); on-load and back/forward replay pass false.
+		const run = async (spec: string, { push = true } = {}): Promise<void> => {
 			const value = spec.trim();
 			if (!value) return;
 			input.value = value;
+			if (push) {
+				const url = new URL(location.href);
+				if (url.searchParams.get(PARAM) !== value) {
+					url.searchParams.set(PARAM, value);
+					history.pushState(null, '', url);
+				}
+			}
 			controller?.abort();
 			controller = new AbortController();
 			const { signal } = controller;
@@ -164,6 +177,20 @@ const examples = ['react', 'lodash@4', 'chalk@5', 'debug@4'];
 		for (const chip of chips) {
 			chip.addEventListener('click', () => void run(chip.dataset.daExample ?? ''));
 		}
+
+		// Replay the spec from back/forward navigation without pushing a new entry; clear when it's gone.
+		addEventListener('popstate', () => {
+			const spec = specFromUrl();
+			if (spec) void run(spec, { push: false });
+			else {
+				input.value = '';
+				output.innerHTML = '';
+			}
+		});
+
+		// A shared `?spec=…` link audits on load, so the URL alone reproduces the result.
+		const initial = specFromUrl();
+		if (initial) void run(initial, { push: false });
 	}
 </script>
 
