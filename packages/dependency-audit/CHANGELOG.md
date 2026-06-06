@@ -1,5 +1,13 @@
 # @mawesome/dependency-audit
 
+## 0.2.1
+
+### Patch Changes
+
+- [#14](https://github.com/manzoorwanijk/mawesome/pull/14) [`46d251e`](https://github.com/manzoorwanijk/mawesome/commit/46d251e5fa85e16b6b7a32d3f9eda80b01ba5f4e) Thanks [@manzoorwanijk](https://github.com/manzoorwanijk)! - Link the live in-browser playground from the README.
+
+- [#16](https://github.com/manzoorwanijk/mawesome/pull/16) [`9eab715`](https://github.com/manzoorwanijk/mawesome/commit/9eab715af4175c7387e267d02c46a2e4e7144d7c) Thanks [@manzoorwanijk](https://github.com/manzoorwanijk)! - Show a live progress indicator on stderr while auditing.
+
 ## 0.2.0
 
 ### Minor Changes
