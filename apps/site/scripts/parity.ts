@@ -109,7 +109,13 @@ function isBrowserCap(error: unknown): boolean {
 async function check(spec: string): Promise<Outcome> {
 	const [cliRes, browserRes] = await Promise.allSettled([audit(spec), runAudit(spec)]);
 
-	if (browserRes.status === 'rejected' && isBrowserCap(browserRes.reason)) {
+	/* A browser size-cap skip is only benign when the CLI itself succeeded; if both sides failed,
+	 * fall through to error handling so a real CLI failure isn't masked as an expected cap. */
+	if (
+		cliRes.status === 'fulfilled' &&
+		browserRes.status === 'rejected' &&
+		isBrowserCap(browserRes.reason)
+	) {
 		return { spec, status: 'cap', detail: [String(browserRes.reason)] };
 	}
 	if (cliRes.status === 'rejected' || browserRes.status === 'rejected') {

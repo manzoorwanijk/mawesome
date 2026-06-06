@@ -129,9 +129,16 @@ async function extractInto(
 		 * root under names like `react v18.3/` — so strip by position, not by a fixed prefix. */
 		const slash = file.name.indexOf('/');
 		if (slash === -1) continue;
-		const rel = file.name.slice(slash + 1);
-		// Reject `..` as a path *segment* (traversal) but keep names that merely contain `..`.
-		if (rel && !rel.split('/').includes('..')) fs.writeFile(`${destDir}/${rel}`, file.text);
+		/* Normalize away empty (`//`, a leading slash) and `.` segments so a quirky entry like
+		 * `package//index.js` can't become a distinct `/pkg//index.js` key the in-memory FS won't
+		 * surface. Then reject `..` as a *segment* (traversal) — names merely containing `..` stay. */
+		const segments = file.name
+			.slice(slash + 1)
+			.split('/')
+			.filter((s) => s !== '' && s !== '.');
+		if (segments.includes('..')) continue;
+		const rel = segments.join('/');
+		if (rel) fs.writeFile(`${destDir}/${rel}`, file.text);
 	}
 }
 
