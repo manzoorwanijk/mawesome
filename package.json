@@ -12,7 +12,7 @@
 	"type": "module",
 	"scripts": {
 		"audit": "pnpm audit --audit-level=high",
-		"build": "pnpm -r --if-present build",
+		"build": "pnpm -r --if-present --filter='!./apps/**' build",
 		"changeset": "changeset",
 		"check": "pnpm lint && pnpm format:check && pnpm deps:lint && pnpm check:root-deps",
 		"check:exports": "pnpm -r --if-present --no-bail check:exports",
@@ -25,7 +25,7 @@
 		"lint": "pnpm --filter @mawesome/repo lint",
 		"lint:fix": "pnpm --filter @mawesome/repo lint:fix",
 		"release": "changeset publish",
-		"test": "pnpm -r --if-present test",
+		"test": "pnpm -r --if-present --filter='!./apps/**' test",
 		"typecheck": "pnpm -r --if-present typecheck",
 		"verify": "pnpm lint && pnpm format:check && pnpm deps:lint && pnpm check:root-deps && pnpm typecheck && pnpm test && pnpm build && pnpm check:exports",
 		"version": "changeset version",
