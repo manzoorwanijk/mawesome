@@ -34,7 +34,8 @@ Repo-level CLIs (oxlint, oxfmt, syncpack, tsgo) and their typed configs live in 
 | `pnpm check:root-deps` | Enforce the root dependency allowlist                                                                   |
 | `pnpm typecheck`       | tsgo per workspace                                                                                      |
 | `pnpm test`            | vitest per workspace                                                                                    |
-| `pnpm build`           | tsdown per package                                                                                      |
+| `pnpm build`           | Build every workspace (packages via tsdown; apps via their own build)                                   |
+| `pnpm build:packages`  | Build only the publishable packages — used by the release publish step (apps don't publish)             |
 | `pnpm check:exports`   | attw + publint per package                                                                              |
 | `pnpm changeset`       | Create a changeset (see CONTRIBUTING for the release flow)                                              |
 | `pnpm audit`           | `pnpm audit --audit-level=high`                                                                         |
