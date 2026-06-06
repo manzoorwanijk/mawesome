@@ -301,13 +301,22 @@ process.on('unhandledRejection', (reason) => {
  * would instead hang on pacote's lingering keep-alive sockets. The empty-string write's
  * callback fires once preceding writes have drained, so the data is safely out first. A
  * background rejection escalates the exit to 2 (re-checked at exit time, never lowering `code`).
+ *
+ * On a broken pipe (`… | head`) the flush can fail with `EPIPE`: the write callback may never
+ * fire and an unhandled stream `error` would crash. Exit on whichever fires first — the write
+ * callback, a stream `error` (swallowed), or a synchronous throw — so we never crash or hang.
+ * `process.exitCode` is already set, so the exit code is correct on every path.
  */
 function finish(code: number): void {
 	const resolved = (): number => (backgroundError ? Math.max(code, 2) : code);
 	process.exitCode = resolved();
-	process.stdout.write('', () => {
-		process.exit(resolved());
-	});
+	const exit = (): void => process.exit(resolved());
+	process.stdout.once('error', exit);
+	try {
+		process.stdout.write('', exit);
+	} catch {
+		exit();
+	}
 }
 
 main()
