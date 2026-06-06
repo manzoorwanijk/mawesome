@@ -183,6 +183,10 @@ const examples = ['react', 'lodash@4', 'chalk@5', 'debug@4'];
 			const spec = specFromUrl();
 			if (spec) void run(spec, { push: false });
 			else {
+				// Cancel any in-flight audit so a late result can't repopulate the cleared UI or leave it busy.
+				controller?.abort();
+				runSeq++;
+				setBusy(false);
 				input.value = '';
 				output.innerHTML = '';
 			}
