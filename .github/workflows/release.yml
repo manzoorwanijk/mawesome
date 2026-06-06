@@ -14,6 +14,7 @@ permissions: {}
 jobs:
   # Re-run the full gate (read-only) so nothing publishes without it.
   verify:
+    name: Verify
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -34,6 +35,7 @@ jobs:
       - run: pnpm audit --audit-level=high
 
   release:
+    name: Publish
     needs: verify
     runs-on: ubuntu-latest
     # Configure a protected "npm-publish" environment (required reviewers / branch
