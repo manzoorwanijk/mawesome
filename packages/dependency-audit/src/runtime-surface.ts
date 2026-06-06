@@ -262,10 +262,11 @@ function specifiersInJs(fs: FileSystem, file: string, isEsm: boolean): RawSpecif
 
 /**
  * Classifies call-form specifiers: dynamic `import(...)` (any context); `require(...)` and
- * `require.resolve(...)` (CJS only); and `createRequire(...)(...)` (any context — the explicit
- * way to `require` from ESM). The `const r = createRequire(…); r(x)` variable form needs scope
- * tracking and is not handled (a documented limitation). Import attributes/assertions don't
- * change the specifier, so `import x from 'y' with { … }` is captured by the import paths above.
+ * `require.resolve(...)` (CJS only); and `createRequire(...)(...)` / `createRequire(...).resolve(...)`
+ * (any context — the explicit way to `require`/resolve from ESM). The `const r = createRequire(…);
+ * r(x)` variable form needs scope tracking and is not handled (a documented limitation). Import
+ * attributes/assertions don't change the specifier, so `import x from 'y' with { … }` is captured
+ * by the import paths above.
  */
 function collectCall(node: ts.CallExpression, isEsm: boolean, out: RawSpecifier[]): void {
 	const arg = node.arguments[0];
@@ -275,8 +276,8 @@ function collectCall(node: ts.CallExpression, isEsm: boolean, out: RawSpecifier[
 	const callee = node.expression;
 	if (callee.kind === ts.SyntaxKind.ImportKeyword) {
 		pushCall(arg, 'import', out);
-	} else if (isCreateRequireCall(callee)) {
-		// `createRequire(...)(specifier)` works in both ESM and CJS.
+	} else if (isCreateRequireCall(callee) || isCreateRequireResolve(callee)) {
+		// `createRequire(...)(specifier)` and `createRequire(...).resolve(specifier)`, both contexts.
 		pushCall(arg, 'require', out);
 	} else if (!isEsm && (isRequireIdentifier(callee) || isRequireResolve(callee))) {
 		pushCall(arg, 'require', out);
@@ -304,6 +305,15 @@ function isCreateRequireCall(callee: ts.Expression): boolean {
 		ts.isCallExpression(callee) &&
 		ts.isIdentifier(callee.expression) &&
 		callee.expression.text === 'createRequire'
+	);
+}
+
+/** `createRequire(...).resolve` — the callee of a `createRequire(...).resolve(specifier)` call. */
+function isCreateRequireResolve(callee: ts.Expression): boolean {
+	return (
+		ts.isPropertyAccessExpression(callee) &&
+		callee.name.text === 'resolve' &&
+		isCreateRequireCall(callee.expression)
 	);
 }
 

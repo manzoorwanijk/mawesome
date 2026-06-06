@@ -82,6 +82,7 @@ describe('audit (runtime surface)', () => {
 		expect(undeclared('res-dep')).toBeDefined(); // require.resolve('res-dep') (CJS)
 		expect(undeclared('cr-dep')).toBeDefined(); // createRequire(__filename)('cr-dep') (CJS)
 		expect(undeclared('cr-esm-dep')).toBeDefined(); // createRequire(import.meta.url)('…') (ESM)
+		expect(undeclared('crr-dep')).toBeDefined(); // createRequire(import.meta.url).resolve('…')
 		expect(undeclared('attr-dep')).toBeDefined(); // import … from 'attr-dep' with { type: 'json' }
 		// `module` is a Node builtin — never a finding.
 		expect(result.findings.some((f) => f.packageName === 'module')).toBe(false);

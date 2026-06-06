@@ -24,6 +24,15 @@ describe('looksLikeSpec', () => {
 		}
 	});
 
+	it('treats a bare slashed path (no @scope) as a path, not a user/repo shorthand', () => {
+		for (const path of ['packages/foo', 'a/b/c']) {
+			expect(looksLikeSpec(path)).toBe(false);
+		}
+		// Scoped specs keep their slash and stay specs.
+		expect(looksLikeSpec('@scope/x')).toBe(true);
+		expect(looksLikeSpec('@types/react@18')).toBe(true);
+	});
+
 	it('treats any .tgz/.tar.gz path as a local tarball, not a registry spec', () => {
 		// A missing bare `foo.tgz` must error as a not-found path, not 404 from the registry.
 		for (const path of ['foo.tgz', 'dir/foo.tgz', 'pkg.tar.gz']) {

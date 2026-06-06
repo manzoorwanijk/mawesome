@@ -114,7 +114,8 @@ function readPackageJson(dir: string): { name?: string; version?: string } {
  * Distinguishes a package spec / URL from a local path. An `http(s)` URL or a bare
  * `name`/`name@version`/`@scope/name` is a spec; anything ending in `.tgz`/`.tar.gz`,
  * starting with `.`, `/`, or a Windows drive letter (`C:`) is a local path — so a missing
- * one errors clearly instead of becoming a confusing registry lookup.
+ * one errors clearly instead of becoming a confusing registry lookup. A bare relative path
+ * with a slash but no `@scope` (`packages/foo`) is also a path, not a `user/repo` shorthand.
  */
 export function looksLikeSpec(target: string): boolean {
 	if (/^https?:\/\//i.test(target)) {
@@ -127,6 +128,11 @@ export function looksLikeSpec(target: string): boolean {
 		isAbsolute(target) ||
 		/^[a-zA-Z]:/.test(target)
 	) {
+		return false;
+	}
+	// `foo/bar` (slash, no leading `@scope`) reads as a path the user mistyped, not a
+	// `user/repo` Git shorthand — so a missing one is a clear "not found", not a Git fetch.
+	if (target.includes('/') && !target.startsWith('@')) {
 		return false;
 	}
 	return true;

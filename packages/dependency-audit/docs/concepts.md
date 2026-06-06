@@ -44,7 +44,7 @@ Entry points are discovered from the manifest:
 2. Legacy `main` and `module`.
 3. `bin` scripts — always executable regardless of `exports` encapsulation, including extensionless files with a `#!/usr/bin/env node` shebang.
 
-From each entry, the tool follows the **relative** JS import graph and records every external specifier, **tagged by call form** (`import` or `require`), so each is resolved under the right condition set. It understands static `import`/`export … from`, `import x = require(...)`, dynamic `import('x')` (literal only), `require('x')`, `require.resolve('x')`, and `createRequire(...)('x')`. Non-literal/dynamic specifiers are surfaced as **unchecked**, never silently dropped.
+From each entry, the tool follows the **relative** JS import graph and records every external specifier, **tagged by call form** (`import` or `require`), so each is resolved under the right condition set. It understands static `import`/`export … from`, `import x = require(...)`, dynamic `import('x')` (literal only), `require('x')`, `require.resolve('x')`, `createRequire(...)('x')`, and `createRequire(...).resolve('x')`. Non-literal/dynamic specifiers are surfaced as **unchecked**, never silently dropped.
 
 ## The resolution model
 
