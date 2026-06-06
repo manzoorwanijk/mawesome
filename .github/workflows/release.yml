@@ -50,8 +50,9 @@ jobs:
     # it, for an extra approval gate before any publish.
     environment: npm-publish
     permissions:
-      contents: write # changesets pushes the Version PR branch
-      pull-requests: write # changesets opens/updates the Version PR
+      # The App token (minted below) handles the git push + Version PR, so the built-in
+      # GITHUB_TOKEN needs no write — keep its blast radius minimal.
+      contents: read
       id-token: write # npm OIDC trusted publishing (no NPM_TOKEN)
     steps:
       - name: Harden runner
