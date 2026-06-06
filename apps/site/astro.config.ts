@@ -1,4 +1,4 @@
-import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
 import starlight from '@astrojs/starlight';
 import { defineConfig, passthroughImageService } from 'astro/config';
 import { tools } from './src/tools.ts';
@@ -7,8 +7,11 @@ import { tools } from './src/tools.ts';
  * Redirect `node:path` to a browser path impl (`pathe`) — but ONLY in the client bundle, where the
  * dependency-audit playground core needs it. A global alias would also hijack `node:path` for
  * build-time deps (e.g. vfile in the markdown pipeline), which must keep the real builtin.
+ *
+ * Resolve via `import.meta.resolve` so the `import` condition wins (pathe's ESM `dist/index.mjs`);
+ * `require.resolve` would pick the CJS build, whose named exports (`dirname`, …) Vite can't bind.
  */
-const patheEntry = createRequire(import.meta.url).resolve('pathe');
+const patheEntry = fileURLToPath(import.meta.resolve('pathe'));
 function aliasNodePathInClient() {
 	return {
 		name: 'alias-node-path-in-client',
