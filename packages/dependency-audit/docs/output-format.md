@@ -17,6 +17,8 @@ The report is a sequence of per-target blocks, then a summary line. Each line is
 | `⚠`    | An error — the target could not be audited at all.                               |
 | `→`    | A remediation suggestion (continuation of the preceding `✗`/`–` line).           |
 
+When stdout is a color-capable terminal, severity is also carried by **color** — red for findings/errors, yellow for notices/unchecked, green for clean, and muted (dim) for ignored/skipped/secondary detail. Color is auto-disabled when the output isn't a TTY (e.g. piped to a file or another program) and honors the [`NO_COLOR`](https://no-color.org) and `FORCE_COLOR` environment variables. The symbols above are the source of truth; color is purely a visual aid (and never emitted under `--json`), so parsers should key on the symbols, not the color.
+
 ### Per-target block
 
 ```

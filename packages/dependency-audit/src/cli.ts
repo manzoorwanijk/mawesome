@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { SkippedTargetError } from './acquire.ts';
 import { audit } from './audit.ts';
+import { color } from './color.ts';
 import { mapLimit } from './concurrency.ts';
 import { parseIgnoreRules } from './ignore.ts';
 import type { AuditResult, Finding, IgnoreRule } from './types.ts';
@@ -167,31 +168,34 @@ function loadConfigRules(configPath: string | undefined): IgnoreRule[] {
 function printResult(result: AuditResult): void {
 	const label = result.packageName ?? result.target;
 	const version = result.packageVersion === undefined ? '' : `@${result.packageVersion}`;
-	console.log(`\n${label}${version}  ${result.target}`);
+	console.log(`\n${color.bold(`${label}${version}`)}  ${color.dim(result.target)}`);
 
 	const resolved = result.source.resolved;
 	if (resolved !== undefined) {
 		// A spec/tag is a moving target — show exactly what was fetched.
-		console.log(`  resolved: ${resolved.tarball}`);
-		console.log(`  integrity: ${resolved.integrity}`);
+		console.log(color.dim(`  resolved: ${resolved.tarball}`));
+		console.log(color.dim(`  integrity: ${resolved.integrity}`));
 	}
 
 	if (result.ok && result.findings.length === 0 && result.notices.length === 0) {
-		console.log('  ✓ no undeclared imports');
+		console.log(`  ${color.green('✓')} no undeclared imports`);
 	}
 	for (const notice of result.notices) {
-		console.log(`  ℹ ${notice.surface.padEnd(SURFACE_WIDTH)}  ${notice.message}`);
+		console.log(
+			`  ${color.yellow('ℹ')} ${notice.surface.padEnd(SURFACE_WIDTH)}  ${notice.message}`,
+		);
 	}
 	for (const finding of result.findings) {
-		console.log(findingRow('✗', finding));
-		console.log(`      → ${finding.suggestion}`);
+		console.log(findingRow(finding));
+		console.log(`      ${color.dim('→')} ${finding.suggestion}`);
 	}
 	for (const finding of result.ignored) {
-		console.log(findingRow('–', finding, '  — ignored'));
+		console.log(ignoredRow(finding));
 	}
 	for (const item of result.unchecked) {
+		const where = color.dim(`(${item.reason}; ${item.firstSeenIn})`);
 		console.log(
-			`  ? ${'unchecked'.padEnd(SURFACE_WIDTH)}  ${item.specifier}  (${item.reason}; ${item.firstSeenIn})`,
+			`  ${color.yellow('?')} ${'unchecked'.padEnd(SURFACE_WIDTH)}  ${item.specifier}  ${where}`,
 		);
 	}
 }
@@ -200,26 +204,42 @@ const SURFACE_WIDTH = 'unchecked'.length;
 const KIND_WIDTH = '[missing-types]'.length;
 
 /**
- * One aligned finding row: `<symbol> <surface> [<kind>] <specifier> (<file>)`.
- * The headline carries the full *specifier* (e.g. `react/jsx-runtime`), not just the
- * owning package, so deep-import findings on the same package stay distinguishable.
+ * One aligned finding row: `✗ <surface> [<kind>] <specifier> (<file>)`, with the severity
+ * carried by red (the symbol and `[kind]`). The headline carries the full *specifier*
+ * (e.g. `react/jsx-runtime`), not just the owning package, so deep-import findings on the
+ * same package stay distinguishable. Pad before coloring so ANSI width doesn't break columns.
  */
-function findingRow(symbol: string, finding: Finding, suffix = ''): string {
+function findingRow(finding: Finding): string {
+	const surface = finding.surface.padEnd(SURFACE_WIDTH);
+	const kind = color.red(`[${finding.kind}]`.padEnd(KIND_WIDTH));
+	const where = color.dim(`(${finding.firstSeenIn})`);
+	return `  ${color.red('✗')} ${surface}  ${kind}  ${finding.specifier}  ${where}`;
+}
+
+/** A suppressed finding — same columns as {@link findingRow}, but muted (it does not fail). */
+function ignoredRow(finding: Finding): string {
 	const surface = finding.surface.padEnd(SURFACE_WIDTH);
 	const kind = `[${finding.kind}]`.padEnd(KIND_WIDTH);
-	return `  ${symbol} ${surface}  ${kind}  ${finding.specifier}  (${finding.firstSeenIn})${suffix}`;
+	return color.dim(
+		`  – ${surface}  ${kind}  ${finding.specifier}  (${finding.firstSeenIn})  — ignored`,
+	);
 }
 
 /** Reports a target whose audit could not run at all (acquisition/fetch failure). */
 function printError(outcome: { target: string; error: string }): void {
-	console.log(`\n${outcome.target}`);
-	console.log(`  ⚠ error  ${outcome.error}`);
+	console.log(`\n${color.dim(outcome.target)}`);
+	console.log(`  ${color.red('⚠ error')}  ${outcome.error}`);
 }
 
 /** Reports a non-package path that was skipped (neutral — does not affect the exit code). */
 function printSkipped(outcome: { target: string; skipped: string }): void {
-	console.log(`\n${outcome.target}`);
-	console.log(`  ↷ skipped  ${outcome.skipped}`);
+	console.log(`\n${color.dim(outcome.target)}`);
+	console.log(color.dim(`  ↷ skipped  ${outcome.skipped}`));
+}
+
+/** `1 finding` / `2 findings` — pluralize a count noun. */
+function plural(n: number, word: string): string {
+	return `${n} ${word}${n === 1 ? '' : 's'}`;
 }
 
 function printSummary(outcomes: Outcome[]): void {
@@ -230,18 +250,19 @@ function printSummary(outcomes: Outcome[]): void {
 	const ignored = results.reduce((sum, result) => sum + result.ignored.length, 0);
 	const notices = results.reduce((sum, result) => sum + result.notices.length, 0);
 	const noun = outcomes.length === 1 ? 'package' : 'packages';
-	const parts = [`${findings} finding${findings === 1 ? '' : 's'}`];
+	// The headline count is the severity signal: red when something fails, green when clean.
+	const parts = [findings > 0 ? color.red(plural(findings, 'finding')) : color.green('0 findings')];
 	if (ignored > 0) {
-		parts.push(`${ignored} ignored`);
+		parts.push(color.dim(`${ignored} ignored`));
 	}
 	if (notices > 0) {
-		parts.push(`${notices} notice${notices === 1 ? '' : 's'}`);
+		parts.push(color.yellow(plural(notices, 'notice')));
 	}
 	if (skipped > 0) {
-		parts.push(`${skipped} skipped`);
+		parts.push(color.dim(`${skipped} skipped`));
 	}
 	if (errors > 0) {
-		parts.push(`${errors} error${errors === 1 ? '' : 's'}`);
+		parts.push(color.red(plural(errors, 'error')));
 	}
 	console.log(`\n${outcomes.length} ${noun}, ${parts.join(', ')}.`);
 }

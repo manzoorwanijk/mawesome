@@ -12,10 +12,21 @@ const targets = join(here, 'fixtures', 'targets');
 const okTarget = join(targets, 'require-forms');
 const badTarget = join(targets, '__no_such_target__');
 
-/** Runs the CLI as a subprocess (Node strips the TS types), capturing status + stdout + stderr. */
-function runCli(args: string[]): { status: number; stdout: string; stderr: string } {
+/**
+ * Runs the CLI as a subprocess (Node strips the TS types), capturing status + stdout + stderr.
+ * `FORCE_COLOR` / `NO_COLOR` are cleared for the child by default so every output assertion is
+ * hermetic regardless of the runner's environment; a test that wants color re-sets them via
+ * `env` (a key set to `undefined` stays unset — Node omits undefined env values).
+ */
+function runCli(
+	args: string[],
+	env?: NodeJS.ProcessEnv,
+): { status: number; stdout: string; stderr: string } {
 	try {
-		const stdout = execFileSync('node', [cli, ...args], { encoding: 'utf8' });
+		const stdout = execFileSync('node', [cli, ...args], {
+			encoding: 'utf8',
+			env: { ...process.env, FORCE_COLOR: undefined, NO_COLOR: undefined, ...env },
+		});
 		return { status: 0, stdout, stderr: '' };
 	} catch (error) {
 		const e = error as { status: number | null; stdout: string; stderr: string };
@@ -55,6 +66,20 @@ describe('cli batch isolation', () => {
 		const { status, stderr } = runCli(['--config', cfg, okTarget]);
 		expect(status).toBe(2);
 		expect(stderr).toContain(`Invalid config ${cfg}`);
+	});
+});
+
+describe('cli color', () => {
+	// The ESC byte (char 27) that introduces every ANSI style sequence.
+	const ESC = String.fromCharCode(27);
+
+	it('emits no ANSI when piped (not a TTY)', () => {
+		// runCli clears FORCE_COLOR/NO_COLOR, so the result depends only on the (piped) TTY check.
+		expect(runCli([okTarget]).stdout.includes(ESC)).toBe(false);
+	});
+
+	it('emits ANSI color when FORCE_COLOR is set', () => {
+		expect(runCli([okTarget], { FORCE_COLOR: '1' }).stdout.includes(ESC)).toBe(true);
 	});
 });
 
