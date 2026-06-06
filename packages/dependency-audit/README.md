@@ -50,6 +50,8 @@ Exit codes: `0` clean, `1` findings, `2` error.
 
 Output is colorized by severity on a terminal (red findings, yellow notices, green clean) and auto-plain when piped or under `--json`; `NO_COLOR` / `FORCE_COLOR` are respected.
 
+While auditing, a live progress line (current phase, deps materialized) is drawn on **stderr** so a long run never looks hung. It renders only when stderr is an interactive terminal, so results on stdout — including `--json` and redirects like `dependency-audit . > result.json` — are never polluted. Pass `--no-progress` (or set `NO_PROGRESS`) to suppress it even on a terminal.
+
 ### Ignoring intentional findings
 
 Suppress findings static analysis can't prove are fine (an optional/plugin import, a known false positive). Suppressed findings are still listed (`– ignored`) and echoed in `--json`, so suppressions stay auditable; they do not fail the audit.

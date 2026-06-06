@@ -9,6 +9,7 @@
  */
 export { auditPackage, type AuditPackageOptions } from './audit-core.ts';
 export { createMemoryFileSystem, type FileSystem, type WritableFileSystem } from './fs.ts';
+export type { ProgressEvent, ProgressReporter } from './progress.ts';
 export type {
 	AcquiredSource,
 	AuditResult,

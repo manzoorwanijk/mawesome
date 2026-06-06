@@ -2,6 +2,8 @@
 
 Two formats: a human-readable text report (default) and machine-readable JSON (`--json`). Both emit **one logical entry per target**. If you parse the output programmatically (CI gate, dashboard, AI agent), prefer `--json` — the text format is stable but optimized for reading.
 
+All results — text and `--json` — are written to **stdout**. Progress and diagnostics go to **stderr**, so a redirect like `dependency-audit . > result.json` captures only the result. While auditing, a live progress line (current phase, deps materialized) is drawn on stderr, but only when stderr is an interactive terminal — under a pipe, a file, or CI it is silent, leaving stderr empty on a clean run.
+
 ## Text format
 
 The report is a sequence of per-target blocks, then a summary line. Each line is prefixed with two spaces and a **status symbol**:

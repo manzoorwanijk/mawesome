@@ -1,6 +1,7 @@
 import type { FileSystem } from './fs.ts';
 import { partitionIgnored } from './ignore.ts';
 import { declaredDependencies, readManifest } from './manifest.ts';
+import { emit, type ProgressReporter } from './progress.ts';
 import { createNormalizer, typesPackageFor } from './normalize.ts';
 import { createTypeResolver, materializeDeps } from './resolve.ts';
 import { createRuntimeResolver } from './runtime-resolve.ts';
@@ -33,6 +34,8 @@ export interface AuditPackageOptions {
 	builtins?: readonly string[];
 	/** Extra resolution conditions to activate (e.g. `["browser"]`), added to the defaults. */
 	conditions?: readonly string[];
+	/** Optional progress sink, notified as deps materialize and surfaces are scanned. */
+	progress?: ProgressReporter;
 }
 
 /** A specifier seen on a surface — the shared shape findings are built from. */
@@ -52,11 +55,15 @@ export async function auditPackage(
 	root: string,
 	options: AuditPackageOptions,
 ): Promise<AuditResult> {
-	const { provider, workDir } = options;
+	const { provider, workDir, progress } = options;
+	const target = options.target ?? root;
 	const manifest = readManifest(fs, root);
 	const deps = declaredDependencies(manifest);
 	const declared = new Set(deps.map((dep) => dep.name));
-	const resolved = await materializeDeps(deps, provider, workDir);
+	emit(progress, { type: 'materialize:start', target, total: deps.length });
+	const resolved = await materializeDeps(deps, provider, workDir, (done, total) =>
+		emit(progress, { type: 'materialize:progress', target, done, total }),
+	);
 	// Only deps that actually materialized can satisfy a reference.
 	const materialized = new Set(
 		resolved.filter((dep) => dep.version !== undefined).map((dep) => dep.name),
@@ -70,6 +77,7 @@ export async function auditPackage(
 	const unchecked: UncheckedSpecifier[] = [];
 	const isSelf = (name: string): boolean => manifest.name !== undefined && name === manifest.name;
 
+	emit(progress, { type: 'scan:start', target, surface: 'types' });
 	const typeSurface = scanTypeSurface(fs, root, manifest, conditions);
 	unchecked.push(...typeSurface.unchecked);
 	const notices = typeCoverageNotices(typeSurface.coverage);
@@ -97,6 +105,7 @@ export async function auditPackage(
 		}
 	}
 
+	emit(progress, { type: 'scan:start', target, surface: 'runtime' });
 	const runtimeSurface = scanRuntimeSurface(fs, root, manifest, conditions);
 	unchecked.push(...runtimeSurface.unchecked);
 	for (const external of runtimeSurface.externals) {
@@ -112,7 +121,7 @@ export async function auditPackage(
 
 	const partitioned = partitionIgnored(findings, options.ignore ?? []);
 	return {
-		target: options.target ?? root,
+		target,
 		source: options.source ?? { kind: 'directory' },
 		packageName: manifest.name,
 		packageVersion: manifest.version,
