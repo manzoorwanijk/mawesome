@@ -25,7 +25,7 @@ Add another with `/add-package` or by copying `templates/package/`.
 ## Quickstart
 
 ```sh
-# Requires Node >=24.12 and pnpm 10 (see CONTRIBUTING.md — no Corepack).
+# Requires Node >=24.12 and pnpm 10 (see CONTRIBUTING.md).
 pnpm install
 pnpm verify   # lint, format, deps, typecheck, test, build, exports — the full gate
 ```
