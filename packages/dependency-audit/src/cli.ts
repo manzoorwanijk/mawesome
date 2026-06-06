@@ -104,7 +104,7 @@ async function main(): Promise<number> {
 				if (error instanceof SkippedTargetError) {
 					return { target, skipped: error.reason };
 				}
-				return { target, error: error instanceof Error ? error.message : String(error) };
+				return { target, error: errorMessage(error) };
 			}
 		},
 	);
@@ -242,6 +242,19 @@ function plural(n: number, word: string): string {
 	return `${n} ${word}${n === 1 ? '' : 's'}`;
 }
 
+/** The message of an unknown thrown/rejected value, without leaking a non-Error's shape. */
+function errorMessage(value: unknown): string {
+	if (value instanceof Error) {
+		return value.message;
+	}
+	try {
+		// A hostile value can have a throwing `toString`; never let formatting an error throw.
+		return String(value);
+	} catch {
+		return 'unknown error';
+	}
+}
+
 function printSummary(outcomes: Outcome[]): void {
 	const results = outcomes.flatMap((o) => ('result' in o ? [o.result] : []));
 	const skipped = outcomes.filter((o) => 'skipped' in o).length;
@@ -267,11 +280,39 @@ function printSummary(outcomes: Outcome[]): void {
 	console.log(`\n${outcomes.length} ${noun}, ${parts.join(', ')}.`);
 }
 
+/*
+ * pacote / make-fetch-happen can emit a background promise rejection that isn't tied to any
+ * call we await (an idle keep-alive socket, a cache write). Node's default is to crash on the
+ * first unhandled rejection — which, mid-run, would discard everything buffered for output
+ * (notably the single `--json` write at the end), leaving a redirect like `> result.json`
+ * empty. Log it and keep going so the audit still finishes and writes its result.
+ */
+let backgroundError = false;
+process.on('unhandledRejection', (reason) => {
+	// A swallowed background error means the result may be incomplete, so the run is no longer
+	// "clean" — `finish()` reflects this in the exit code rather than reporting success.
+	backgroundError = true;
+	console.error(`warning: ignored a background error — ${errorMessage(reason)}`);
+});
+
+/**
+ * Exit with `code` after stdout has flushed. `process.exit()` truncates a piped/redirected
+ * stream's still-buffered output (a large `--json` payload can be dropped); not exiting at all
+ * would instead hang on pacote's lingering keep-alive sockets. The empty-string write's
+ * callback fires once preceding writes have drained, so the data is safely out first. A
+ * background rejection escalates the exit to 2 (re-checked at exit time, never lowering `code`).
+ */
+function finish(code: number): void {
+	const resolved = (): number => (backgroundError ? Math.max(code, 2) : code);
+	process.exitCode = resolved();
+	process.stdout.write('', () => {
+		process.exit(resolved());
+	});
+}
+
 main()
-	.then((code) => {
-		process.exit(code);
-	})
+	.then(finish)
 	.catch((error: unknown) => {
-		console.error(error instanceof Error ? error.message : error);
-		process.exit(2);
+		console.error(errorMessage(error));
+		finish(2);
 	});

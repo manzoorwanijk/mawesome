@@ -69,6 +69,18 @@ describe('cli batch isolation', () => {
 	});
 });
 
+describe('cli output integrity', () => {
+	it('does not truncate a large --json payload when piped (exit via flush, not process.exit)', () => {
+		// >128 KB exceeds the OS pipe buffer; an abrupt process.exit() would drop the tail.
+		const many = Array.from({ length: 120 }, () => okTarget);
+		const { stdout } = runCli(['--json', ...many]);
+		expect(stdout.length).toBeGreaterThan(131072);
+		// JSON.parse throws on a truncated payload; a full array has one entry per target.
+		const parsed = JSON.parse(stdout) as unknown[];
+		expect(parsed).toHaveLength(120);
+	});
+});
+
 describe('cli color', () => {
 	// The ESC byte (char 27) that introduces every ANSI style sequence.
 	const ESC = String.fromCharCode(27);

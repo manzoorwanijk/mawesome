@@ -30,6 +30,10 @@ The target could not be acquired or parsed: a path that does not exist, a spec t
 
 The path exists but is not an auditable package — a non-tarball file, or a directory without a `package.json` (e.g. a `packages/*` glob matching a `README.md`). Skips are **neutral**: they never raise the exit code, so a stray glob match cannot turn a findings run (exit 1) into an error run (exit 2). Point the tool at built package directories, or use a more specific glob (`packages/*/`) if you would rather not see the skips.
 
+### "`--json > result.json` produced an empty file."
+
+The CLI writes the `--json` array once, after every target finishes, and flushes before exiting (so a redirect/pipe is never truncated). If a stray background error from the registry client surfaces mid-run it is logged to stderr as `warning: ignored a background error — …` and the audit still completes and writes its result — it no longer crashes the whole run. If `result.json` is still empty, the process was killed by something outside the tool's control (out of memory, `ulimit` file-descriptor exhaustion on a very large batch); reduce the number of targets per invocation (e.g. audit in chunks) and check stderr.
+
 ### "Running the CLI from inside the package prints 'no such file'."
 
 Invoke the built bin with a path that exists from your current directory — e.g. `node dist/cli.js .` or `./dist/cli.js .` from the package root, not `packages/x/dist/cli.js .` while already inside `packages/x`.
