@@ -1,0 +1,305 @@
+---
+/**
+ * Interactive dependency-audit playground. The audit runs entirely in the browser:
+ * the package's published tarball is fetched from a CDN, extracted into an in-memory
+ * filesystem, and checked by the `@mawesome/dependency-audit/browser` core. See
+ * src/lib/dependency-audit/engine.ts.
+ */
+const examples = ['react', 'lodash@4', 'chalk@5', 'debug@4'];
+---
+
+<section class="da-playground" aria-label="dependency-audit playground">
+	<form class="da-form" data-da-form>
+		<label class="da-label" for="da-spec">Package to audit</label>
+		<div class="da-row">
+			<input
+				id="da-spec"
+				name="spec"
+				type="text"
+				inputmode="text"
+				autocomplete="off"
+				autocapitalize="off"
+				spellcheck="false"
+				placeholder="package name, e.g. react or lodash@4"
+				data-da-input
+			/>
+			<button type="submit" data-da-submit>Audit</button>
+		</div>
+		<p class="da-examples">
+			Try:
+			{
+				examples.map((example) => (
+					<button type="button" class="da-chip" data-da-example={example}>
+						{example}
+					</button>
+				))
+			}
+		</p>
+	</form>
+
+	<p class="da-hint">
+		Runs fully in your browser — it fetches the <strong>published</strong> tarball from npm and
+		resolves each import against the package's <strong>declared</strong> dependencies. Nothing is
+		installed or executed.
+	</p>
+
+	<div class="da-output" data-da-output aria-live="polite"></div>
+</section>
+
+<script>
+	import { runAudit } from '../../lib/dependency-audit/engine.ts';
+	import type { AuditResult, Finding } from '@mawesome/dependency-audit/browser';
+
+	const form = document.querySelector<HTMLFormElement>('[data-da-form]');
+	const input = document.querySelector<HTMLInputElement>('[data-da-input]');
+	const submit = document.querySelector<HTMLButtonElement>('[data-da-submit]');
+	const output = document.querySelector<HTMLDivElement>('[data-da-output]');
+	const chips = [...document.querySelectorAll<HTMLButtonElement>('[data-da-example]')];
+
+	if (form && input && submit && output) {
+		const escape = (value: string): string =>
+			value.replace(
+				/[&<>"]/g,
+				(c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] ?? c,
+			);
+
+		const setBusy = (busy: boolean): void => {
+			submit.disabled = busy;
+			submit.textContent = busy ? 'Auditing…' : 'Audit';
+			for (const chip of chips) chip.disabled = busy;
+		};
+
+		const findingRow = (f: Finding): string => `
+			<li class="da-finding">
+				<span class="da-tag da-tag--${f.surface}">${f.surface}</span>
+				<code>${escape(f.specifier)}</code>
+				<span class="da-finding-kind">${escape(f.kind)}</span>
+				<p class="da-finding-sugg">${escape(f.suggestion)}</p>
+				<p class="da-finding-loc">first seen in <code>${escape(f.firstSeenIn)}</code></p>
+			</li>`;
+
+		const renderResult = (resolved: string, result: AuditResult): string => {
+			const status = result.ok
+				? '<span class="da-pill da-pill--ok">No issues found</span>'
+				: `<span class="da-pill da-pill--bad">${result.findings.length} finding${result.findings.length === 1 ? '' : 's'}</span>`;
+
+			const findings = result.findings.length
+				? `<ul class="da-list">${result.findings.map(findingRow).join('')}</ul>`
+				: '';
+
+			const notices = result.notices.length
+				? `<h4>Notices</h4><ul class="da-list">${result.notices
+						.map(
+							(n) =>
+								`<li class="da-finding"><span class="da-tag da-tag--${n.surface}">${n.surface}</span> <span class="da-finding-kind">${escape(n.kind)}</span><p class="da-finding-sugg">${escape(n.message)}</p></li>`,
+						)
+						.join('')}</ul>`
+				: '';
+
+			const unchecked = result.unchecked.length
+				? `<h4>Unchecked</h4><ul class="da-list">${result.unchecked
+						.map(
+							(u) =>
+								`<li class="da-finding"><code>${escape(u.specifier)}</code><p class="da-finding-sugg">${escape(u.reason)}</p></li>`,
+						)
+						.join('')}</ul>`
+				: '';
+
+			const deps = result.resolvedDeps.length
+				? `<p class="da-deps">Resolved ${result.resolvedDeps.length} declared dependenc${result.resolvedDeps.length === 1 ? 'y' : 'ies'}.</p>`
+				: '';
+
+			return `
+				<div class="da-result">
+					<div class="da-result-head">${status}<code class="da-resolved">${escape(resolved)}</code></div>
+					${findings}${notices}${unchecked}${deps}
+				</div>`;
+		};
+
+		// Supersede an in-flight audit when a new one starts: abort its fetches and ignore its result.
+		let controller: AbortController | null = null;
+		let runSeq = 0;
+
+		const run = async (spec: string): Promise<void> => {
+			const value = spec.trim();
+			if (!value) return;
+			input.value = value;
+			controller?.abort();
+			controller = new AbortController();
+			const { signal } = controller;
+			const seq = ++runSeq;
+
+			setBusy(true);
+			output.innerHTML = '<p class="da-status">Fetching and auditing…</p>';
+			try {
+				const { resolved, result } = await runAudit(value, signal);
+				if (seq === runSeq) output.innerHTML = renderResult(resolved, result);
+			} catch (error) {
+				if (seq !== runSeq || signal.aborted) return; // superseded by a newer run
+				const message = error instanceof Error ? error.message : String(error);
+				output.innerHTML = `<p class="da-error">${escape(message)}</p>`;
+			} finally {
+				if (seq === runSeq) setBusy(false);
+			}
+		};
+
+		form.addEventListener('submit', (event) => {
+			event.preventDefault();
+			void run(input.value);
+		});
+
+		for (const chip of chips) {
+			chip.addEventListener('click', () => void run(chip.dataset.daExample ?? ''));
+		}
+	}
+</script>
+
+<style>
+	.da-playground {
+		margin-block: 1.5rem;
+	}
+	.da-label {
+		display: block;
+		font-weight: 600;
+		margin-block-end: 0.4rem;
+	}
+	.da-row {
+		display: flex;
+		gap: 0.5rem;
+		flex-wrap: wrap;
+	}
+	.da-row input {
+		flex: 1 1 16rem;
+		padding: 0.55rem 0.7rem;
+		border: 1px solid var(--sl-color-gray-5);
+		border-radius: 0.5rem;
+		background: var(--sl-color-black);
+		color: var(--sl-color-white);
+		font: inherit;
+	}
+	.da-row button {
+		padding: 0.55rem 1.1rem;
+		border: 0;
+		border-radius: 0.5rem;
+		background: var(--sl-color-accent);
+		color: var(--sl-color-white);
+		font: inherit;
+		font-weight: 600;
+		cursor: pointer;
+	}
+	.da-row button:disabled {
+		opacity: 0.6;
+		cursor: progress;
+	}
+	.da-examples {
+		display: flex;
+		align-items: center;
+		gap: 0.4rem;
+		flex-wrap: wrap;
+		margin-block: 0.6rem 0;
+		font-size: var(--sl-text-sm);
+		color: var(--sl-color-gray-3);
+	}
+	.da-chip {
+		padding: 0.2rem 0.6rem;
+		border: 1px solid var(--sl-color-gray-5);
+		border-radius: 999px;
+		background: transparent;
+		color: var(--sl-color-text-accent);
+		font: inherit;
+		font-size: var(--sl-text-sm);
+		cursor: pointer;
+	}
+	.da-chip:hover {
+		background: var(--sl-color-gray-6);
+	}
+	.da-hint {
+		font-size: var(--sl-text-sm);
+		color: var(--sl-color-gray-3);
+		margin-block: 0.9rem;
+	}
+	.da-output:empty {
+		display: none;
+	}
+	.da-status,
+	.da-error {
+		padding: 0.8rem 1rem;
+		border-radius: 0.5rem;
+	}
+	.da-error {
+		background: var(--sl-color-red-low);
+		color: var(--sl-color-red-high);
+	}
+	.da-result-head {
+		display: flex;
+		align-items: center;
+		gap: 0.6rem;
+		flex-wrap: wrap;
+		margin-block-end: 1rem;
+	}
+	.da-pill {
+		padding: 0.2rem 0.65rem;
+		border-radius: 999px;
+		font-size: var(--sl-text-sm);
+		font-weight: 600;
+	}
+	.da-pill--ok {
+		background: var(--sl-color-green-low);
+		color: var(--sl-color-green-high);
+	}
+	.da-pill--bad {
+		background: var(--sl-color-red-low);
+		color: var(--sl-color-red-high);
+	}
+	.da-resolved {
+		color: var(--sl-color-gray-2);
+	}
+	.da-list {
+		list-style: none;
+		padding: 0;
+		margin: 0;
+		display: grid;
+		gap: 0.7rem;
+	}
+	.da-finding {
+		padding: 0.75rem 0.9rem;
+		border: 1px solid var(--sl-color-gray-5);
+		border-radius: 0.5rem;
+		background: var(--sl-color-gray-6);
+	}
+	.da-tag {
+		display: inline-block;
+		padding: 0.05rem 0.45rem;
+		border-radius: 0.35rem;
+		font-size: var(--sl-text-xs);
+		font-weight: 700;
+		text-transform: uppercase;
+		letter-spacing: 0.03em;
+		margin-inline-end: 0.4rem;
+	}
+	.da-tag--types {
+		background: var(--sl-color-purple-low);
+		color: var(--sl-color-purple-high);
+	}
+	.da-tag--runtime {
+		background: var(--sl-color-blue-low);
+		color: var(--sl-color-blue-high);
+	}
+	.da-finding-kind {
+		font-size: var(--sl-text-sm);
+		color: var(--sl-color-gray-2);
+	}
+	.da-finding-sugg {
+		margin-block: 0.5rem 0.25rem;
+	}
+	.da-finding-loc {
+		margin: 0;
+		font-size: var(--sl-text-sm);
+		color: var(--sl-color-gray-3);
+	}
+	.da-deps {
+		margin-block-start: 1rem;
+		font-size: var(--sl-text-sm);
+		color: var(--sl-color-gray-3);
+	}
+</style>

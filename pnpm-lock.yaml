@@ -20,9 +20,18 @@ importers:
       '@astrojs/starlight':
         specifier: ^0.39.3
         version: 0.39.3(astro@6.4.3(@types/node@24.12.4)(lightningcss@1.32.0)(rollup@4.61.0)(yaml@2.9.0))(typescript@6.0.3)
+      '@mawesome/dependency-audit':
+        specifier: workspace:*
+        version: link:../../packages/dependency-audit
       astro:
         specifier: ^6.4.3
         version: 6.4.3(@types/node@24.12.4)(lightningcss@1.32.0)(rollup@4.61.0)(yaml@2.9.0)
+      nanotar:
+        specifier: ^0.3.0
+        version: 0.3.0
+      pathe:
+        specifier: ^2.0.3
+        version: 2.0.3
     devDependencies:
       '@astrojs/check':
         specifier: ^0.9.9
@@ -2790,6 +2799,9 @@ packages:
     resolution: {integrity: sha512-ZB9RH/39qpq5Vu6Y+NmUaFhQR6pp+M2Xt76XBnEwDaGcVAqhlvxrl3B2bKS5D3NH3QR76v3aSrKaF/Kiy7lEtQ==}
     engines: {node: ^10 || ^12 || ^13.7 || ^14 || >=15.0.1}
     hasBin: true
+
+  nanotar@0.3.0:
+    resolution: {integrity: sha512-Kv2JYYiCzt16Kt5QwAc9BFG89xfPNBx+oQL4GQXD9nLqPkZBiNaqaCWtwnbk/q7UVsTYevvM1b0UF8zmEI4pCg==}
 
   negotiator@1.0.0:
     resolution: {integrity: sha512-8Ofs/AUQh8MaEcrlq5xOX0CQ9ypTF5dl78mjlMNfOK08fzpgTHQRQPBxcPlEtIw0yRpws+Zo/3r+5WRby7u3Gg==}
@@ -7047,6 +7059,8 @@ snapshots:
       thenify-all: 1.6.0
 
   nanoid@3.3.12: {}
+
+  nanotar@0.3.0: {}
 
   negotiator@1.0.0: {}
 

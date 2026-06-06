@@ -15,7 +15,7 @@ import { tools } from '../../tools.ts';
 			<p>{tool.tagline}</p>
 			<p>
 				<a href={`/${tool.slug}/`}>Documentation →</a>
-				{tool.playground && <span> · ⚡ interactive playground</span>}
+				{tool.playground && <Fragment> · <a href={`/${tool.slug}/playground/`}>⚡ Playground →</a></Fragment>}
 			</p>
 		</Card>
 	))}

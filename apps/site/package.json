@@ -13,7 +13,10 @@
 	},
 	"dependencies": {
 		"@astrojs/starlight": "^0.39.3",
-		"astro": "^6.4.3"
+		"@mawesome/dependency-audit": "workspace:*",
+		"astro": "^6.4.3",
+		"nanotar": "^0.3.0",
+		"pathe": "^2.0.3"
 	},
 	"devDependencies": {
 		"@astrojs/check": "^0.9.9",
