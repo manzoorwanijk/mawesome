@@ -1,0 +1,9 @@
+{
+	"name": "@fixture/bin-shebang",
+	"version": "1.0.0",
+	"bin": {
+		"mytool": "./cli"
+	},
+	"type": "module",
+	"dependencies": {}
+}

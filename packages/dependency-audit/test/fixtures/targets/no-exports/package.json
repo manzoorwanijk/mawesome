@@ -1,0 +1,7 @@
+{
+	"name": "@fixture/no-exports",
+	"version": "1.0.0",
+	"type": "module",
+	"types": "./lib/index.d.ts",
+	"dependencies": {}
+}

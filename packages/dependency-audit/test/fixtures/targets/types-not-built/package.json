@@ -1,0 +1,6 @@
+{
+	"name": "@fixture/types-not-built",
+	"version": "1.0.0",
+	"main": "build/index.js",
+	"types": "build-types/index.d.ts"
+}

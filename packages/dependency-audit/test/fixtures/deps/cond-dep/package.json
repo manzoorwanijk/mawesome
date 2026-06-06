@@ -1,0 +1,12 @@
+{
+	"name": "cond-dep",
+	"version": "1.0.0",
+	"exports": {
+		".": {
+			"browser": {
+				"types": "./browser.d.ts",
+				"default": "./browser.js"
+			}
+		}
+	}
+}

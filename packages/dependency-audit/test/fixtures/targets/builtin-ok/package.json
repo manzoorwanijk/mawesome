@@ -1,0 +1,9 @@
+{
+	"name": "@fixture/builtin-ok",
+	"version": "1.0.0",
+	"type": "module",
+	"types": "./lib/index.d.ts",
+	"dependencies": {
+		"@types/node": "^24.0.0"
+	}
+}

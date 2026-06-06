@@ -1,0 +1,11 @@
+{
+	"name": "exporter",
+	"version": "2.0.0",
+	"exports": {
+		".": {
+			"import": "./index.js",
+			"require": "./index.cjs"
+		},
+		"./sub": "./sub.js"
+	}
+}

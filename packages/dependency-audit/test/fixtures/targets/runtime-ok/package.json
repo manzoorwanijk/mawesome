@@ -1,0 +1,14 @@
+{
+	"name": "@fixture/runtime-ok",
+	"version": "1.0.0",
+	"type": "module",
+	"exports": {
+		".": {
+			"import": "./lib/index.js"
+		}
+	},
+	"dependencies": {
+		"exporter": "^2.0.0",
+		"leftpad": "^1.0.0"
+	}
+}
