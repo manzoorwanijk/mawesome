@@ -48,7 +48,7 @@ Repo-level CLIs (oxlint, oxfmt, syncpack, tsgo) and their typed configs live in 
 - **Config-file format preference: `.ts` → `.mjs` → JSON/YAML.** Prefer a typed `.ts` config (oxlint, oxfmt, tsdown, vitest, syncpack); drop to `.mjs`, then JSON/YAML, only when the tool supports nothing better (changesets → JSON, `tsconfig.json`, `pnpm-workspace.yaml`). A `.ts` tool-config that imports the tool lives in the workspace that declares it (`tools/repo`).
 - **In-house monorepo scripts: author in `.ts`, run with plain `node script.ts`.** Node `>=24.12` strips types natively — no tsx/ts-node/tsdown for internal scripts. Use erasable syntax only (`erasableSyntaxOnly` enforces this); tsdown is only for _published_ packages. Parse CLI args with `node:util` `parseArgs`; detect direct execution with `import.meta.main`.
 - **Reusability first (when earned).** When functionality is likely to be reused and its API has stabilized, extract it into its own published `@mawesome/*` package — but first search npm for an existing, well-maintained package and prefer reusing it over reinventing. Don't prematurely extract a weak API.
-- **Every change to a published package needs a `pnpm changeset`.**
+- **Every change to a published package needs a `pnpm changeset`.** Keep the changeset summary (the changelog entry) **short and precise** — one or two sentences on what changed and why it matters to a consumer; no implementation detail or fluff.
 
 ## Coding guidelines (humans and agents)
 
