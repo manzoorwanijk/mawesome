@@ -24,7 +24,11 @@ An `unresolved` runtime finding means the **declared dependency's own `exports`*
 
 ### "A whole target errored (`⚠`)."
 
-The target could not be acquired or parsed: a directory without `package.json`, a spec that does not resolve on the registry, a network/auth failure, or a corrupt tarball. The error message says which. Other targets in the same run are unaffected.
+The target could not be acquired or parsed: a path that does not exist, a spec that does not resolve on the registry, a network/auth failure, or a corrupt tarball. The error message says which. Other targets in the same run are unaffected. (An error sets exit 2.)
+
+### "A target was skipped (`↷`)."
+
+The path exists but is not an auditable package — a non-tarball file, or a directory without a `package.json` (e.g. a `packages/*` glob matching a `README.md`). Skips are **neutral**: they never raise the exit code, so a stray glob match cannot turn a findings run (exit 1) into an error run (exit 2). Point the tool at built package directories, or use a more specific glob (`packages/*/`) if you would rather not see the skips.
 
 ### "Running the CLI from inside the package prints 'no such file'."
 

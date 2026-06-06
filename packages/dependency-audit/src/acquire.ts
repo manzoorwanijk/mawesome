@@ -13,6 +13,22 @@ export interface AcquiredPackage {
 	cleanup(): void;
 }
 
+/**
+ * A target that exists locally but is not an auditable package (a non-tarball file, or a
+ * directory without a `package.json`) — e.g. a stray `packages/*` glob match like a `.md`
+ * file. Distinct from a hard error so a batch can *skip* it instead of failing the run.
+ */
+export class SkippedTargetError extends Error {
+	readonly target: string;
+	readonly reason: string;
+	constructor(target: string, reason: string) {
+		super(`Skipped ${target}: ${reason}`);
+		this.name = 'SkippedTargetError';
+		this.target = target;
+		this.reason = reason;
+	}
+}
+
 const TARBALL_RE = /\.(tgz|tar\.gz)$/;
 const RECURSIVE = { recursive: true, force: true } as const;
 
@@ -33,16 +49,20 @@ export async function acquire(
 ): Promise<AcquiredPackage> {
 	const abs = resolve(target);
 
-	if (existsSync(abs) && statSync(abs).isDirectory()) {
-		if (!existsSync(join(abs, 'package.json'))) {
-			throw new Error(`No package.json found in directory target: ${target} (${abs})`);
+	// A path that exists locally is a directory or tarball, else it is skipped (not an error):
+	// a stray glob match (a `.md` file, a non-package dir) must not fail an otherwise-fine run.
+	if (existsSync(abs)) {
+		if (statSync(abs).isDirectory()) {
+			if (!existsSync(join(abs, 'package.json'))) {
+				throw new SkippedTargetError(target, 'directory has no package.json');
+			}
+			return { root: abs, source: { kind: 'directory' }, cleanup: () => {} };
 		}
-		return { root: abs, source: { kind: 'directory' }, cleanup: () => {} };
-	}
-
-	if (existsSync(abs) && TARBALL_RE.test(abs)) {
-		const root = await extractInto(readFileSync(abs), limits);
-		return { root, source: { kind: 'tarball' }, cleanup: () => rmSync(root, RECURSIVE) };
+		if (TARBALL_RE.test(abs)) {
+			const root = await extractInto(readFileSync(abs), limits);
+			return { root, source: { kind: 'tarball' }, cleanup: () => rmSync(root, RECURSIVE) };
+		}
+		throw new SkippedTargetError(target, 'not a package directory or tarball');
 	}
 
 	if (!looksLikeSpec(target)) {

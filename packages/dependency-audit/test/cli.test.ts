@@ -47,6 +47,30 @@ describe('cli batch isolation', () => {
 	});
 });
 
+describe('cli skip (non-package targets)', () => {
+	const notPkg = join(here, 'fixtures', 'not-a-package.md');
+
+	it('skips a non-package path without escalating a findings run to an error run', () => {
+		// require-forms has findings (exit 1); a stray .md skip must keep it at 1, not 2.
+		const { status, stdout } = runCli([okTarget, notPkg]);
+		expect(stdout).toMatch(/↷ skipped/);
+		expect(stdout).toMatch(/1 skipped/);
+		expect(status).toBe(1);
+	});
+
+	it('exits 0 when the only targets are skips', () => {
+		const { status, stdout } = runCli([notPkg]);
+		expect(stdout).toMatch(/↷ skipped/);
+		expect(status).toBe(0);
+	});
+
+	it('represents a skip as { target, skipped } under --json', () => {
+		const { stdout } = runCli(['--json', notPkg]);
+		const parsed = JSON.parse(stdout) as Array<Record<string, unknown>>;
+		expect(parsed[0]).toHaveProperty('skipped');
+	});
+});
+
 describe('cli coverage notices', () => {
 	const unreachable = join(targets, 'types-unreachable');
 

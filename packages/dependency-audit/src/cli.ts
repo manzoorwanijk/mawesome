@@ -2,6 +2,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { parseArgs } from 'node:util';
+import { SkippedTargetError } from './acquire.ts';
 import { audit } from './audit.ts';
 import { mapLimit } from './concurrency.ts';
 import { parseIgnoreRules } from './ignore.ts';
@@ -10,8 +11,14 @@ import type { AuditResult, Finding, IgnoreRule } from './types.ts';
 /** Max targets audited in parallel; each target itself fans out to its own deps. */
 const TARGET_CONCURRENCY = 6;
 
-/** A target that produced a result, or one that failed to audit (isolated, never fatal). */
-type Outcome = { target: string; result: AuditResult } | { target: string; error: string };
+/**
+ * Per-target result: an audit, a hard error (exit 2), or a skip (a non-package path, e.g. a
+ * stray glob match — neutral, never escalates the exit code).
+ */
+type Outcome =
+	| { target: string; result: AuditResult }
+	| { target: string; error: string }
+	| { target: string; skipped: string };
 
 const VERSION = readSelfVersion();
 
@@ -93,6 +100,9 @@ async function main(): Promise<number> {
 			try {
 				return { target, result: await audit(target, { ignore, conditions }) };
 			} catch (error) {
+				if (error instanceof SkippedTargetError) {
+					return { target, skipped: error.reason };
+				}
 				return { target, error: error instanceof Error ? error.message : String(error) };
 			}
 		},
@@ -104,6 +114,8 @@ async function main(): Promise<number> {
 		for (const outcome of outcomes) {
 			if ('result' in outcome) {
 				printResult(outcome.result);
+			} else if ('skipped' in outcome) {
+				printSkipped(outcome);
 			} else {
 				printError(outcome);
 			}
@@ -117,12 +129,15 @@ async function main(): Promise<number> {
 	const anyCoverageGap =
 		(values['require-types'] ?? false) &&
 		outcomes.some((outcome) => 'result' in outcome && outcome.result.notices.length > 0);
-	// An audit that could not run at all is a harder failure (exit 2) than findings (exit 1).
+	// An audit that could not run at all is a harder failure (exit 2) than findings (exit 1);
+	// a skip is neutral, so a stray glob match never escalates a findings run into an error run.
 	return anyError ? 2 : anyFinding || anyCoverageGap ? 1 : 0;
 }
 
-/** The JSON shape per target: the full result, or `{ target, error }` for a failed audit. */
-function jsonEntry(outcome: Outcome): AuditResult | { target: string; error: string } {
+/** The JSON shape per target: the result, `{ target, error }`, or `{ target, skipped }`. */
+function jsonEntry(
+	outcome: Outcome,
+): AuditResult | { target: string; error: string } | { target: string; skipped: string } {
 	return 'result' in outcome ? outcome.result : outcome;
 }
 
@@ -200,9 +215,16 @@ function printError(outcome: { target: string; error: string }): void {
 	console.log(`  ⚠ error  ${outcome.error}`);
 }
 
+/** Reports a non-package path that was skipped (neutral — does not affect the exit code). */
+function printSkipped(outcome: { target: string; skipped: string }): void {
+	console.log(`\n${outcome.target}`);
+	console.log(`  ↷ skipped  ${outcome.skipped}`);
+}
+
 function printSummary(outcomes: Outcome[]): void {
 	const results = outcomes.flatMap((o) => ('result' in o ? [o.result] : []));
-	const errors = outcomes.length - results.length;
+	const skipped = outcomes.filter((o) => 'skipped' in o).length;
+	const errors = outcomes.length - results.length - skipped;
 	const findings = results.reduce((sum, result) => sum + result.findings.length, 0);
 	const ignored = results.reduce((sum, result) => sum + result.ignored.length, 0);
 	const notices = results.reduce((sum, result) => sum + result.notices.length, 0);
@@ -213,6 +235,9 @@ function printSummary(outcomes: Outcome[]): void {
 	}
 	if (notices > 0) {
 		parts.push(`${notices} notice${notices === 1 ? '' : 's'}`);
+	}
+	if (skipped > 0) {
+		parts.push(`${skipped} skipped`);
 	}
 	if (errors > 0) {
 		parts.push(`${errors} error${errors === 1 ? '' : 's'}`);

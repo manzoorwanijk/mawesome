@@ -13,6 +13,7 @@ The report is a sequence of per-target blocks, then a summary line. Each line is
 | `ℹ`    | A notice (a coverage gap — no/unreachable type surface; does not fail).          |
 | `–`    | An ignored finding (suppressed by a rule; does not fail). Ends with `— ignored`. |
 | `?`    | An unchecked specifier (dynamic/opaque — surfaced, not resolved).                |
+| `↷`    | A skipped target — a non-package path (does not affect the exit code).           |
 | `⚠`    | An error — the target could not be audited at all.                               |
 | `→`    | A remediation suggestion (continuation of the preceding `✗`/`–` line).           |
 
@@ -35,32 +36,35 @@ The report is a sequence of per-target blocks, then a summary line. Each line is
 - `<surface>` is `types` or `runtime`; `<kind>` is a [finding kind](./findings.md#findings); `<specifier>` is the **full** bare specifier as written (e.g. `react/jsx-runtime`), not just the owning package; `<file>` is the package-relative path where it was first seen.
 - Columns are space-padded for alignment; treat **runs of whitespace as a single separator** when parsing.
 
-### Error block
+### Error / skip block
 
 ```
 <target>
-  ⚠ error  <message>
+  ⚠ error  <message>      # could not be audited
+<target>
+  ↷ skipped  <reason>     # a non-package path (neutral)
 ```
 
 ### Summary line
 
 ```
-<N> package[s], <F> finding[s][, <G> ignored][, <C> notice[s]][, <E> error[s]].
+<N> package[s], <F> finding[s][, <G> ignored][, <C> notice[s]][, <S> skipped][, <E> error[s]].
 ```
 
-The `ignored`, `notice`, and `error` clauses appear only when their count is non-zero. `<F>` counts non-ignored findings.
+The `ignored`, `notice`, `skipped`, and `error` clauses appear only when their count is non-zero. `<F>` counts non-ignored findings.
 
 ## JSON format (`--json`)
 
-A single JSON array, one element per target, in input order. Each element is either an **AuditResult** or, for a target that could not be audited, an **error entry**.
+A single JSON array, one element per target, in input order. Each element is an **AuditResult**, an **error entry** (could not audit), or a **skip entry** (a non-package path).
 
-### Error entry
+### Error and skip entries
 
 ```json
 { "target": "<target>", "error": "<message>" }
+{ "target": "<target>", "skipped": "<reason>" }
 ```
 
-Distinguish the two by presence of the `error` key (error entries have no `findings`).
+Distinguish the three by key: an `error` key → could not audit (exit 2); a `skipped` key → a neutral non-package path; otherwise it is an AuditResult (use `ok`).
 
 ### AuditResult
 
@@ -122,6 +126,6 @@ Distinguish the two by presence of the `error` key (error entries have no `findi
 
 ### Consuming the JSON
 
-- **Pass/fail per target:** `entry.error !== undefined` → could not audit; else `entry.ok` → pass/fail on findings.
+- **Pass/fail per target:** `entry.error !== undefined` → could not audit; `entry.skipped !== undefined` → a non-package path (neutral, ignore for pass/fail); else `entry.ok` → pass/fail on findings.
 - **Coverage:** count `entry.notices` to report "audited N, M with no analyzable type surface". Treat as failure only if you opt into `--require-types` (CLI) or check `notices.length` yourself (API).
-- **Aggregate exit semantics** mirror the CLI: any error entry → 2; else any `ok === false` → 1; else 0.
+- **Aggregate exit semantics** mirror the CLI: any error entry → 2; else any `ok === false` → 1; else 0. Skip entries are neutral.

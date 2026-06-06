@@ -6,6 +6,7 @@
  * the real filesystem. The runtime-agnostic core (`auditPackage`, `createMemoryFileSystem`)
  * is re-exported here and also available from `@mawesome/dependency-audit/browser`.
  */
+export { SkippedTargetError } from './acquire.ts';
 export { audit } from './audit.ts';
 export { auditPackage, type AuditPackageOptions } from './audit-core.ts';
 export { DEFAULT_EXTRACT_LIMITS, ExtractLimitError } from './extract.ts';

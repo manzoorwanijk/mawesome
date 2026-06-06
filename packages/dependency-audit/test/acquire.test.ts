@@ -1,5 +1,10 @@
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { looksLikeSpec } from '../src/acquire.ts';
+import { acquire, looksLikeSpec, SkippedTargetError } from '../src/acquire.ts';
+
+const here = dirname(fileURLToPath(import.meta.url));
+const fixtures = join(here, 'fixtures');
 
 describe('looksLikeSpec', () => {
 	it('treats bare names, versioned, and scoped specs as specs', () => {
@@ -24,5 +29,24 @@ describe('looksLikeSpec', () => {
 		for (const path of ['foo.tgz', 'dir/foo.tgz', 'pkg.tar.gz']) {
 			expect(looksLikeSpec(path)).toBe(false);
 		}
+	});
+});
+
+describe('acquire (skip vs error)', () => {
+	it('skips a local path that exists but is not a package (e.g. a stray .md match)', async () => {
+		await expect(acquire(join(fixtures, 'not-a-package.md'))).rejects.toBeInstanceOf(
+			SkippedTargetError,
+		);
+	});
+
+	it('skips a directory with no package.json', async () => {
+		// `fixtures/deps` exists but has no package.json of its own.
+		await expect(acquire(join(fixtures, 'deps'))).rejects.toBeInstanceOf(SkippedTargetError);
+	});
+
+	it('errors (does not skip) a path that does not exist at all', async () => {
+		const err = await acquire(join(fixtures, '__missing__')).catch((e: unknown) => e);
+		expect(err).toBeInstanceOf(Error);
+		expect(err).not.toBeInstanceOf(SkippedTargetError);
 	});
 });

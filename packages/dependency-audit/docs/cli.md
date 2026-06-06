@@ -13,6 +13,8 @@ A **target** is one of:
 
 Multiple targets may be passed; each is audited independently and isolated — one target failing to acquire/audit reports as an error for that target and never discards the others.
 
+A local path that **exists but is not an auditable package** — a non-tarball file, or a directory without a `package.json` — is **skipped** (a neutral `↷` notice), not treated as an error. This is what keeps a stray glob match (`packages/*` catching a `README.md`) from turning a findings run (exit 1) into an error run (exit 2). A path that does **not** exist, or a spec that fails to resolve, is still a hard error.
+
 ## Options
 
 | Option               | Argument          | Description                                                                                                                                                           |
@@ -33,7 +35,7 @@ Multiple targets may be passed; each is audited independently and isolated — o
 | `1`  | At least one finding (or, under `--require-types`, at least one coverage notice).                |
 | `2`  | At least one target could not be audited at all (acquisition/fetch/parse error). Takes priority. |
 
-When multiple targets are audited, the **highest** applicable exit code wins: any error → `2`; else any finding → `1`; else `0`.
+When multiple targets are audited, the **highest** applicable exit code wins: any error → `2`; else any finding → `1`; else `0`. **Skipped** targets (non-package paths) are neutral — they never raise the exit code.
 
 ## Examples
 
