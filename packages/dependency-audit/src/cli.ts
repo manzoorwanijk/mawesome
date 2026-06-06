@@ -7,6 +7,7 @@ import { audit } from './audit.ts';
 import { color } from './color.ts';
 import { mapLimit } from './concurrency.ts';
 import { parseIgnoreRules } from './ignore.ts';
+import { createTtyReporter } from './progress-tty.ts';
 import type { AuditResult, Finding, IgnoreRule } from './types.ts';
 
 /** Max targets audited in parallel; each target itself fans out to its own deps. */
@@ -42,6 +43,8 @@ Options:
                     as a failure rather than just a notice.
   --json            Emit machine-readable JSON: one entry per target (an
                     AuditResult, or { target, error } for a failed audit).
+  --no-progress     Suppress the stderr progress spinner even on a terminal
+                    (also honored via the NO_PROGRESS env var).
   -v, --version     Print the version.
   -h, --help        Show this help.
 
@@ -70,6 +73,7 @@ async function main(): Promise<number> {
 			condition: { type: 'string', multiple: true },
 			'require-types': { type: 'boolean', default: false },
 			json: { type: 'boolean', default: false },
+			'no-progress': { type: 'boolean', default: false },
 			version: { type: 'boolean', short: 'v', default: false },
 			help: { type: 'boolean', short: 'h', default: false },
 		},
@@ -91,6 +95,16 @@ async function main(): Promise<number> {
 	const ignore = [...loadConfigRules(values.config), ...cliIgnoreRules(values.ignore ?? [])];
 	const conditions = values.condition ?? [];
 
+	/* A live stderr spinner (no-op unless stderr is an interactive TTY) so a long audit never looks hung.
+	 * It only touches stderr, so `--json` / `> file` stdout stays clean.
+	 * The cleanup handles are exposed module-wide so `finish()` and the background-error handler can keep the line tidy. */
+	const progress = createTtyReporter({
+		total: positionals.length,
+		enabled: !(values['no-progress'] ?? false),
+	});
+	clearProgress = progress.clear;
+	stopProgress = progress.stop;
+
 	/* Each audit is self-contained (its own temp dirs), so targets run concurrently —
 	 * but bounded, and each isolated, so one target's failure reports as an error for
 	 * that target instead of discarding every other target's result. */
@@ -99,7 +113,10 @@ async function main(): Promise<number> {
 		TARGET_CONCURRENCY,
 		async (target): Promise<Outcome> => {
 			try {
-				return { target, result: await audit(target, { ignore, conditions }) };
+				return {
+					target,
+					result: await audit(target, { ignore, conditions, progress: progress.reporter }),
+				};
 			} catch (error) {
 				if (error instanceof SkippedTargetError) {
 					return { target, skipped: error.reason };
@@ -108,6 +125,8 @@ async function main(): Promise<number> {
 			}
 		},
 	);
+	// Erase the spinner before any stdout result write so the two streams never interleave.
+	progress.stop();
 
 	if (values.json) {
 		console.log(JSON.stringify(outcomes.map(jsonEntry), null, 2));
@@ -288,10 +307,18 @@ function printSummary(outcomes: Outcome[]): void {
  * empty. Log it and keep going so the audit still finishes and writes its result.
  */
 let backgroundError = false;
+
+/* The progress spinner's cleanup handles, set once `main()` builds the reporter (no-ops until then, and no-ops entirely when stderr is not a TTY).
+ * `clearProgress` erases the current line so a one-off stderr diagnostic doesn't land on top of the spinner; `stopProgress` ends it. */
+let clearProgress: () => void = () => {};
+let stopProgress: () => void = () => {};
+
 process.on('unhandledRejection', (reason) => {
 	// A swallowed background error means the result may be incomplete, so the run is no longer
 	// "clean" — `finish()` reflects this in the exit code rather than reporting success.
 	backgroundError = true;
+	// Erase the spinner first so this warning isn't appended to the in-progress line (the spinner's next tick redraws it).
+	clearProgress();
 	console.error(`warning: ignored a background error — ${errorMessage(reason)}`);
 });
 
@@ -308,6 +335,8 @@ process.on('unhandledRejection', (reason) => {
  * `process.exitCode` is already set, so the exit code is correct on every path.
  */
 function finish(code: number): void {
+	// Idempotent — already called on the normal path; here it covers early/error exits.
+	stopProgress();
 	const resolved = (): number => (backgroundError ? Math.max(code, 2) : code);
 	process.exitCode = resolved();
 	const exit = (): void => process.exit(resolved());
@@ -322,6 +351,8 @@ function finish(code: number): void {
 main()
 	.then(finish)
 	.catch((error: unknown) => {
+		// Erase the spinner before the error so it doesn't land on top of the live line.
+		stopProgress();
 		console.error(errorMessage(error));
 		finish(2);
 	});

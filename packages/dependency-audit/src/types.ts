@@ -1,5 +1,7 @@
 /** Public types for the dependency audit (type `.d.ts` + runtime JS surfaces). */
 
+import type { ProgressReporter } from './progress.ts';
+
 /** The released surface a finding was discovered on. */
 export type Surface = 'types' | 'runtime';
 
@@ -138,4 +140,6 @@ export interface AuditOptions {
 	extractLimits?: ExtractLimits;
 	/** Extra resolution conditions to activate (e.g. `["browser"]`), added to the defaults. */
 	conditions?: readonly string[];
+	/** Optional progress sink, notified at each audit phase (acquire, materialize, scan). */
+	progress?: ProgressReporter;
 }

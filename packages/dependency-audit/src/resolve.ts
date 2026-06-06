@@ -25,19 +25,42 @@ export interface TypeResolver {
 
 /**
  * Materializes every declared dependency into `<workDir>/node_modules`, in parallel.
- * Both the type and runtime resolvers then run against this one shared tree, derived
- * from the target's declared ranges — never the author's ambient `node_modules`.
+ * Both the type and runtime resolvers then run against this one shared tree, derived from the target's declared ranges — never the author's ambient `node_modules`.
+ *
+ * Every dep is awaited to completion before this returns or throws, even when one fails: a failure is captured and rethrown only after the rest settle.
+ * That keeps progress honest (the count always reaches `total`) and avoids leaving a surviving download writing into `workDir` after the caller starts tearing it down.
+ * `onProgress` (if given) fires with the running completion count after each dep settles, including failures.
  */
 export async function materializeDeps(
 	deps: DeclaredDependency[],
 	provider: RegistryProvider,
 	workDir: string,
+	onProgress?: (done: number, total: number) => void,
 ): Promise<ResolvedDependency[]> {
-	return mapLimit(deps, MATERIALIZE_CONCURRENCY, async (dep) => ({
-		name: dep.name,
-		range: dep.range,
-		version: await provider.materialize(dep.name, dep.range, workDir),
-	}));
+	const total = deps.length;
+	let done = 0;
+	let failed = false;
+	let firstError: unknown;
+	const resolved = await mapLimit(deps, MATERIALIZE_CONCURRENCY, async (dep) => {
+		try {
+			const version = await provider.materialize(dep.name, dep.range, workDir);
+			return { name: dep.name, range: dep.range, version };
+		} catch (error) {
+			// Defer the throw so other in-flight deps still settle (no orphaned writes; honest count).
+			if (!failed) {
+				failed = true;
+				firstError = error;
+			}
+			return { name: dep.name, range: dep.range, version: undefined };
+		} finally {
+			done++;
+			onProgress?.(done, total);
+		}
+	});
+	if (failed) {
+		throw firstError;
+	}
+	return resolved;
 }
 
 /**

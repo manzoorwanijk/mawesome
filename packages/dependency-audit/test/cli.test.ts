@@ -1,4 +1,4 @@
-import { execFileSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -14,24 +14,18 @@ const badTarget = join(targets, '__no_such_target__');
 
 /**
  * Runs the CLI as a subprocess (Node strips the TS types), capturing status + stdout + stderr.
- * `FORCE_COLOR` / `NO_COLOR` are cleared for the child by default so every output assertion is
- * hermetic regardless of the runner's environment; a test that wants color re-sets them via
- * `env` (a key set to `undefined` stays unset — Node omits undefined env values).
+ * `spawnSync` always captures both streams (even on a clean exit), so a test can assert that a successful run emits nothing on stderr — the child's stderr is a pipe, not a TTY, so the progress spinner stays silent.
+ * `FORCE_COLOR` / `NO_COLOR` are cleared for the child by default so every output assertion is hermetic regardless of the runner's environment; a test that wants color re-sets them via `env` (a key set to `undefined` stays unset — Node omits undefined env).
  */
 function runCli(
 	args: string[],
 	env?: NodeJS.ProcessEnv,
 ): { status: number; stdout: string; stderr: string } {
-	try {
-		const stdout = execFileSync('node', [cli, ...args], {
-			encoding: 'utf8',
-			env: { ...process.env, FORCE_COLOR: undefined, NO_COLOR: undefined, ...env },
-		});
-		return { status: 0, stdout, stderr: '' };
-	} catch (error) {
-		const e = error as { status: number | null; stdout: string; stderr: string };
-		return { status: e.status ?? -1, stdout: e.stdout ?? '', stderr: e.stderr ?? '' };
-	}
+	const result = spawnSync('node', [cli, ...args], {
+		encoding: 'utf8',
+		env: { ...process.env, FORCE_COLOR: undefined, NO_COLOR: undefined, ...env },
+	});
+	return { status: result.status ?? -1, stdout: result.stdout ?? '', stderr: result.stderr ?? '' };
 }
 
 describe('cli batch isolation', () => {
@@ -66,6 +60,14 @@ describe('cli batch isolation', () => {
 		const { status, stderr } = runCli(['--config', cfg, okTarget]);
 		expect(status).toBe(2);
 		expect(stderr).toContain(`Invalid config ${cfg}`);
+	});
+
+	it('writes no progress to stderr when stderr is not a TTY', () => {
+		// The child's stderr is a pipe here, so the spinner must stay silent — progress never pollutes a redirect or a captured log.
+		const { status, stdout, stderr } = runCli([okTarget]);
+		expect(status).toBe(1);
+		expect(stdout).toContain('require-forms');
+		expect(stderr).toBe('');
 	});
 });
 
