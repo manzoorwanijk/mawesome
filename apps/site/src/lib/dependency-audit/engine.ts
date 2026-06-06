@@ -20,9 +20,6 @@ import type {
 const REGISTRY = 'https://registry.npmjs.org';
 const JSDELIVR_RESOLVE = 'https://data.jsdelivr.com/v1/packages/npm';
 
-/** npm tarballs root every entry under `package/`. */
-const TAR_ROOT = 'package/';
-
 /** Bounds so a huge package or a decompression bomb can't freeze or OOM the tab. */
 const MAX_COMPRESSED_BYTES = 32 * 1024 * 1024;
 const MAX_DECOMPRESSED_BYTES = 96 * 1024 * 1024;
@@ -125,14 +122,50 @@ async function extractInto(
 	const files = parseTar(await gunzipCapped(res.body, MAX_DECOMPRESSED_BYTES));
 	if (files.length > MAX_ENTRIES)
 		throw new Error('Package has too many files to audit in the browser.');
+	/* nanotar normalizes every entry path on parse (collapsing `..`/`.`/`//`, dropping a leading
+	 * slash), so writes can never escape destDir — but that also erases the `..` node-tar uses to
+	 * *reject* a malformed entry, so a crafted `package/../other/x` would otherwise land under a
+	 * different root than the real one. npm/DefinitelyTyped tarballs root every entry under exactly
+	 * one directory, so pin to that dominant root and drop strays — matching the CLI's `strip: 1`. */
+	const root = dominantRoot(files);
 	for (const file of files) {
-		// npm roots every entry under `package/`; ignore anything else (pax headers, odd layouts).
-		if (file.type && file.type !== 'file') continue;
-		if (!file.name.startsWith(TAR_ROOT)) continue;
-		const rel = file.name.slice(TAR_ROOT.length);
-		// Reject `..` as a path *segment* (traversal) but keep names that merely contain `..`.
-		if (rel && !rel.split('/').includes('..')) fs.writeFile(`${destDir}/${rel}`, file.text);
+		const segments = pathSegments(file);
+		// Keep only files under the one real root; a stray under another root is a collapsed-`..` path.
+		if (!segments || segments[0] !== root) continue;
+		const rel = segments.slice(1).join('/');
+		if (rel) fs.writeFile(`${destDir}/${rel}`, file.text);
 	}
+}
+
+/**
+ * A tar entry's clean path segments, or `undefined` to skip it: non-file entries, single-segment
+ * names (no root to strip), and anything with a `..` segment (defense in depth — nanotar collapses
+ * `..`, but reject it outright if the parser ever stops). Empty (`//`, leading slash) and `.`
+ * segments are dropped so a quirky `package//index.js` can't become a distinct, unreachable key.
+ */
+function pathSegments(file: { name: string; type?: string }): string[] | undefined {
+	if (file.type && file.type !== 'file') return undefined;
+	const segments = file.name.split('/').filter((s) => s !== '' && s !== '.');
+	if (segments.includes('..') || segments.length < 2) return undefined;
+	return segments;
+}
+
+/** The top-level directory under which the most entries live — the tarball's real package root. */
+function dominantRoot(files: { name: string; type?: string }[]): string | undefined {
+	const counts = new Map<string, number>();
+	for (const file of files) {
+		const segments = pathSegments(file);
+		if (segments) counts.set(segments[0], (counts.get(segments[0]) ?? 0) + 1);
+	}
+	let root: string | undefined;
+	let max = 0;
+	for (const [seg, n] of counts) {
+		if (n > max) {
+			max = n;
+			root = seg;
+		}
+	}
+	return root;
 }
 
 /** A provider that materializes declared deps into the in-memory fs from the CDN. */

@@ -9,7 +9,8 @@
 		"dev": "pnpm run sync:docs && astro dev",
 		"build": "pnpm run sync:docs && astro build",
 		"preview": "astro preview",
-		"typecheck": "pnpm run sync:docs && astro sync && astro-check"
+		"typecheck": "pnpm run sync:docs && astro sync && astro-check",
+		"parity": "node scripts/parity.ts"
 	},
 	"dependencies": {
 		"@astrojs/starlight": "^0.39.3",
