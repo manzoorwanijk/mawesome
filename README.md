@@ -2,6 +2,8 @@
 
 A pnpm monorepo for publishing packages under the `@mawesome/*` scope, with a strict, modern, all-oxc toolchain.
 
+📖 **Docs & interactive playgrounds:** **[mawesome.pages.dev](https://mawesome.pages.dev)** — try the tools in your browser, no install.
+
 ## Toolchain
 
 - **pnpm 10** workspaces with supply-chain hardening (3-day release cooldown, blocked dependency build scripts, no hoisting, no root dependencies).
@@ -14,9 +16,11 @@ A pnpm monorepo for publishing packages under the `@mawesome/*` scope, with a st
 
 ## Packages
 
-| Package    | Description                                                       |
-| ---------- | ----------------------------------------------------------------- |
-| _none yet_ | _Add one with `/add-package` or by copying `templates/package/`._ |
+| Package                                                     | Description                                                                                                                                                                                                                                                                                 |
+| ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`@mawesome/dependency-audit`](./packages/dependency-audit) | Verify every reachable import in a package's released artifact is declared and resolvable. ([npm](https://www.npmjs.com/package/@mawesome/dependency-audit) · [docs](https://mawesome.pages.dev/dependency-audit/) · [playground](https://mawesome.pages.dev/dependency-audit/playground/)) |
+
+Add another with `/add-package` or by copying `templates/package/`.
 
 ## Quickstart
 
