@@ -2,6 +2,8 @@
 
 > Verify every reachable bare import in a package's **released** artifact is declared and resolvable.
 
+**Try it live in your browser** — audit any published npm package, nothing installed: **[the dependency-audit playground](https://mawesome.pages.dev/dependency-audit/playground/)**.
+
 Catches the bug class where a published package imports a module — at runtime or in its emitted `.d.ts` — that resolves at the author's build (via root hoisting, a `devDependency`, or a workspace link) but isn't declared as a consumer-visible dependency, so a consumer installing it from npm can't resolve it. The motivating case: an emitted declaration does `import('react')` but `@types/react` was never declared in `dependencies` or `peerDependencies` (or it was declared only in `devDependencies`).
 
 > **Scope:** both the **type (`.d.ts`)** and **runtime (JS)** surfaces, against a local directory, a `.tgz`, or **any published spec** (`name@version`/tag, `@scope/name`, or an `http(s)` tarball URL — fetched via npm's cache/auth). Resolution runs against the package's _declared_ dependency ranges (materialized fresh), never the author's ambient `node_modules`. The runtime pass discovers entry points from `exports` (both `import`/`require` profiles), legacy `main`/`module`, and `bin`, follows the JS import graph, and honors each dep's own `exports`/`main` per call form. Node builtins need no declaration at runtime; on the type surface they imply `@types/node`.

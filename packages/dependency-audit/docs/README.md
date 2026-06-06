@@ -2,6 +2,8 @@
 
 Reference documentation for `@mawesome/dependency-audit` — a fully-static tool that verifies every reachable bare import in a package's **released** artifact (its type `.d.ts` surface and its runtime JS surface) is **declared** in the manifest and **resolvable** through the package's own declared dependencies.
 
+**Try it live in your browser** — audit any published npm package, nothing installed: **[the dependency-audit playground](https://mawesome.pages.dev/dependency-audit/playground/)**.
+
 The [package README](../README.md) is the quick start. These docs go deeper, and are written to be precise enough for both humans and AI agents to rely on.
 
 ## Contents
