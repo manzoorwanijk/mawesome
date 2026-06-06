@@ -10,7 +10,7 @@ A pnpm monorepo that publishes packages under the `@mawesome/*` scope. The repos
 
 | Concern         | Tool                                                               |
 | --------------- | ------------------------------------------------------------------ |
-| Package manager | **pnpm 10** (Node `>=24.12`, no Corepack — see Provisioning)       |
+| Package manager | **pnpm 10** (Node `>=24.12`, see Provisioning)                     |
 | Lint            | **oxlint** (oxc)                                                   |
 | Format          | **oxfmt** (oxc) — the single source of truth for formatting        |
 | Dependencies    | **syncpack** — one version per dependency + `workspace:*` protocol |
@@ -63,6 +63,6 @@ Repo-level CLIs (oxlint, oxfmt, syncpack, tsgo) and their typed configs live in 
 
 Use `/add-package <name>` (or copy `templates/package/`) — see CONTRIBUTING.md. A new package extends `@mawesome/tsconfig`, builds with tsdown (dual ESM/CJS + `.d.ts`), declares all of its own dependencies (matching the repo-wide version), and ships a `check:exports` gate.
 
-## Provisioning (no Corepack)
+## Provisioning
 
-Corepack is being unbundled from Node, so we don't rely on it. CI installs pnpm with `pnpm/action-setup@v4` (it reads the version from the `packageManager` field). Locally, install pnpm standalone (`npm i -g pnpm@10`, the pnpm install script, or a version manager like mise/proto). `devEngines` **errors** on a mismatched Node; it only **warns** on a non-pnpm package manager, because the release pipeline publishes through npm (`changeset publish` → `npm publish`) and a hard error there would block publishing.
+CI installs pnpm with `pnpm/action-setup@v4` (it reads the version from the `packageManager` field). Locally, install pnpm standalone (`npm i -g pnpm@10`, the pnpm install script, or a version manager like mise/proto). `devEngines` **errors** on a mismatched Node; it only **warns** on a non-pnpm package manager, because the release pipeline publishes through npm (`changeset publish` → `npm publish`) and a hard error there would block publishing.
