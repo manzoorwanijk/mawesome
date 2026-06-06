@@ -34,29 +34,34 @@ const CORPUS = [
 	'@types/node', // a scoped @types package audited directly
 ];
 
-/** A finding reduced to its substance — `firstSeenIn` is a locator, excluded so scan-order can't false-positive. */
+/**
+ * A finding reduced to its substance, including the user-visible `suggestion` (deterministic).
+ * Only `firstSeenIn` is excluded — it's a scan-order-dependent locator that would false-positive.
+ */
 function findingKey(f: AuditResult['findings'][number]): string {
-	return `${f.surface}\t${f.kind}\t${f.specifier}\t${f.packageName}`;
+	return `${f.surface}\t${f.kind}\t${f.specifier}\t${f.packageName}\t${f.suggestion}`;
 }
 
-/** The comparable projection of an audit result: version, findings, notices, unchecked, dep versions. */
+/** The comparable projection of an audit result: version, findings, notices, unchecked, declared+resolved deps. */
 interface Canonical {
 	version: string | undefined;
 	ok: boolean;
 	findings: string[];
 	notices: string[];
 	unchecked: string[];
-	deps: Record<string, string | undefined>;
+	deps: Record<string, string>;
 }
 
 function canonical(r: AuditResult): Canonical {
-	const deps: Record<string, string | undefined> = {};
-	for (const d of r.resolvedDeps) deps[d.name] = d.version;
+	const deps: Record<string, string> = {};
+	// Keep both the declared range and the resolved version: a range mismatch is a real adapter
+	// divergence even when today's resolved version happens to coincide.
+	for (const d of r.resolvedDeps) deps[d.name] = `${d.range} → ${d.version}`;
 	return {
 		version: r.packageVersion,
 		ok: r.ok,
 		findings: r.findings.map(findingKey).toSorted(),
-		notices: r.notices.map((n) => `${n.surface}\t${n.kind}`).toSorted(),
+		notices: r.notices.map((n) => `${n.surface}\t${n.kind}\t${n.message}`).toSorted(),
 		unchecked: r.unchecked.map((u) => `${u.specifier}\t${u.reason}`).toSorted(),
 		deps,
 	};
