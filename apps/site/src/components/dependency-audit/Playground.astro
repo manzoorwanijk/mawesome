@@ -25,8 +25,8 @@ const examples = ['react', 'lodash@4', 'chalk@5', 'debug@4'];
 			/>
 			<button type="submit" data-da-submit>Audit</button>
 		</div>
-		<p class="da-examples">
-			Try:
+		<div class="da-examples">
+			<span class="da-examples-label">Try:</span>
 			{
 				examples.map((example) => (
 					<button type="button" class="da-chip" data-da-example={example}>
@@ -34,7 +34,7 @@ const examples = ['react', 'lodash@4', 'chalk@5', 'debug@4'];
 					</button>
 				))
 			}
-		</p>
+		</div>
 	</form>
 
 	<p class="da-hint">
@@ -70,39 +70,48 @@ const examples = ['react', 'lodash@4', 'chalk@5', 'debug@4'];
 		};
 
 		const findingRow = (f: Finding): string => `
-			<li class="da-finding">
-				<span class="da-tag da-tag--${f.surface}">${f.surface}</span>
-				<code>${escape(f.specifier)}</code>
-				<span class="da-finding-kind">${escape(f.kind)}</span>
-				<p class="da-finding-sugg">${escape(f.suggestion)}</p>
-				<p class="da-finding-loc">first seen in <code>${escape(f.firstSeenIn)}</code></p>
+			<li class="da-card da-card--finding">
+				<div class="da-card-head">
+					<span class="da-tag da-tag--${f.surface}">${f.surface}</span>
+					<code class="da-spec">${escape(f.specifier)}</code>
+					<span class="da-kind">${escape(f.kind)}</span>
+				</div>
+				<p class="da-card-msg">${escape(f.suggestion)}</p>
+				<p class="da-card-loc">first seen in <code>${escape(f.firstSeenIn)}</code></p>
 			</li>`;
 
+		const noticeRow = (n: AuditResult['notices'][number]): string => `
+			<li class="da-card da-card--notice">
+				<div class="da-card-head">
+					<span class="da-tag da-tag--${n.surface}">${n.surface}</span>
+					<span class="da-kind da-kind--notice">${escape(n.kind)}</span>
+				</div>
+				<p class="da-card-msg">${escape(n.message)}</p>
+			</li>`;
+
+		const uncheckedRow = (u: AuditResult['unchecked'][number]): string => `
+			<li class="da-card da-card--unchecked">
+				<div class="da-card-head"><code class="da-spec">${escape(u.specifier)}</code></div>
+				<p class="da-card-msg">${escape(u.reason)}</p>
+			</li>`;
+
+		const section = (title: string, rows: string[]): string =>
+			rows.length
+				? `${title ? `<h4 class="da-section">${title}</h4>` : ''}<ul class="da-list">${rows.join('')}</ul>`
+				: '';
+
 		const renderResult = (resolved: string, result: AuditResult): string => {
-			const status = result.ok
-				? '<span class="da-pill da-pill--ok">No issues found</span>'
-				: `<span class="da-pill da-pill--bad">${result.findings.length} finding${result.findings.length === 1 ? '' : 's'}</span>`;
+			const count = result.findings.length;
+			// `ok` only means no findings; a clean pass can still carry notices/unchecked entries.
+			const fullyClean = count === 0 && result.notices.length === 0 && result.unchecked.length === 0;
+			const status = count
+				? `<span class="da-pill da-pill--bad">✗ ${count} finding${count === 1 ? '' : 's'}</span>`
+				: fullyClean
+					? '<span class="da-pill da-pill--ok">✓ No issues found</span>'
+					: '<span class="da-pill da-pill--ok">✓ No findings</span>';
 
-			const findings = result.findings.length
-				? `<ul class="da-list">${result.findings.map(findingRow).join('')}</ul>`
-				: '';
-
-			const notices = result.notices.length
-				? `<h4>Notices</h4><ul class="da-list">${result.notices
-						.map(
-							(n) =>
-								`<li class="da-finding"><span class="da-tag da-tag--${n.surface}">${n.surface}</span> <span class="da-finding-kind">${escape(n.kind)}</span><p class="da-finding-sugg">${escape(n.message)}</p></li>`,
-						)
-						.join('')}</ul>`
-				: '';
-
-			const unchecked = result.unchecked.length
-				? `<h4>Unchecked</h4><ul class="da-list">${result.unchecked
-						.map(
-							(u) =>
-								`<li class="da-finding"><code>${escape(u.specifier)}</code><p class="da-finding-sugg">${escape(u.reason)}</p></li>`,
-						)
-						.join('')}</ul>`
+			const summary = fullyClean
+				? `<p class="da-summary">Every reachable import is declared and resolvable through the package's dependencies.</p>`
 				: '';
 
 			const deps = result.resolvedDeps.length
@@ -112,7 +121,11 @@ const examples = ['react', 'lodash@4', 'chalk@5', 'debug@4'];
 			return `
 				<div class="da-result">
 					<div class="da-result-head">${status}<code class="da-resolved">${escape(resolved)}</code></div>
-					${findings}${notices}${unchecked}${deps}
+					${summary}
+					${section('', result.findings.map(findingRow))}
+					${section('Notices', result.notices.map(noticeRow))}
+					${section('Unchecked', result.unchecked.map(uncheckedRow))}
+					${deps}
 				</div>`;
 		};
 
@@ -197,6 +210,16 @@ const examples = ['react', 'lodash@4', 'chalk@5', 'debug@4'];
 		gap: 0.4rem;
 		flex-wrap: wrap;
 		margin-block: 0.6rem 0;
+	}
+	/*
+	 * Starlight's prose styles add a top margin to non-first siblings, which offsets the items in our flex rows.
+	 * Neutralize it so each row aligns on a single baseline.
+	 */
+	.da-row > *,
+	.da-examples > * {
+		margin: 0;
+	}
+	.da-examples-label {
 		font-size: var(--sl-text-sm);
 		color: var(--sl-color-gray-3);
 	}
@@ -213,6 +236,10 @@ const examples = ['react', 'lodash@4', 'chalk@5', 'debug@4'];
 	.da-chip:hover {
 		background: var(--sl-color-gray-6);
 	}
+	.da-chip:disabled {
+		opacity: 0.6;
+		cursor: progress;
+	}
 	.da-hint {
 		font-size: var(--sl-text-sm);
 		color: var(--sl-color-gray-3);
@@ -221,83 +248,143 @@ const examples = ['react', 'lodash@4', 'chalk@5', 'debug@4'];
 	.da-output:empty {
 		display: none;
 	}
-	.da-status,
-	.da-error {
+</style>
+
+<!--
+	The result is injected via innerHTML at runtime, so it never receives Astro's scoped-style attribute.
+	These rules are therefore global, but namespaced under `.da-output` (unique to this component).
+-->
+<style is:global>
+	.da-output .da-status,
+	.da-output .da-error {
 		padding: 0.8rem 1rem;
 		border-radius: 0.5rem;
 	}
-	.da-error {
+	.da-output .da-error {
 		background: var(--sl-color-red-low);
 		color: var(--sl-color-red-high);
 	}
-	.da-result-head {
+	/* Separate the result from the controls with a rule + space above. */
+	.da-output .da-result {
+		margin-block-start: 1.5rem;
+		padding-block-start: 1.25rem;
+		border-block-start: 1px solid var(--sl-color-gray-5);
+	}
+	.da-output .da-result-head {
 		display: flex;
 		align-items: center;
 		gap: 0.6rem;
 		flex-wrap: wrap;
-		margin-block-end: 1rem;
+		margin-block-end: 0.85rem;
 	}
-	.da-pill {
-		padding: 0.2rem 0.65rem;
+	.da-output .da-result-head > *,
+	.da-output .da-card-head > * {
+		margin: 0;
+	}
+	.da-output .da-pill {
+		padding: 0.25rem 0.7rem;
 		border-radius: 999px;
 		font-size: var(--sl-text-sm);
-		font-weight: 600;
+		font-weight: 700;
+		border: 1px solid transparent;
 	}
-	.da-pill--ok {
+	.da-output .da-pill--ok {
 		background: var(--sl-color-green-low);
 		color: var(--sl-color-green-high);
+		border-color: var(--sl-color-green);
 	}
-	.da-pill--bad {
+	.da-output .da-pill--bad {
 		background: var(--sl-color-red-low);
 		color: var(--sl-color-red-high);
+		border-color: var(--sl-color-red);
 	}
-	.da-resolved {
+	.da-output .da-resolved {
 		color: var(--sl-color-gray-2);
 	}
-	.da-list {
+	.da-output .da-summary {
+		margin-block: 0 1rem;
+		color: var(--sl-color-gray-2);
+	}
+	.da-output .da-section {
+		margin-block: 1.5rem 0.75rem;
+		font-size: var(--sl-text-base);
+	}
+	.da-output .da-list {
 		list-style: none;
 		padding: 0;
 		margin: 0;
 		display: grid;
-		gap: 0.7rem;
+		gap: 0.75rem;
 	}
-	.da-finding {
-		padding: 0.75rem 0.9rem;
+	/* Each entry is a card flagged by a colored left edge: red findings, blue notices, orange unchecked. */
+	.da-output .da-card {
+		padding: 0.85rem 1rem;
 		border: 1px solid var(--sl-color-gray-5);
+		border-inline-start: 3px solid var(--sl-color-gray-4);
 		border-radius: 0.5rem;
 		background: var(--sl-color-gray-6);
 	}
-	.da-tag {
+	.da-output .da-card--finding {
+		border-inline-start-color: var(--sl-color-red);
+	}
+	.da-output .da-card--notice {
+		border-inline-start-color: var(--sl-color-blue);
+	}
+	.da-output .da-card--unchecked {
+		border-inline-start-color: var(--sl-color-orange);
+	}
+	.da-output .da-card-head {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		flex-wrap: wrap;
+		margin-block-end: 0.5rem;
+	}
+	.da-output .da-tag {
 		display: inline-block;
-		padding: 0.05rem 0.45rem;
+		padding: 0.1rem 0.45rem;
 		border-radius: 0.35rem;
 		font-size: var(--sl-text-xs);
 		font-weight: 700;
 		text-transform: uppercase;
 		letter-spacing: 0.03em;
-		margin-inline-end: 0.4rem;
 	}
-	.da-tag--types {
+	.da-output .da-tag--types {
 		background: var(--sl-color-purple-low);
 		color: var(--sl-color-purple-high);
 	}
-	.da-tag--runtime {
+	.da-output .da-tag--runtime {
 		background: var(--sl-color-blue-low);
 		color: var(--sl-color-blue-high);
 	}
-	.da-finding-kind {
-		font-size: var(--sl-text-sm);
-		color: var(--sl-color-gray-2);
+	.da-output .da-spec {
+		font-weight: 600;
+		color: var(--sl-color-white);
 	}
-	.da-finding-sugg {
-		margin-block: 0.5rem 0.25rem;
+	.da-output .da-kind {
+		padding: 0.1rem 0.45rem;
+		border-radius: 0.35rem;
+		font-size: var(--sl-text-xs);
+		font-weight: 700;
+		text-transform: uppercase;
+		letter-spacing: 0.03em;
+		background: var(--sl-color-red-low);
+		color: var(--sl-color-red-high);
 	}
-	.da-finding-loc {
+	.da-output .da-kind--notice {
+		background: var(--sl-color-blue-low);
+		color: var(--sl-color-blue-high);
+	}
+	.da-output .da-card-msg {
+		margin-block: 0 0.3rem;
+		color: var(--sl-color-white);
+	}
+	.da-output .da-card-loc {
 		margin: 0;
 		font-size: var(--sl-text-sm);
 		color: var(--sl-color-gray-3);
 	}
-	.da-deps {
+	.da-output .da-deps {
 		margin-block-start: 1rem;
 		font-size: var(--sl-text-sm);
 		color: var(--sl-color-gray-3);
