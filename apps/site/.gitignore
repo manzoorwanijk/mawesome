@@ -1,0 +1,14 @@
+# Astro
+dist/
+.astro/
+
+# Tool docs generated from packages/<tool>/docs by scripts/sync-docs.ts (single source of truth).
+# Authored pages (e.g. index.mdx) live directly in src/content/docs/.
+src/content/docs/*/
+
+# build/deps
+node_modules/
+
+# env
+.env
+.env.production

@@ -1,7 +1,12 @@
 import type { RcFile } from 'syncpack';
 
 export default {
-	source: ['package.json', 'packages/*/package.json', 'tools/*/package.json'],
+	source: [
+		'package.json',
+		'packages/*/package.json',
+		'tools/*/package.json',
+		'apps/*/package.json',
+	],
 	versionGroups: [
 		{
 			label: 'Local workspace package versions are managed by changesets, not syncpack.',

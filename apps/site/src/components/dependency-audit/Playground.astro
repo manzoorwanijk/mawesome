@@ -1,0 +1,392 @@
+---
+/**
+ * Interactive dependency-audit playground. The audit runs entirely in the browser:
+ * the package's published tarball is fetched from a CDN, extracted into an in-memory
+ * filesystem, and checked by the `@mawesome/dependency-audit/browser` core. See
+ * src/lib/dependency-audit/engine.ts.
+ */
+const examples = ['react', 'lodash@4', 'chalk@5', 'debug@4'];
+---
+
+<section class="da-playground" aria-label="dependency-audit playground">
+	<form class="da-form" data-da-form>
+		<label class="da-label" for="da-spec">Package to audit</label>
+		<div class="da-row">
+			<input
+				id="da-spec"
+				name="spec"
+				type="text"
+				inputmode="text"
+				autocomplete="off"
+				autocapitalize="off"
+				spellcheck="false"
+				placeholder="package name, e.g. react or lodash@4"
+				data-da-input
+			/>
+			<button type="submit" data-da-submit>Audit</button>
+		</div>
+		<div class="da-examples">
+			<span class="da-examples-label">Try:</span>
+			{
+				examples.map((example) => (
+					<button type="button" class="da-chip" data-da-example={example}>
+						{example}
+					</button>
+				))
+			}
+		</div>
+	</form>
+
+	<p class="da-hint">
+		Runs fully in your browser — it fetches the <strong>published</strong> tarball from npm and
+		resolves each import against the package's <strong>declared</strong> dependencies. Nothing is
+		installed or executed.
+	</p>
+
+	<div class="da-output" data-da-output aria-live="polite"></div>
+</section>
+
+<script>
+	import { runAudit } from '../../lib/dependency-audit/engine.ts';
+	import type { AuditResult, Finding } from '@mawesome/dependency-audit/browser';
+
+	const form = document.querySelector<HTMLFormElement>('[data-da-form]');
+	const input = document.querySelector<HTMLInputElement>('[data-da-input]');
+	const submit = document.querySelector<HTMLButtonElement>('[data-da-submit]');
+	const output = document.querySelector<HTMLDivElement>('[data-da-output]');
+	const chips = [...document.querySelectorAll<HTMLButtonElement>('[data-da-example]')];
+
+	if (form && input && submit && output) {
+		const escape = (value: string): string =>
+			value.replace(
+				/[&<>"]/g,
+				(c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] ?? c,
+			);
+
+		const setBusy = (busy: boolean): void => {
+			submit.disabled = busy;
+			submit.textContent = busy ? 'Auditing…' : 'Audit';
+			for (const chip of chips) chip.disabled = busy;
+		};
+
+		const findingRow = (f: Finding): string => `
+			<li class="da-card da-card--finding">
+				<div class="da-card-head">
+					<span class="da-tag da-tag--${f.surface}">${f.surface}</span>
+					<code class="da-spec">${escape(f.specifier)}</code>
+					<span class="da-kind">${escape(f.kind)}</span>
+				</div>
+				<p class="da-card-msg">${escape(f.suggestion)}</p>
+				<p class="da-card-loc">first seen in <code>${escape(f.firstSeenIn)}</code></p>
+			</li>`;
+
+		const noticeRow = (n: AuditResult['notices'][number]): string => `
+			<li class="da-card da-card--notice">
+				<div class="da-card-head">
+					<span class="da-tag da-tag--${n.surface}">${n.surface}</span>
+					<span class="da-kind da-kind--notice">${escape(n.kind)}</span>
+				</div>
+				<p class="da-card-msg">${escape(n.message)}</p>
+			</li>`;
+
+		const uncheckedRow = (u: AuditResult['unchecked'][number]): string => `
+			<li class="da-card da-card--unchecked">
+				<div class="da-card-head"><code class="da-spec">${escape(u.specifier)}</code></div>
+				<p class="da-card-msg">${escape(u.reason)}</p>
+			</li>`;
+
+		const section = (title: string, rows: string[]): string =>
+			rows.length
+				? `${title ? `<h4 class="da-section">${title}</h4>` : ''}<ul class="da-list">${rows.join('')}</ul>`
+				: '';
+
+		const renderResult = (resolved: string, result: AuditResult): string => {
+			const count = result.findings.length;
+			// `ok` only means no findings; a clean pass can still carry notices/unchecked entries.
+			const fullyClean = count === 0 && result.notices.length === 0 && result.unchecked.length === 0;
+			const status = count
+				? `<span class="da-pill da-pill--bad">✗ ${count} finding${count === 1 ? '' : 's'}</span>`
+				: fullyClean
+					? '<span class="da-pill da-pill--ok">✓ No issues found</span>'
+					: '<span class="da-pill da-pill--ok">✓ No findings</span>';
+
+			const summary = fullyClean
+				? `<p class="da-summary">Every reachable import is declared and resolvable through the package's dependencies.</p>`
+				: '';
+
+			const deps = result.resolvedDeps.length
+				? `<p class="da-deps">Resolved ${result.resolvedDeps.length} declared dependenc${result.resolvedDeps.length === 1 ? 'y' : 'ies'}.</p>`
+				: '';
+
+			return `
+				<div class="da-result">
+					<div class="da-result-head">${status}<code class="da-resolved">${escape(resolved)}</code></div>
+					${summary}
+					${section('', result.findings.map(findingRow))}
+					${section('Notices', result.notices.map(noticeRow))}
+					${section('Unchecked', result.unchecked.map(uncheckedRow))}
+					${deps}
+				</div>`;
+		};
+
+		// Supersede an in-flight audit when a new one starts: abort its fetches and ignore its result.
+		let controller: AbortController | null = null;
+		let runSeq = 0;
+
+		const run = async (spec: string): Promise<void> => {
+			const value = spec.trim();
+			if (!value) return;
+			input.value = value;
+			controller?.abort();
+			controller = new AbortController();
+			const { signal } = controller;
+			const seq = ++runSeq;
+
+			setBusy(true);
+			output.innerHTML = '<p class="da-status">Fetching and auditing…</p>';
+			try {
+				const { resolved, result } = await runAudit(value, signal);
+				if (seq === runSeq) output.innerHTML = renderResult(resolved, result);
+			} catch (error) {
+				if (seq !== runSeq || signal.aborted) return; // superseded by a newer run
+				const message = error instanceof Error ? error.message : String(error);
+				output.innerHTML = `<p class="da-error">${escape(message)}</p>`;
+			} finally {
+				if (seq === runSeq) setBusy(false);
+			}
+		};
+
+		form.addEventListener('submit', (event) => {
+			event.preventDefault();
+			void run(input.value);
+		});
+
+		for (const chip of chips) {
+			chip.addEventListener('click', () => void run(chip.dataset.daExample ?? ''));
+		}
+	}
+</script>
+
+<style>
+	.da-playground {
+		margin-block: 1.5rem;
+	}
+	.da-label {
+		display: block;
+		font-weight: 600;
+		margin-block-end: 0.4rem;
+	}
+	.da-row {
+		display: flex;
+		gap: 0.5rem;
+		flex-wrap: wrap;
+	}
+	.da-row input {
+		flex: 1 1 16rem;
+		padding: 0.55rem 0.7rem;
+		border: 1px solid var(--sl-color-gray-5);
+		border-radius: 0.5rem;
+		background: var(--sl-color-black);
+		color: var(--sl-color-white);
+		font: inherit;
+	}
+	.da-row button {
+		padding: 0.55rem 1.1rem;
+		border: 0;
+		border-radius: 0.5rem;
+		background: var(--sl-color-accent);
+		color: var(--sl-color-white);
+		font: inherit;
+		font-weight: 600;
+		cursor: pointer;
+	}
+	.da-row button:disabled {
+		opacity: 0.6;
+		cursor: progress;
+	}
+	.da-examples {
+		display: flex;
+		align-items: center;
+		gap: 0.4rem;
+		flex-wrap: wrap;
+		margin-block: 0.6rem 0;
+	}
+	/*
+	 * Starlight's prose styles add a top margin to non-first siblings, which offsets the items in our flex rows.
+	 * Neutralize it so each row aligns on a single baseline.
+	 */
+	.da-row > *,
+	.da-examples > * {
+		margin: 0;
+	}
+	.da-examples-label {
+		font-size: var(--sl-text-sm);
+		color: var(--sl-color-gray-3);
+	}
+	.da-chip {
+		padding: 0.2rem 0.6rem;
+		border: 1px solid var(--sl-color-gray-5);
+		border-radius: 999px;
+		background: transparent;
+		color: var(--sl-color-text-accent);
+		font: inherit;
+		font-size: var(--sl-text-sm);
+		cursor: pointer;
+	}
+	.da-chip:hover {
+		background: var(--sl-color-gray-6);
+	}
+	.da-chip:disabled {
+		opacity: 0.6;
+		cursor: progress;
+	}
+	.da-hint {
+		font-size: var(--sl-text-sm);
+		color: var(--sl-color-gray-3);
+		margin-block: 0.9rem;
+	}
+	.da-output:empty {
+		display: none;
+	}
+</style>
+
+<!--
+	The result is injected via innerHTML at runtime, so it never receives Astro's scoped-style attribute.
+	These rules are therefore global, but namespaced under `.da-output` (unique to this component).
+-->
+<style is:global>
+	.da-output .da-status,
+	.da-output .da-error {
+		padding: 0.8rem 1rem;
+		border-radius: 0.5rem;
+	}
+	.da-output .da-error {
+		background: var(--sl-color-red-low);
+		color: var(--sl-color-red-high);
+	}
+	/* Separate the result from the controls with a rule + space above. */
+	.da-output .da-result {
+		margin-block-start: 1.5rem;
+		padding-block-start: 1.25rem;
+		border-block-start: 1px solid var(--sl-color-gray-5);
+	}
+	.da-output .da-result-head {
+		display: flex;
+		align-items: center;
+		gap: 0.6rem;
+		flex-wrap: wrap;
+		margin-block-end: 0.85rem;
+	}
+	.da-output .da-result-head > *,
+	.da-output .da-card-head > * {
+		margin: 0;
+	}
+	.da-output .da-pill {
+		padding: 0.25rem 0.7rem;
+		border-radius: 999px;
+		font-size: var(--sl-text-sm);
+		font-weight: 700;
+		border: 1px solid transparent;
+	}
+	.da-output .da-pill--ok {
+		background: var(--sl-color-green-low);
+		color: var(--sl-color-green-high);
+		border-color: var(--sl-color-green);
+	}
+	.da-output .da-pill--bad {
+		background: var(--sl-color-red-low);
+		color: var(--sl-color-red-high);
+		border-color: var(--sl-color-red);
+	}
+	.da-output .da-resolved {
+		color: var(--sl-color-gray-2);
+	}
+	.da-output .da-summary {
+		margin-block: 0 1rem;
+		color: var(--sl-color-gray-2);
+	}
+	.da-output .da-section {
+		margin-block: 1.5rem 0.75rem;
+		font-size: var(--sl-text-base);
+	}
+	.da-output .da-list {
+		list-style: none;
+		padding: 0;
+		margin: 0;
+		display: grid;
+		gap: 0.75rem;
+	}
+	/* Each entry is a card flagged by a colored left edge: red findings, blue notices, orange unchecked. */
+	.da-output .da-card {
+		padding: 0.85rem 1rem;
+		border: 1px solid var(--sl-color-gray-5);
+		border-inline-start: 3px solid var(--sl-color-gray-4);
+		border-radius: 0.5rem;
+		background: var(--sl-color-gray-6);
+	}
+	.da-output .da-card--finding {
+		border-inline-start-color: var(--sl-color-red);
+	}
+	.da-output .da-card--notice {
+		border-inline-start-color: var(--sl-color-blue);
+	}
+	.da-output .da-card--unchecked {
+		border-inline-start-color: var(--sl-color-orange);
+	}
+	.da-output .da-card-head {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		flex-wrap: wrap;
+		margin-block-end: 0.5rem;
+	}
+	.da-output .da-tag {
+		display: inline-block;
+		padding: 0.1rem 0.45rem;
+		border-radius: 0.35rem;
+		font-size: var(--sl-text-xs);
+		font-weight: 700;
+		text-transform: uppercase;
+		letter-spacing: 0.03em;
+	}
+	.da-output .da-tag--types {
+		background: var(--sl-color-purple-low);
+		color: var(--sl-color-purple-high);
+	}
+	.da-output .da-tag--runtime {
+		background: var(--sl-color-blue-low);
+		color: var(--sl-color-blue-high);
+	}
+	.da-output .da-spec {
+		font-weight: 600;
+		color: var(--sl-color-white);
+	}
+	.da-output .da-kind {
+		padding: 0.1rem 0.45rem;
+		border-radius: 0.35rem;
+		font-size: var(--sl-text-xs);
+		font-weight: 700;
+		text-transform: uppercase;
+		letter-spacing: 0.03em;
+		background: var(--sl-color-red-low);
+		color: var(--sl-color-red-high);
+	}
+	.da-output .da-kind--notice {
+		background: var(--sl-color-blue-low);
+		color: var(--sl-color-blue-high);
+	}
+	.da-output .da-card-msg {
+		margin-block: 0 0.3rem;
+		color: var(--sl-color-white);
+	}
+	.da-output .da-card-loc {
+		margin: 0;
+		font-size: var(--sl-text-sm);
+		color: var(--sl-color-gray-3);
+	}
+	.da-output .da-deps {
+		margin-block-start: 1rem;
+		font-size: var(--sl-text-sm);
+		color: var(--sl-color-gray-3);
+	}
+</style>

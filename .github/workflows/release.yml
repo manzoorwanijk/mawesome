@@ -83,7 +83,7 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Build packages
-        run: pnpm build # dist must exist for `changeset publish`
+        run: pnpm build:packages # dist must exist for `changeset publish` (apps don't publish)
       - name: Create Version PR or publish
         uses: changesets/action@a45c4d594aa4e2c509dc14a9f2b3b67ba3780d0d # v1.9.0
         with:

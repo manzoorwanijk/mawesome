@@ -1,0 +1,4 @@
+# oxfmt reads this file by default (alongside .gitignore). It isn't Astro/MDX-aware, so the
+# `apps/*` Astro templates own their own formatting; oxfmt still covers their .ts/.json.
+*.astro
+*.mdx

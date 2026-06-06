@@ -1,0 +1,38 @@
+---
+/**
+ * Per-tool playground route, generated for every registry tool with `playground: true`.
+ * Each tool's playground is bespoke (the engine differs), so components are mapped by slug;
+ * a tool flagged `playground` without a component here fails the build instead of 404-ing.
+ */
+import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro';
+import DependencyAuditPlayground from '../../components/dependency-audit/Playground.astro';
+import { type Tool, tools } from '../../tools.ts';
+
+const PLAYGROUNDS: Record<string, typeof DependencyAuditPlayground> = {
+	'dependency-audit': DependencyAuditPlayground,
+};
+
+export function getStaticPaths() {
+	return tools
+		.filter((tool) => tool.playground)
+		.map((tool) => ({ params: { tool: tool.slug }, props: { tool } }));
+}
+
+const { tool } = Astro.props as { tool: Tool };
+const Playground = PLAYGROUNDS[tool.slug];
+if (!Playground) {
+	throw new Error(
+		`No playground component is registered for "${tool.slug}" (it is flagged playground: true in src/tools.ts).`,
+	);
+}
+---
+
+<StarlightPage
+	frontmatter={{
+		title: `${tool.name} playground`,
+		description: `Run ${tool.name} in your browser against any published npm package.`,
+	}}
+>
+	<p>{tool.tagline}</p>
+	<Playground />
+</StarlightPage>
