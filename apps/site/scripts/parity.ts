@@ -72,8 +72,10 @@ function diff(cli: Canonical, browser: Canonical): string[] {
 	const setDiff = (label: string, a: string[], b: string[]): void => {
 		const bs = new Set(b);
 		const as = new Set(a);
-		for (const x of a) if (!bs.has(x)) out.push(`${label} only in CLI:     ${x.replace(/\t/g, ' · ')}`);
-		for (const x of b) if (!as.has(x)) out.push(`${label} only in browser: ${x.replace(/\t/g, ' · ')}`);
+		for (const x of a)
+			if (!bs.has(x)) out.push(`${label} only in CLI:     ${x.replace(/\t/g, ' · ')}`);
+		for (const x of b)
+			if (!as.has(x)) out.push(`${label} only in browser: ${x.replace(/\t/g, ' · ')}`);
 	};
 	setDiff('finding', cli.findings, browser.findings);
 	setDiff('notice', cli.notices, browser.notices);
