@@ -1,0 +1,54 @@
+{
+	"name": "mawesome",
+	"version": "0.0.0",
+	"private": true,
+	"description": "Monorepo for @mawesome/* packages",
+	"license": "MIT",
+	"author": "Manzoor Ahmad Wani",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/manzoorwanijk/mawesome.git"
+	},
+	"type": "module",
+	"scripts": {
+		"audit": "pnpm audit --audit-level=high",
+		"build": "pnpm -r --if-present build",
+		"changeset": "changeset",
+		"check": "pnpm lint && pnpm format:check && pnpm deps:lint && pnpm check:root-deps",
+		"check:exports": "pnpm -r --if-present --no-bail check:exports",
+		"check:root-deps": "node tools/repo/scripts/check-root-deps.ts",
+		"deps:fix": "pnpm --filter @mawesome/repo deps:fix",
+		"deps:lint": "pnpm --filter @mawesome/repo deps:lint",
+		"dev": "pnpm -r --parallel --if-present dev",
+		"format": "pnpm --filter @mawesome/repo format",
+		"format:check": "pnpm --filter @mawesome/repo format:check",
+		"lint": "pnpm --filter @mawesome/repo lint",
+		"lint:fix": "pnpm --filter @mawesome/repo lint:fix",
+		"release": "changeset publish",
+		"test": "pnpm -r --if-present test",
+		"typecheck": "pnpm -r --if-present typecheck",
+		"verify": "pnpm lint && pnpm format:check && pnpm deps:lint && pnpm check:root-deps && pnpm typecheck && pnpm test && pnpm build && pnpm check:exports",
+		"version": "changeset version",
+		"vscode:setup": "node tools/repo/scripts/install-vscode-settings.ts"
+	},
+	"devDependencies": {
+		"@changesets/changelog-github": "^0.7.0",
+		"@changesets/cli": "^2.31.0"
+	},
+	"devEngines": {
+		"packageManager": {
+			"name": "pnpm",
+			"version": "10.31.0",
+			"onFail": "error"
+		},
+		"runtime": {
+			"name": "node",
+			"version": ">=24.12.0",
+			"onFail": "error"
+		}
+	},
+	"engines": {
+		"node": ">=24.12.0"
+	},
+	"packageManager": "pnpm@10.31.0"
+}

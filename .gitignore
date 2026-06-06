@@ -1,0 +1,37 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+*.tsbuildinfo
+
+# Test / coverage
+coverage/
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Editor / OS
+.DS_Store
+.idea/
+*.swp
+
+# Env
+.env
+.env.*
+!.env.example
+
+# Project-scoped Claude commands/skills are versioned (override a global `.claude/` ignore);
+# keep machine-local settings out.
+!.claude/
+.claude/settings.local.json
+
+# VS Code: recommended settings are opt-in via `pnpm vscode:setup` (settings.dist.jsonc);
+# the generated local copy is the developer's own.
+.vscode/settings.json
+
+
+# Local scratch (e.g. the monorepo setup plan) — not tracked.
+temp/

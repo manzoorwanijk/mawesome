@@ -1,0 +1,57 @@
+{
+	"name": "@mawesome/PACKAGE_NAME",
+	"version": "0.0.0",
+	"description": "TODO: describe @mawesome/PACKAGE_NAME",
+	"keywords": [],
+	"homepage": "https://github.com/manzoorwanijk/mawesome/tree/main/packages/PACKAGE_NAME#readme",
+	"bugs": "https://github.com/manzoorwanijk/mawesome/issues",
+	"license": "MIT",
+	"author": "Manzoor Ahmad Wani",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/manzoorwanijk/mawesome.git",
+		"directory": "packages/PACKAGE_NAME"
+	},
+	"files": [
+		"dist"
+	],
+	"type": "module",
+	"main": "./dist/index.cjs",
+	"module": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"exports": {
+		".": {
+			"import": {
+				"types": "./dist/index.d.ts",
+				"default": "./dist/index.js"
+			},
+			"require": {
+				"types": "./dist/index.d.cts",
+				"default": "./dist/index.cjs"
+			}
+		}
+	},
+	"publishConfig": {
+		"access": "public",
+		"provenance": true
+	},
+	"scripts": {
+		"build": "tsdown",
+		"dev": "tsdown --watch",
+		"typecheck": "tsgo",
+		"test": "vitest run",
+		"check:exports": "attw --pack . && publint --strict"
+	},
+	"devDependencies": {
+		"@arethetypeswrong/cli": "^0.18.3",
+		"@mawesome/tsconfig": "workspace:*",
+		"@types/node": "^24.12.4",
+		"@typescript/native-preview": "7.0.0-dev.20260527.2",
+		"publint": "^0.3.21",
+		"tsdown": "^0.22.1",
+		"vitest": "^4.1.7"
+	},
+	"engines": {
+		"node": ">=24.12.0"
+	}
+}

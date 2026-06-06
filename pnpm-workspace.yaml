@@ -1,0 +1,37 @@
+packages:
+  - 'packages/*'
+  - 'tools/*'
+
+# --- toolchain reproducibility ---
+packageManagerStrictVersion: true # pnpm 10 setting (pnpm 11 renames it to `pmOnFail`)
+
+# --- security / supply-chain ---
+minimumReleaseAge: 4320 # 3 days; defers any release younger than this at resolution time
+minimumReleaseAgeExclude: [] # every pinned version is already older than the window
+onlyBuiltDependencies: [] # allowlist for dependency build scripts (start empty; add only reviewed entries)
+ignoredBuiltDependencies: [] # reviewed + deliberately not built
+strictDepBuilds: true # fail install if an un-allowlisted dep wants to run a build script
+verifyDepsBeforeRun: error # node_modules must match the lockfile before any `pnpm run`
+
+# --- no hoisting: a workspace may import only what it declares (pairs with no-root-deps) ---
+nodeLinker: isolated
+hoist: false
+publicHoistPattern: []
+
+# --- pnpm client settings (kept here, not in .npmrc) ---
+engineStrict: true
+autoInstallPeers: false
+dedupePeerDependents: true
+strictPeerDependencies: true
+
+# --- one lockfile covers every CI OS/CPU for the native tools (oxlint/oxfmt/rolldown) ---
+supportedArchitectures:
+  os:
+    - current
+    - linux
+    - darwin
+    - win32
+  cpu:
+    - current
+    - x64
+    - arm64
