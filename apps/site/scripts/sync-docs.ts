@@ -14,6 +14,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { type Tool, tools } from '../src/tools.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, '../../..');
@@ -25,22 +26,6 @@ const outRoot = join(here, '../src/content/docs');
  * production branch and a preview to its feature branch, so "Edit page" tracks the deployed source.
  */
 const sourceBranch = process.env.CF_PAGES_BRANCH ?? process.env.DOCS_SOURCE_BRANCH ?? 'main';
-
-/**
- * Sidebar order for a tool's docs, keyed by source filename (without `.md`).
- * `README` is always the section index (order 0); anything not listed sorts last, alphabetically.
- * This list is specific to dependency-audit; the Phase 2 tool registry will own per-tool ordering.
- */
-const DOC_ORDER = [
-	'concepts',
-	'cli',
-	'output-format',
-	'findings',
-	'api',
-	'resolution',
-	'limitations',
-	'comparison',
-];
 
 /** Normalize a package `repository` field into a GitHub blob base for the package's source tree. */
 function githubBlobBase(pkgJson: { repository?: { url?: string; directory?: string } }): string {
@@ -99,12 +84,18 @@ function frontmatter(title: string, editUrl: string, order: number, isIndex: boo
 	].join('\n');
 }
 
-function syncTool(toolSlug: string): number {
-	const docsDir = join(packagesDir, toolSlug, 'docs');
-	const pkgJson = JSON.parse(readFileSync(join(packagesDir, toolSlug, 'package.json'), 'utf8'));
+function syncTool(tool: Tool): number {
+	const { slug, docOrder } = tool;
+	const docsDir = join(packagesDir, slug, 'docs');
+	if (!existsSync(docsDir)) {
+		throw new Error(
+			`[sync-docs] ${slug}: no docs directory at ${docsDir} (registered in src/tools.ts).`,
+		);
+	}
+	const pkgJson = JSON.parse(readFileSync(join(packagesDir, slug, 'package.json'), 'utf8'));
 	const blobBase = githubBlobBase(pkgJson);
 
-	const outDir = join(outRoot, toolSlug);
+	const outDir = join(outRoot, slug);
 	rmSync(outDir, { recursive: true, force: true });
 	mkdirSync(outDir, { recursive: true });
 
@@ -114,10 +105,11 @@ function syncTool(toolSlug: string): number {
 		const isIndex = base === 'README';
 		const source = readFileSync(join(docsDir, file), 'utf8');
 
-		const order = isIndex ? 0 : DOC_ORDER.indexOf(base) + 1 || DOC_ORDER.length + 1;
+		// README is the section index (order 0); listed docs follow in order; the rest sort after.
+		const order = isIndex ? 0 : docOrder.indexOf(base) + 1 || docOrder.length + 1;
 		const { title, body: stripped } = splitLeadingH1(source, file);
 		const head = frontmatter(title, `${blobBase}/docs/${file}`, order, isIndex);
-		const body = rewriteLinks(stripped, toolSlug, blobBase);
+		const body = rewriteLinks(stripped, slug, blobBase);
 		const outName = isIndex ? 'index.md' : file;
 		writeFileSync(join(outDir, outName), `${head}\n${body}`);
 	}
@@ -125,12 +117,9 @@ function syncTool(toolSlug: string): number {
 }
 
 export function syncAllDocs(): void {
-	const tools = readdirSync(packagesDir).filter((name) =>
-		existsSync(join(packagesDir, name, 'docs')),
-	);
 	for (const tool of tools) {
 		const count = syncTool(tool);
-		console.log(`[sync-docs] ${tool}: ${count} page(s)`);
+		console.log(`[sync-docs] ${tool.slug}: ${count} page(s)`);
 	}
 }
 

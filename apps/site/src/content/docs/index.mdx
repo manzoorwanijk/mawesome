@@ -4,19 +4,19 @@ description: Docs and interactive playgrounds for the @mawesome/* tools.
 template: splash
 hero:
   tagline: Sharp, single-purpose tools for npm package authors — with live, in-browser playgrounds.
-  actions:
-    - text: dependency-audit
-      link: /dependency-audit/
-      icon: right-arrow
-      variant: primary
 ---
 
 import { Card, CardGrid } from '@astrojs/starlight/components';
+import { tools } from '../../tools.ts';
 
 <CardGrid>
-	<Card title="dependency-audit" icon="magnifier">
-		Verify every reachable import in a package's **released** artifact is declared and resolvable through its dependencies.
-
-		[Docs & playground →](/dependency-audit/)
-	</Card>
+	{tools.map((tool) => (
+		<Card title={tool.name} icon={tool.icon}>
+			<p>{tool.tagline}</p>
+			<p>
+				<a href={`/${tool.slug}/`}>Documentation →</a>
+				{tool.playground && <span> · ⚡ interactive playground</span>}
+			</p>
+		</Card>
+	))}
 </CardGrid>
