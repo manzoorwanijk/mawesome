@@ -6,6 +6,7 @@
  */
 import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro';
 import DependencyAuditPlayground from '../../components/dependency-audit/Playground.astro';
+import { toolVersion } from '../../lib/tool-versions.ts';
 import { type Tool, tools } from '../../tools.ts';
 
 const PLAYGROUNDS: Record<string, typeof DependencyAuditPlayground> = {
@@ -19,6 +20,7 @@ export function getStaticPaths() {
 }
 
 const { tool } = Astro.props as { tool: Tool };
+const version = toolVersion(tool.npm);
 const Playground = PLAYGROUNDS[tool.slug];
 if (!Playground) {
 	throw new Error(
@@ -33,6 +35,9 @@ if (!Playground) {
 		description: `Run ${tool.name} in your browser against any published npm package.`,
 	}}
 >
+	<p>
+		Running <a href={`https://www.npmjs.com/package/${tool.npm}`}><code>{tool.npm}@{version}</code></a>
+	</p>
 	<p>{tool.tagline}</p>
 	<Playground />
 </StarlightPage>

@@ -8,10 +8,12 @@ hero:
 
 import { Card, CardGrid } from '@astrojs/starlight/components';
 import { tools } from '../../tools.ts';
+import { toolVersion } from '../../lib/tool-versions.ts';
 
 <CardGrid>
 	{tools.map((tool) => (
 		<Card title={tool.name} icon={tool.icon}>
+			<p><a href={`https://www.npmjs.com/package/${tool.npm}`}><code>v{toolVersion(tool.npm)}</code></a></p>
 			<p>{tool.tagline}</p>
 			<p>
 				<a href={`/${tool.slug}/`}>Documentation →</a>
