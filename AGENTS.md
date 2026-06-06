@@ -24,21 +24,21 @@ Repo-level CLIs (oxlint, oxfmt, syncpack, tsgo) and their typed configs live in 
 
 ## Commands (run from the repo root)
 
-| Command                | What it does                                                                                            |
-| ---------------------- | ------------------------------------------------------------------------------------------------------- |
-| `pnpm install`         | Install (honors the 3-day `minimumReleaseAge` cooldown)                                                 |
-| `pnpm verify`          | Full gate: lint → format:check → deps:lint → check:root-deps → typecheck → test → build → check:exports |
-| `pnpm lint`            | oxlint (`pnpm lint:fix` to autofix)                                                                     |
-| `pnpm format`          | oxfmt write (`pnpm format:check` to verify only)                                                        |
-| `pnpm deps:lint`       | syncpack version/protocol checks (`pnpm deps:fix` to fix)                                               |
-| `pnpm check:root-deps` | Enforce the root dependency allowlist                                                                   |
-| `pnpm typecheck`       | tsgo per workspace                                                                                      |
-| `pnpm test`            | vitest per workspace                                                                                    |
-| `pnpm build`           | Build every workspace (packages via tsdown; apps via their own build)                                   |
-| `pnpm build:packages`  | Build only the publishable packages — used by the release publish step (apps don't publish)             |
-| `pnpm check:exports`   | attw + publint per package                                                                              |
-| `pnpm changeset`       | Create a changeset (see CONTRIBUTING for the release flow)                                              |
-| `pnpm audit`           | `pnpm audit --audit-level=high`                                                                         |
+| Command                | What it does                                                                                                             |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `pnpm install`         | Install (honors the 3-day `minimumReleaseAge` cooldown)                                                                  |
+| `pnpm verify`          | Full gate: lint → format:check → deps:lint → check:root-deps → build:packages → typecheck → test → build → check:exports |
+| `pnpm lint`            | oxlint (`pnpm lint:fix` to autofix)                                                                                      |
+| `pnpm format`          | oxfmt write (`pnpm format:check` to verify only)                                                                         |
+| `pnpm deps:lint`       | syncpack version/protocol checks (`pnpm deps:fix` to fix)                                                                |
+| `pnpm check:root-deps` | Enforce the root dependency allowlist                                                                                    |
+| `pnpm typecheck`       | tsgo per workspace                                                                                                       |
+| `pnpm test`            | vitest per workspace                                                                                                     |
+| `pnpm build`           | Build every workspace (packages via tsdown; apps via their own build)                                                    |
+| `pnpm build:packages`  | Build only the publishable packages — used by the release publish step (apps don't publish)                              |
+| `pnpm check:exports`   | attw + publint per package                                                                                               |
+| `pnpm changeset`       | Create a changeset (see CONTRIBUTING for the release flow)                                                               |
+| `pnpm audit`           | `pnpm audit --audit-level=high`                                                                                          |
 
 ## Hard rules (do / don't)
 
