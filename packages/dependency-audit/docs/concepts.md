@@ -11,7 +11,7 @@ On the author's machine, those specifiers resolve because the dependency happens
 
 The canonical case: an emitted declaration does `import('react')`, but `@types/react` was never declared. Your build is fine (you have React installed); your consumer's `tsc` fails to resolve the type. `dependency-audit` catches this class statically, before you publish.
 
-This is not hypothetical: the tool grew out of exactly this problem recurring across [Gutenberg](https://github.com/WordPress/gutenberg)'s 100+ published packages, where missing `@types/react` / `csstype` and other declarations resolved only via root hoisting and broke for npm consumers ([#74655](https://github.com/WordPress/gutenberg/pull/74655), [#74310](https://github.com/WordPress/gutenberg/pull/74310), [#78882](https://github.com/WordPress/gutenberg/pull/78882)). See [Why this exists](../README.md#why-this-exists) for the full story.
+This is not hypothetical: the tool grew out of exactly this problem recurring across [Gutenberg](https://github.com/WordPress/gutenberg)'s 100+ published packages, where `@types/react` / `csstype` and others resolved at build time (via root hoisting, a `devDependency`, or a workspace link) but were not declared where consumers could resolve them, and so broke for npm consumers ([#74655](https://github.com/WordPress/gutenberg/pull/74655), [#74310](https://github.com/WordPress/gutenberg/pull/74310), [#78882](https://github.com/WordPress/gutenberg/pull/78882)). An isolated install layout (pnpm / npm `install-strategy=linked`) catches the fully-undeclared cases but not a dependency in the wrong section (a `devDependency` whose types leak into the published `.d.ts`). See [Why this exists](../README.md#why-this-exists) for the full story.
 
 ## What it checks
 
