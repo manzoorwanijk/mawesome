@@ -116,8 +116,10 @@ async function extractInto(
 	const res = await fetch(tarballUrl(name, version), { signal });
 	if (!res.ok || !res.body)
 		throw new Error(`Could not fetch ${name}@${version} (HTTP ${res.status}).`);
+	// Fail fast on an advertised oversize download; a missing/!finite header just falls through to
+	// the streaming decompressed cap below, which is the real bomb guard.
 	const compressed = Number(res.headers.get('content-length'));
-	if (compressed > MAX_COMPRESSED_BYTES) {
+	if (Number.isFinite(compressed) && compressed > MAX_COMPRESSED_BYTES) {
 		throw new Error('Package is too large to audit in the browser.');
 	}
 	const files = parseTar(await gunzipCapped(res.body, MAX_DECOMPRESSED_BYTES));
@@ -128,7 +130,8 @@ async function extractInto(
 		if (file.type && file.type !== 'file') continue;
 		if (!file.name.startsWith(TAR_ROOT)) continue;
 		const rel = file.name.slice(TAR_ROOT.length);
-		if (rel && !rel.includes('..')) fs.writeFile(`${destDir}/${rel}`, file.text);
+		// Reject `..` as a path *segment* (traversal) but keep names that merely contain `..`.
+		if (rel && !rel.split('/').includes('..')) fs.writeFile(`${destDir}/${rel}`, file.text);
 	}
 }
 

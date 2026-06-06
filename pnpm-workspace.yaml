@@ -9,7 +9,8 @@ packageManagerStrictVersion: true # pnpm 10 setting (pnpm 11 renames it to `pmOn
 # --- security / supply-chain ---
 minimumReleaseAge: 4320 # 3 days; defers any release younger than this at resolution time
 minimumReleaseAgeExclude: [] # every pinned version is already older than the window
-# Build-script policy
+# Build-script policy. `allowBuilds` (pnpm >=10.26, replaces onlyBuiltDependencies/ignoredBuiltDependencies)
+# is a map of matchers -> allow (true) / deny (false); with strictDepBuilds, any unlisted build-script dep fails.
 allowBuilds:
   esbuild: true # apps/site (Astro/Vite): build script only installs the prebuilt platform binary, no compile
   sharp: false # apps/site: Astro's native image optimizer — unused (image service set to passthrough), so don't build
