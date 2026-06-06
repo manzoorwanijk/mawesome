@@ -5,10 +5,11 @@
 	"description": "mawesome — docs + interactive playgrounds for the @mawesome/* tools",
 	"type": "module",
 	"scripts": {
-		"dev": "astro dev",
-		"build": "astro build",
+		"sync:docs": "node scripts/sync-docs.ts",
+		"dev": "pnpm run sync:docs && astro dev",
+		"build": "pnpm run sync:docs && astro build",
 		"preview": "astro preview",
-		"typecheck": "astro sync && astro-check"
+		"typecheck": "pnpm run sync:docs && astro sync && astro-check"
 	},
 	"dependencies": {
 		"@astrojs/starlight": "^0.39.3",

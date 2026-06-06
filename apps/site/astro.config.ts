@@ -14,12 +14,10 @@ export default defineConfig({
 			social: [
 				{ icon: 'github', label: 'GitHub', href: 'https://github.com/manzoorwanijk/mawesome' },
 			],
-			// Per-tool sections; each tool gets an overview + its docs (+ an optional playground).
+			// Per-tool sections, auto-generated from the docs synced by scripts/sync-docs.ts.
+			// Order and labels come from each page's `sidebar` frontmatter.
 			sidebar: [
-				{
-					label: 'dependency-audit',
-					items: [{ label: 'Overview', slug: 'dependency-audit' }],
-				},
+				{ label: 'dependency-audit', items: [{ autogenerate: { directory: 'dependency-audit' } }] },
 			],
 		}),
 	],
