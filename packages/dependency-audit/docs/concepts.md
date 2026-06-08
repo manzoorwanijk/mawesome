@@ -62,4 +62,4 @@ Then each specifier is resolved against that tree:
 
 Node builtins (`node:fs`, `fs`, …) need no declaration at run time; on the type surface they imply `@types/node`.
 
-See [Resolution model](./resolution.md) for the condition sets, profiles, and local-protocol details, and [Security](../README.md#security) for the guarantees around extraction and execution.
+See [Resolution model](./resolution.md) for the condition sets, profiles, and local-protocol details, and [Security](./security.md) for the guarantees around extraction and execution.

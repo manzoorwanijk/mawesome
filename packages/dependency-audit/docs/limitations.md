@@ -10,7 +10,7 @@ The tool aims for **correct, narrow** results: when it reports a finding it is r
 - **The legacy `browser` field remap is not applied** — only the `browser` export **condition** (`--condition browser`). Object/`false`-shim `browser` field rewrites are out of scope.
 - **Self-reference (`name`/`name/subpath`) and subpath `#imports` specifiers are skipped** — they are resolved internally by the package, not external dependencies.
 - **Dynamic/non-literal specifiers are unchecked, not resolved** — a dynamic `import(variable)`, a templated `require()` call, a `createRequire` result stored in a variable. They appear in `result.unchecked`.
-- **The compressed download size of an `http(s)` tarball URL is not separately capped** (the _uncompressed_ extraction is bomb-guarded; registry artifacts are size-bounded by npm). SSRF for caller-supplied URLs is the caller's responsibility. See [Security](../README.md#security).
+- **The compressed download size of an `http(s)` tarball URL is not separately capped** (the _uncompressed_ extraction is bomb-guarded; registry artifacts are size-bounded by npm). SSRF for caller-supplied URLs is the caller's responsibility. See [Security](./security.md).
 
 ## Troubleshooting
 
