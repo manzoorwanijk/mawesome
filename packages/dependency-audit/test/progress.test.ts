@@ -218,6 +218,17 @@ describe('createTtyReporter', () => {
 		expect(stream.writes).toEqual([]);
 	});
 
+	it('exposes `enabled` mirroring the gate (the CLI uses it to gate the stderr banner)', () => {
+		// `enabled` must track the same conditions that silence the spinner — it is what the CLI reads to decide whether to print the version banner.
+		const reporter = (env: Record<string, string | undefined>, opts?: { enabled?: boolean }) =>
+			createTtyReporter({ total: 1, stream: fakeStream(true), env, ...opts }).enabled;
+		expect(reporter({})).toBe(true);
+		expect(createTtyReporter({ total: 1, stream: fakeStream(false), env: {} }).enabled).toBe(false);
+		expect(reporter({ TERM: 'dumb' })).toBe(false);
+		expect(reporter({ NO_PROGRESS: '1' })).toBe(false);
+		expect(reporter({}, { enabled: false })).toBe(false);
+	});
+
 	it('renders the materialize count for a single target', () => {
 		const stream = fakeStream(true);
 		const clock = fakeScheduler();

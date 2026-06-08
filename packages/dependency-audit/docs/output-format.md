@@ -2,7 +2,7 @@
 
 Two formats: a human-readable text report (default) and machine-readable JSON (`--json`). Both emit **one logical entry per target**. If you parse the output programmatically (CI gate, dashboard, AI agent), prefer `--json` — the text format is stable but optimized for reading.
 
-All results — text and `--json` — are written to **stdout**. Progress and diagnostics go to **stderr**, so a redirect like `dependency-audit . > result.json` captures only the result. While auditing, a live progress line (current phase, deps materialized) is drawn on stderr, but only when stderr is an interactive terminal — under a pipe, a file, or CI it is silent, leaving stderr empty on a clean run.
+All results — text and `--json` — are written to **stdout**. Progress and diagnostics go to **stderr**, so a redirect like `dependency-audit . > result.json` captures only the result. While auditing, a one-line version banner (`dependency-audit vX.Y.Z`) followed by a live progress line (current phase, deps materialized) is drawn on stderr, but only when stderr is an interactive terminal — under a pipe, a file, or CI it is silent, leaving stderr empty on a clean run. (For a machine-readable record of the producing version, read the `version` field of the `--json` envelope below.)
 
 ## Text format
 
@@ -59,7 +59,17 @@ The `ignored`, `notice`, `skipped`, and `error` clauses appear only when their c
 
 ## JSON format (`--json`)
 
-A single JSON array, one element per target, in input order. Each element is an **AuditResult**, an **error entry** (could not audit), or a **skip entry** (a non-package path).
+A `{ tool, version, results }` envelope. `tool` is always `"dependency-audit"` and `version` is the producing CLI version — recorded so a saved audit artifact stays reproducible as the resolution behavior evolves. `results` is a JSON array with one element per target, in input order; each element is an **AuditResult**, an **error entry** (could not audit), or a **skip entry** (a non-package path).
+
+```jsonc
+{
+	"tool": "dependency-audit",
+	"version": "0.2.1", // the producing CLI version
+	"results": [
+		/* one AuditResult / error entry / skip entry per target */
+	],
+}
+```
 
 ### Error and skip entries
 
@@ -129,6 +139,8 @@ Distinguish the three by key: an `error` key → could not audit (exit 2); a `sk
 | `resolvedDeps`    | ResolvedDependency[]                     | Every declared dep and the version materialized (`undefined` if it could not be fetched/linked). |
 
 ### Consuming the JSON
+
+Iterate `payload.results` (each `entry` below is one of its elements); read `payload.version` if you need the producing tool version.
 
 - **Pass/fail per target:** `entry.error !== undefined` → could not audit; `entry.skipped !== undefined` → a non-package path (neutral, ignore for pass/fail); else `entry.ok` → pass/fail on findings.
 - **Coverage:** count `entry.notices` to report "audited N, M with no analyzable type surface". Treat as failure only if you opt into `--require-types` (CLI) or check `notices.length` yourself (API).

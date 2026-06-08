@@ -41,10 +41,19 @@ describe('cli batch isolation', () => {
 
 	it('emits a per-target error entry under --json', () => {
 		const { stdout } = runCli(['--json', okTarget, badTarget]);
-		const parsed = JSON.parse(stdout) as Array<Record<string, unknown>>;
-		expect(parsed).toHaveLength(2);
-		expect(parsed.some((entry) => 'error' in entry)).toBe(true);
-		expect(parsed.some((entry) => 'findings' in entry)).toBe(true);
+		const parsed = JSON.parse(stdout) as { results: Array<Record<string, unknown>> };
+		expect(parsed.results).toHaveLength(2);
+		expect(parsed.results.some((entry) => 'error' in entry)).toBe(true);
+		expect(parsed.results.some((entry) => 'findings' in entry)).toBe(true);
+	});
+
+	it('wraps --json output in a { tool, version, results } envelope', () => {
+		const { stdout } = runCli(['--json', okTarget]);
+		const parsed = JSON.parse(stdout) as { tool: string; version: string; results: unknown[] };
+		expect(parsed.tool).toBe('dependency-audit');
+		// The envelope records the producing version so a saved artifact is reproducible.
+		expect(parsed.version).toMatch(/^\d+\.\d+\.\d+/);
+		expect(Array.isArray(parsed.results)).toBe(true);
 	});
 
 	it('prints the version with --version', () => {
@@ -77,9 +86,9 @@ describe('cli output integrity', () => {
 		const many = Array.from({ length: 120 }, () => okTarget);
 		const { stdout } = runCli(['--json', ...many]);
 		expect(stdout.length).toBeGreaterThan(131072);
-		// JSON.parse throws on a truncated payload; a full array has one entry per target.
-		const parsed = JSON.parse(stdout) as unknown[];
-		expect(parsed).toHaveLength(120);
+		// JSON.parse throws on a truncated payload; a full `results` array has one entry per target.
+		const parsed = JSON.parse(stdout) as { results: unknown[] };
+		expect(parsed.results).toHaveLength(120);
 	});
 });
 
@@ -116,8 +125,8 @@ describe('cli skip (non-package targets)', () => {
 
 	it('represents a skip as { target, skipped } under --json', () => {
 		const { stdout } = runCli(['--json', notPkg]);
-		const parsed = JSON.parse(stdout) as Array<Record<string, unknown>>;
-		expect(parsed[0]).toHaveProperty('skipped');
+		const parsed = JSON.parse(stdout) as { results: Array<Record<string, unknown>> };
+		expect(parsed.results[0]).toHaveProperty('skipped');
 	});
 });
 

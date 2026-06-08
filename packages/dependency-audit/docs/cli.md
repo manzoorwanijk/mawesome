@@ -23,8 +23,8 @@ A local path that **exists but is not an auditable package** — a non-tarball f
 | `--config <path>`    | path              | Load ignore rules from a JSON config. Defaults to `./dependency-audit.config.json` if present.                                                                        |
 | `--condition <name>` | condition name    | Activate an extra `exports` resolution condition (e.g. `browser`) for entry discovery **and** resolution. Repeatable.                                                 |
 | `--require-types`    | —                 | Treat a coverage notice (no/unreachable type surface) as a failure (exit 1) rather than just a notice.                                                                |
-| `--json`             | —                 | Emit machine-readable JSON: one entry per target. See [Output format](./output-format.md).                                                                            |
-| `--no-progress`      | —                 | Suppress the stderr progress spinner even on a terminal. Also honored via the `NO_PROGRESS` env var.                                                                  |
+| `--json`             | —                 | Emit machine-readable JSON: a `{ tool, version, results }` envelope, one `results` entry per target. See [Output format](./output-format.md).                         |
+| `--no-progress`      | —                 | Suppress the stderr version banner and progress spinner even on a terminal. Also honored via the `NO_PROGRESS` env var.                                               |
 | `-v`, `--version`    | —                 | Print the version and exit.                                                                                                                                           |
 | `-h`, `--help`       | —                 | Print usage and exit.                                                                                                                                                 |
 
