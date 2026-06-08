@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { parseArgs } from 'node:util';
+import { parseArgs, styleText } from 'node:util';
 import { SkippedTargetError } from './acquire.ts';
 import { audit } from './audit.ts';
 import { color } from './color.ts';
@@ -41,10 +41,11 @@ Options:
                     entry discovery and resolution (repeatable).
   --require-types   Treat a missing/unreachable type surface (a coverage notice)
                     as a failure rather than just a notice.
-  --json            Emit machine-readable JSON: one entry per target (an
-                    AuditResult, or { target, error } for a failed audit).
-  --no-progress     Suppress the stderr progress spinner even on a terminal
-                    (also honored via the NO_PROGRESS env var).
+  --json            Emit machine-readable JSON: a { tool, version, results }
+                    envelope; results has one entry per target (an AuditResult,
+                    or { target, error } for a failed audit).
+  --no-progress     Suppress the stderr version banner and progress spinner
+                    even on a terminal (also honored via the NO_PROGRESS env var).
   -v, --version     Print the version.
   -h, --help        Show this help.
 
@@ -105,6 +106,14 @@ async function main(): Promise<number> {
 	clearProgress = progress.clear;
 	stopProgress = progress.stop;
 
+	/* Identify the tool on stderr before work starts, so an interactive run is self-describing.
+	 * Gated exactly like the spinner (TTY, not disabled) so stdout — and a captured log or redirect — stays clean.
+	 * Dim is keyed to stderr (not the `color` helpers' stdout check) so it matches the spinner when stdout is redirected but stderr is the terminal. */
+	if (progress.enabled) {
+		const banner = styleText('dim', `dependency-audit v${VERSION}`, { stream: process.stderr });
+		process.stderr.write(`${banner}\n`);
+	}
+
 	/* Each audit is self-contained (its own temp dirs), so targets run concurrently —
 	 * but bounded, and each isolated, so one target's failure reports as an error for
 	 * that target instead of discarding every other target's result. */
@@ -129,7 +138,15 @@ async function main(): Promise<number> {
 	progress.stop();
 
 	if (values.json) {
-		console.log(JSON.stringify(outcomes.map(jsonEntry), null, 2));
+		/* A `{ tool, version, results }` envelope so a saved audit artifact records the
+		 * producing version — the resolution behavior evolves, so output is only reproducible
+		 * when its version is known. `results` is the per-target array (the prior top-level shape). */
+		const payload = {
+			tool: 'dependency-audit',
+			version: VERSION,
+			results: outcomes.map(jsonEntry),
+		};
+		console.log(JSON.stringify(payload, null, 2));
 	} else {
 		for (const outcome of outcomes) {
 			if ('result' in outcome) {

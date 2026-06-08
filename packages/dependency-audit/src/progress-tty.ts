@@ -32,6 +32,8 @@ export interface TtyReporterOptions {
 
 /** A live progress renderer plus the handles the CLI needs to keep stderr tidy. */
 export interface TtyReporter {
+	/** Whether the live UI is active (an interactive TTY, not disabled) — so the CLI can gate a one-off stderr banner the same way as the spinner. */
+	enabled: boolean;
 	/** The progress sink to thread through `audit()`. A no-op when output is disabled. */
 	reporter: ProgressReporter;
 	/** Erases the current line without stopping — for interleaving a one-off diagnostic. */
@@ -67,7 +69,7 @@ export function createTtyReporter(options: TtyReporterOptions): TtyReporter {
 	const enabled =
 		options.enabled !== false && !disabledByEnv && Boolean(stream.isTTY) && env['TERM'] !== 'dumb';
 	if (!enabled) {
-		return { reporter: NOOP, clear: NOOP, stop: NOOP };
+		return { enabled: false, reporter: NOOP, clear: NOOP, stop: NOOP };
 	}
 
 	const useColor = env['NO_COLOR'] === undefined || env['NO_COLOR'] === '';
@@ -170,7 +172,7 @@ export function createTtyReporter(options: TtyReporterOptions): TtyReporter {
 		render();
 	};
 
-	return { reporter, clear, stop };
+	return { enabled: true, reporter, clear, stop };
 }
 
 /** Applies one event to the per-target state map. */
