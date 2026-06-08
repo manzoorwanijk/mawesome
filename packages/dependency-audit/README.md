@@ -47,10 +47,6 @@ Exit codes: `0` clean, `1` findings, `2` error. See the [CLI reference](./docs/c
 1 package, 1 finding.
 ```
 
-### Ignoring intentional findings
-
-Findings that static analysis can't prove are fine (an optional/plugin import, a known false positive) can be suppressed via `--ignore <package-or-specifier>` or a JSON config — and through the programmatic API (`audit(target, { ignore: [{ package: 'x' }] })`). Suppressed findings are still listed and never fail the audit. See [findings & notices](./docs/findings.md#ignoring-intentional-findings) for the rule grammar, and [coverage notices](./docs/findings.md#notices) for `types-not-built` / `types-unreachable` and `--require-types`.
-
 ## Programmatic API
 
 ```ts
