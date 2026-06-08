@@ -1,5 +1,13 @@
 # @mawesome/dependency-audit
 
+## 0.2.2
+
+### Patch Changes
+
+- [#24](https://github.com/manzoorwanijk/mawesome/pull/24) [`74a3443`](https://github.com/manzoorwanijk/mawesome/commit/74a3443032afa065dfd38cea147050af9274c043) Thanks [@manzoorwanijk](https://github.com/manzoorwanijk)! - The CLI now prints a `dependency-audit vX.Y.Z` banner, and wraps `--json` output in a `{ tool, version, results }` envelope.
+
+- [#22](https://github.com/manzoorwanijk/mawesome/pull/22) [`ca132ef`](https://github.com/manzoorwanijk/mawesome/commit/ca132ef1c55d271b1649208362fcf82de968f33c) Thanks [@manzoorwanijk](https://github.com/manzoorwanijk)! - Trim the README to a quick start, moving detailed reference into `docs/`, and add npx usage.
+
 ## 0.2.1
 
 ### Patch Changes
