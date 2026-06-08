@@ -4,17 +4,19 @@ Reference documentation for `@mawesome/dependency-audit` — a fully-static tool
 
 **Try it live in your browser** — audit any published npm package, nothing installed: **[the dependency-audit playground](https://mawesome.pages.dev/dependency-audit/playground/)**.
 
-The [package README](../README.md) is the quick start. These docs go deeper, and are written to be precise enough for both humans and AI agents to rely on.
+New here? **[Get started](./get-started.md)** for install and first audit. The rest of these docs go deeper, and are written to be precise enough for both humans and AI agents to rely on.
 
 ## Contents
 
-- [Concepts](./concepts.md) — the bug class it catches, the two surfaces, the reachability and resolution model. Start here.
+- [Get started](./get-started.md) — install (or `npx`), run your first audit, read a finding.
+- [Concepts](./concepts.md) — the bug class it catches, the two surfaces, the reachability and resolution model.
 - [CLI reference](./cli.md) — every flag, exit codes, invocation patterns.
 - [Output format](./output-format.md) — the exact text grammar and the `--json` schema. Read this if you parse the output (CI, an agent, a dashboard).
 - [Findings & notices](./findings.md) — every finding `kind` and notice `kind`, what each means, and how to fix it.
 - [Programmatic & browser API](./api.md) — `audit`, `auditPackage`, the `FileSystem` and `RegistryProvider` ports, types.
 - [Resolution model](./resolution.md) — how declared deps are materialized, conditions/profiles, local (`file:`/`workspace:`/`link:`) protocols.
 - [Limitations & troubleshooting](./limitations.md) — what is intentionally out of scope, and how to read common results.
+- [Security](./security.md) — the static-analysis guarantees: no code execution, safe extraction, declared-range resolution.
 - [Complementary tools](./comparison.md) — how it differs from and pairs with publint and attw.
 
 ## One-paragraph summary

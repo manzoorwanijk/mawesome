@@ -33,6 +33,7 @@ export const tools: Tool[] = [
 		icon: 'magnifier',
 		playground: true,
 		docOrder: [
+			'get-started',
 			'concepts',
 			'cli',
 			'output-format',
@@ -40,6 +41,7 @@ export const tools: Tool[] = [
 			'api',
 			'resolution',
 			'limitations',
+			'security',
 			'comparison',
 		],
 	},

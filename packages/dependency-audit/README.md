@@ -6,16 +6,20 @@
 
 Catches the bug class where a published package imports a module — at runtime or in its emitted `.d.ts` — that resolves at the author's build (via root hoisting, a `devDependency`, or a workspace link) but isn't declared as a consumer-visible dependency, so a consumer installing it from npm can't resolve it. The motivating case: an emitted declaration does `import('react')` but `@types/react` was never declared in `dependencies` or `peerDependencies` (or it was declared only in `devDependencies`).
 
-> **Scope:** both the **type (`.d.ts`)** and **runtime (JS)** surfaces, against a local directory, a `.tgz`, or **any published spec** (`name@version`/tag, `@scope/name`, or an `http(s)` tarball URL — fetched via npm's cache/auth). Resolution runs against the package's _declared_ dependency ranges (materialized fresh), never the author's ambient `node_modules`. The runtime pass discovers entry points from `exports` (both `import`/`require` profiles), legacy `main`/`module`, and `bin`, follows the JS import graph, and honors each dep's own `exports`/`main` per call form. Node builtins need no declaration at runtime; on the type surface they imply `@types/node`.
->
-> **Known limitations** (correct results, narrower coverage): `typesVersions` is applied for the **current** TypeScript version only (not the per-consumer-version matrix); the type surface resolves a single ESM/NodeNext profile (no per-file require context or `bundler` mode); the legacy `browser` **field** remap (`{ "browser": { "./a": "./b" } }`) is not applied — only the `browser` **export condition** is honored via `--condition browser`; and self-reference / `#imports` specifiers are skipped.
+It audits both the **type (`.d.ts`)** and **runtime (JS)** surfaces, against a local directory, a `.tgz`, or any published spec, resolving against the package's _declared_ dependency ranges (materialized fresh) — never the author's ambient `node_modules`.
 
-📚 **Full documentation** lives in [`docs/`](./docs/) — [concepts](./docs/concepts.md), the [CLI](./docs/cli.md) and [API](./docs/api.md) references, the [output format](./docs/output-format.md) (text grammar + `--json` schema), a [findings & notices](./docs/findings.md) reference, the [resolution model](./docs/resolution.md), [limitations & troubleshooting](./docs/limitations.md), and how it [compares to publint/attw](./docs/comparison.md).
+📚 **Full documentation** is on the [docs site](https://mawesome.pages.dev/dependency-audit/) — [concepts](https://mawesome.pages.dev/dependency-audit/concepts/), the [CLI](https://mawesome.pages.dev/dependency-audit/cli/) and [API](https://mawesome.pages.dev/dependency-audit/api/) references, the [output format](https://mawesome.pages.dev/dependency-audit/output-format/) (text grammar + `--json` schema), a [findings & notices](https://mawesome.pages.dev/dependency-audit/findings/) reference, the [resolution model](https://mawesome.pages.dev/dependency-audit/resolution/), [limitations & troubleshooting](https://mawesome.pages.dev/dependency-audit/limitations/), [security](https://mawesome.pages.dev/dependency-audit/security/), and how it [compares to publint/attw](https://mawesome.pages.dev/dependency-audit/comparison/) — or read the source in [`docs/`](./docs/).
 
 ## Install
 
 ```sh
 pnpm add -D @mawesome/dependency-audit
+```
+
+Or run it without installing — handy for a one-off audit of a published package:
+
+```sh
+npx @mawesome/dependency-audit lodash@4.17.21
 ```
 
 ## CLI
@@ -31,14 +35,9 @@ dependency-audit @sindresorhus/is@latest
 
 # Several at once; machine-readable output for CI
 dependency-audit --json ./packages/a ./packages/b
-
-# Audit the `browser` export condition instead of the default Node profile
-dependency-audit --condition browser ./packages/my-lib
 ```
 
-`--condition <name>` (repeatable) activates an extra `exports` condition on top of the Node defaults, for both entry discovery and resolution — e.g. `--condition browser` audits the surface a bundler sees under the `browser` condition.
-
-Exit codes: `0` clean, `1` findings, `2` error.
+Exit codes: `0` clean, `1` findings, `2` error. See the [CLI reference](./docs/cli.md) for every flag (including `--condition`, `--require-types`, and config files).
 
 ```
 @acme/widget@1.2.3  ./packages/widget
@@ -48,36 +47,9 @@ Exit codes: `0` clean, `1` findings, `2` error.
 1 package, 1 finding.
 ```
 
-Output is colorized by severity on a terminal (red findings, yellow notices, green clean) and auto-plain when piped or under `--json`; `NO_COLOR` / `FORCE_COLOR` are respected.
-
-While auditing, a live progress line (current phase, deps materialized) is drawn on **stderr** so a long run never looks hung. It renders only when stderr is an interactive terminal, so results on stdout — including `--json` and redirects like `dependency-audit . > result.json` — are never polluted. Pass `--no-progress` (or set `NO_PROGRESS`) to suppress it even on a terminal.
-
 ### Ignoring intentional findings
 
-Suppress findings static analysis can't prove are fine (an optional/plugin import, a known false positive). Suppressed findings are still listed (`– ignored`) and echoed in `--json`, so suppressions stay auditable; they do not fail the audit.
-
-```sh
-# --ignore <value> matches a finding by package OR exact specifier (repeatable)
-dependency-audit --ignore optional-plugin --ignore react/jsx-runtime ./packages/my-lib
-```
-
-Or a JSON config (`./dependency-audit.config.json` by default, or `--config <path>`). A rule matches a finding when every field it sets equals the finding's; an empty rule matches nothing:
-
-```json
-{
-	"ignore": [
-		{ "package": "optional-plugin" },
-		{ "specifier": "react/jsx-runtime", "surface": "types" },
-		{ "surface": "runtime", "kind": "unresolved" }
-	]
-}
-```
-
-The programmatic API takes the same rules: `audit(target, { ignore: [{ package: 'x' }] })`.
-
-### Coverage notices
-
-So "audited, clean" is never confused with "nothing to audit," the tool emits a per-target **notice** (not a finding — it does not fail the audit) when a package has no analyzable type surface: `types-not-built` (the manifest declares types but none resolve — build the package first) or `types-unreachable` (it ships `.d.ts` files but no `types` field / `exports` `types` condition exposes them — a likely packaging gap). Notices appear in the text output (`ℹ`) and in each result's `notices` array under `--json`. Pass `--require-types` to treat such a notice as a failure (exit 1).
+Findings that static analysis can't prove are fine (an optional/plugin import, a known false positive) can be suppressed via `--ignore <package-or-specifier>` or a JSON config — and through the programmatic API (`audit(target, { ignore: [{ package: 'x' }] })`). Suppressed findings are still listed and never fail the audit. See [findings & notices](./docs/findings.md#ignoring-intentional-findings) for the rule grammar, and [coverage notices](./docs/findings.md#notices) for `types-not-built` / `types-unreachable` and `--require-types`.
 
 ## Programmatic API
 
@@ -92,53 +64,7 @@ if (!result.ok) {
 }
 ```
 
-### Browser / custom filesystem
-
-The core is filesystem-agnostic. `@mawesome/dependency-audit/browser` exports `auditPackage` over an injectable [`FileSystem`](src/fs.ts) — no `node:fs`/`os`/`module`, no `pacote` (the only `node:` import is `node:path`, which bundlers alias to `path-browserify`). Seed an in-memory tree and supply a provider that materializes deps into it:
-
-```ts
-import { auditPackage, createMemoryFileSystem } from '@mawesome/dependency-audit/browser';
-
-const fs = createMemoryFileSystem();
-fs.writeFile('/pkg/package.json' /* … */);
-// … write the package's .d.ts / .js files …
-
-const result = await auditPackage(fs, '/pkg', {
-	provider: {
-		async materialize(name, range, intoDir) {
-			/* fetch from a CDN into fs */
-		},
-	},
-	workDir: '/work',
-});
-```
-
-The Node `audit(target)` is just this core wrapped with `.tgz`/directory acquisition and a temp dir. A browser host supplies its own acquisition (fetch + untar) and a CDN-backed provider (jsDelivr/unpkg).
-
-### Injectable provider (Node)
-
-The dependency artifact provider is injectable — supply your own to resolve against a local cache or an offline mirror instead of the npm registry:
-
-```ts
-import { audit, type RegistryProvider } from '@mawesome/dependency-audit';
-
-const provider: RegistryProvider = {
-	async materialize(name, range, intoDir) {
-		/* extract name@range into `${intoDir}/node_modules/${name}`; return the version */
-		return '18.3.1';
-	},
-};
-await audit('./packages/my-lib', { provider });
-```
-
-## How it works
-
-1. **Acquire** — a directory is read in place; a `.tgz` is extracted to a temp dir.
-2. **Discover both surfaces** from the _manifest_ (never hardcoded `build/` names):
-   - _Type_ — `exports` `types` conditions, legacy `types`/`typings`, `.js`→`.d.ts` substitution; then follow relative imports across `.d.ts` files.
-   - _Runtime_ — `exports` runtime targets (`import` + `require` profiles), legacy `main`/`module`, and `bin`; then follow the relative JS import graph, tagging each specifier with its call form.
-3. **Materialize declared deps** (production + peer + optional, never dev) at their declared ranges into one fresh tree, shared by both passes. Registry ranges are fetched from npm; **monorepo-local deps** (`file:../sibling`, or `workspace:*` resolved by name through `pnpm-workspace.yaml` / `package.json#workspaces`) link the local already-built sibling — no rebuild, fully static.
-4. **Resolve** each external specifier. Type specifiers go through the bundled `typescript` (so `react` falls back to `@types/react`); runtime specifiers go through the dep's own `exports`/`main` for the matching call form. A specifier that doesn't resolve is a finding — `undeclared` (nothing provides it), `missing-types` (declared, ships no declarations), or `unresolved` (declared, but the runtime subpath/file is not reachable). Node builtins need no declaration at runtime; on the type surface they imply `@types/node`.
+The core is also filesystem-agnostic: `@mawesome/dependency-audit/browser` exports `auditPackage` over an injectable `FileSystem` (no `node:fs`, no `pacote`), so you can audit an in-memory tree in the browser. The dependency artifact provider is injectable too — supply your own `RegistryProvider` to resolve against an offline mirror, a local cache, or a CDN instead of the npm registry. See the [API reference](./docs/api.md) for `auditPackage`, the `FileSystem`/`RegistryProvider` ports, and the full options.
 
 ## Why this exists
 
@@ -152,20 +78,8 @@ This isn't really a hoisted-vs-isolated problem. Moving to an isolated layout (p
 
 ## Complementary tools
 
-`dependency-audit` answers one focused question — _does the released artifact declare and resolve every package it imports?_ It pairs naturally with two excellent, narrowly-scoped publishing checks; run all three before you publish:
-
-| Tool                                                                                                 | Asks                                                                                              | Catches                                                                                                                                                                      |
-| ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [**publint**](https://publint.dev)                                                                   | Is the **manifest** well-formed for publishing?                                                   | bad `exports`/`main`/`types` paths, missing files, wrong file extensions, `module` field mistakes                                                                            |
-| [**attw**](https://github.com/arethetypeswrong/arethetypeswrong.github.io) (`@arethetypeswrong/cli`) | Do **your own types** resolve correctly across module-resolution modes (node16 CJS/ESM, bundler)? | `.d.ts` that resolve under ESM but not CJS, masquerading CJS/ESM, missing type entry points                                                                                  |
-| **dependency-audit**                                                                                 | Do the imports in the released artifact resolve through **declared dependencies**?                | a `.d.ts` that does `import('react')` with no `@types/react` declared; a runtime `require('x')` of an undeclared package; a deep import of a subpath the dep does not export |
-
-They barely overlap. publint validates the _shape_ of your package; attw validates that _your_ types are consumable; dependency-audit validates that the _dependencies your code reaches_ are all declared and installable. A package can pass publint and attw and still ship a `.d.ts` importing an undeclared transitive — which is exactly the gap this tool closes. If you only adopt one of the three, still try the others — they're quick and they each catch a different class of "works on my machine" bug. (This repo runs publint + attw on itself via `pnpm check:exports`.)
-
-## Security
-
-The audit is **fully static**: tarballs are only _extracted_ and files only _parsed_ — no target or dependency code is ever executed (no install scripts run). Registry fetches verify integrity (the resolved tarball URL + SRI are reported). Extraction skips symlink/hardlink entries and blocks path traversal, runs in throwaway temp dirs, and is bounded by a decompression-bomb guard (`maxBytes` / `maxEntries`, overridable via `audit(target, { extractLimits })`). Resolution runs against the target's _declared_ ranges in a fresh tree, never the author's ambient `node_modules`. When pointing the tool at an untrusted `http(s)` tarball URL in a service context, treat it as you would any fetch-by-URL: the _compressed_ download size is not separately capped (registry artifacts are size-bounded by npm), and SSRF is the caller's responsibility.
+`dependency-audit` answers one focused question — _does the released artifact declare and resolve every package it imports?_ It pairs naturally with [**publint**](https://publint.dev) (is the manifest well-formed?) and [**attw**](https://github.com/arethetypeswrong/arethetypeswrong.github.io) (do your own types resolve across module modes?); run all three before you publish. See the [comparison](./docs/comparison.md) for how they differ and why they barely overlap.
 
 ## License
 
-[MIT](../../LICENSE) © 2026 Manzoor Ahmad Wani
+[MIT](../../LICENSE)
