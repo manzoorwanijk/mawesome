@@ -35,6 +35,7 @@ export const tools: Tool[] = [
 		docOrder: [
 			'get-started',
 			'concepts',
+			'why',
 			'cli',
 			'output-format',
 			'findings',

@@ -10,6 +10,7 @@ New here? **[Get started](./get-started.md)** for install and first audit. The r
 
 - [Get started](./get-started.md) — install (or `npx`), run your first audit, read a finding.
 - [Concepts](./concepts.md) — the bug class it catches, the two surfaces, the reachability and resolution model.
+- [Why this exists](./why.md) — the Gutenberg origin story, and why isolated installs and source linters miss this bug class.
 - [CLI reference](./cli.md) — every flag, exit codes, invocation patterns.
 - [Output format](./output-format.md) — the exact text grammar and the `--json` schema. Read this if you parse the output (CI, an agent, a dashboard).
 - [Findings & notices](./findings.md) — every finding `kind` and notice `kind`, what each means, and how to fix it.
