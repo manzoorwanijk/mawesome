@@ -277,7 +277,7 @@ function printResult(result: AuditResult): void {
 }
 
 const SURFACE_WIDTH = 'unchecked'.length;
-const KIND_WIDTH = '[missing-types]'.length;
+const KIND_WIDTH = '[types-unavailable]'.length;
 
 /**
  * One aligned finding row: `✗ <surface> [<kind>] <specifier> (<file>)`, with the severity

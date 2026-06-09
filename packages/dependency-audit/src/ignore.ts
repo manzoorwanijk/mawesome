@@ -2,7 +2,7 @@ import { sep } from 'node:path';
 import type { Finding, FindingKind, IgnoreRule, Surface } from './types.ts';
 
 const SURFACES = new Set<string>(['types', 'runtime']);
-const KINDS = new Set<string>(['undeclared', 'missing-types', 'unresolved']);
+const KINDS = new Set<string>(['undeclared', 'missing-types', 'types-unavailable', 'unresolved']);
 
 /** Free-text string fields, validated alike; `surface`/`kind` are enum-checked separately. */
 const STRING_FIELDS = ['package', 'specifier', 'target', 'path'] as const;

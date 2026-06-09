@@ -23,6 +23,10 @@ const fixtureProvider: RegistryProvider = {
 
 const run = (name: string) => audit(join(targetsRoot, name), { provider: fixtureProvider });
 
+/** The finding kind reported for `pkg` in a result (or undefined if none). */
+const kindFor = (r: { findings: { packageName: string; kind: string }[] }, pkg: string) =>
+	r.findings.find((f) => f.packageName === pkg)?.kind;
+
 describe('audit (type surface)', () => {
 	it('passes when every .d.ts import resolves through declared deps (incl. @types fallback)', async () => {
 		const result = await run('clean');
@@ -48,6 +52,104 @@ describe('audit (type surface)', () => {
 		const csstype = result.findings.find((f) => f.packageName === 'csstype');
 		expect(csstype?.kind).toBe('undeclared');
 		expect(csstype?.suggestion).toContain('@types/csstype');
+	});
+
+	describe('registry-aware @types refinement (missing-types → types-unavailable)', () => {
+		const withProbe = (verdict: 'exists' | 'absent' | 'unknown'): RegistryProvider => ({
+			materialize: (name, range, intoDir) => fixtureProvider.materialize(name, range, intoDir),
+			packageExists: () => Promise.resolve(verdict),
+		});
+
+		it('reclassifies missing-types as types-unavailable when no @types companion exists', async () => {
+			const result = await audit(join(targetsRoot, 'missing'), { provider: withProbe('absent') });
+			const react = result.findings.find((f) => f.packageName === 'react');
+			expect(react?.kind).toBe('types-unavailable');
+			expect(react?.suggestion).toContain('not fixable by declaring a dependency');
+			// The probe only touches `missing-types`; an `undeclared` finding is left alone.
+			expect(kindFor(result, 'csstype')).toBe('undeclared');
+		});
+
+		it('keeps missing-types when the @types companion exists, is unknown, or the provider cannot probe', async () => {
+			expect(
+				kindFor(
+					await audit(join(targetsRoot, 'missing'), { provider: withProbe('exists') }),
+					'react',
+				),
+			).toBe('missing-types');
+			expect(
+				kindFor(
+					await audit(join(targetsRoot, 'missing'), { provider: withProbe('unknown') }),
+					'react',
+				),
+			).toBe('missing-types');
+			// The plain fixture provider has no `packageExists` capability → refinement is skipped.
+			expect(kindFor(await run('missing'), 'react')).toBe('missing-types');
+		});
+
+		it('lets a types-unavailable finding be suppressed by kind', async () => {
+			const result = await audit(join(targetsRoot, 'missing'), {
+				provider: withProbe('absent'),
+				ignore: [{ kind: 'types-unavailable' }],
+			});
+			expect(result.findings.some((f) => f.packageName === 'react')).toBe(false);
+			expect(result.ignored.some((f) => f.kind === 'types-unavailable')).toBe(true);
+		});
+
+		it('keeps an existing missing-types ignore matching even when the gap would be reclassified', async () => {
+			// The react gap is suppressed as `missing-types` *before* refinement, so it must stay
+			// ignored — refinement must never turn a suppressed finding into a failing one.
+			const result = await audit(join(targetsRoot, 'missing'), {
+				provider: withProbe('absent'),
+				ignore: [{ kind: 'missing-types' }],
+			});
+			expect(result.findings.some((f) => f.packageName === 'react')).toBe(false);
+			expect(
+				result.ignored.some((f) => f.packageName === 'react' && f.kind === 'missing-types'),
+			).toBe(true);
+		});
+
+		it('probes only the @types companion of missing-types findings (never an undeclared one)', async () => {
+			const probed: string[] = [];
+			const provider: RegistryProvider = {
+				materialize: (name, range, intoDir) => fixtureProvider.materialize(name, range, intoDir),
+				packageExists: (name) => {
+					probed.push(name);
+					return Promise.resolve('exists');
+				},
+			};
+			await audit(join(targetsRoot, 'missing'), { provider });
+			// `react` is missing-types → its companion is probed; `csstype` is undeclared → never probed.
+			expect(probed).toEqual(['@types/react']);
+		});
+
+		it('does not probe a finding already suppressed (refinement runs only on survivors)', async () => {
+			const probed: string[] = [];
+			const provider: RegistryProvider = {
+				materialize: (name, range, intoDir) => fixtureProvider.materialize(name, range, intoDir),
+				packageExists: (name) => {
+					probed.push(name);
+					return Promise.resolve('absent');
+				},
+			};
+			await audit(join(targetsRoot, 'missing'), { provider, ignore: [{ kind: 'missing-types' }] });
+			// react's gap is suppressed before refinement, so its companion is never even looked up.
+			expect(probed).not.toContain('@types/react');
+		});
+
+		it('binds packageExists to its receiver (a class-backed provider using `this`)', async () => {
+			// If the method were called unbound, `this.verdict` would throw — so this locks down the binding.
+			class ClassProvider implements RegistryProvider {
+				private readonly verdict = 'absent' as const;
+				materialize(name: string, range: string, intoDir: string): Promise<string | undefined> {
+					return fixtureProvider.materialize(name, range, intoDir);
+				}
+				packageExists(): Promise<'exists' | 'absent' | 'unknown'> {
+					return Promise.resolve(this.verdict);
+				}
+			}
+			const result = await audit(join(targetsRoot, 'missing'), { provider: new ClassProvider() });
+			expect(kindFor(result, 'react')).toBe('types-unavailable');
+		});
 	});
 
 	it('accepts a Node builtin type reference when @types/node is declared', async () => {

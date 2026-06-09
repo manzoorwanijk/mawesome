@@ -1,3 +1,4 @@
+import { mapLimit } from './concurrency.ts';
 import type { FileSystem } from './fs.ts';
 import { partitionIgnored } from './ignore.ts';
 import { declaredDependencies, readManifest } from './manifest.ts';
@@ -135,10 +136,17 @@ export async function auditPackage(
 		}
 	}
 
-	const partitioned = partitionIgnored(findings, options.ignore ?? [], {
-		name: manifest.name,
-		target,
-	});
+	/*
+	 * Suppress intentional findings first, then refine only the survivors, then re-check them.
+	 * Refining before this would let a `{ kind: "missing-types" }` rule silently stop matching a
+	 * finding reclassified to `types-unavailable` — turning a previously-ignored gap into a failure.
+	 * The second pass catches a `{ kind: "types-unavailable" }` rule against the now-refined kind.
+	 */
+	const rules = options.ignore ?? [];
+	const context = { name: manifest.name, target };
+	const suppressed = partitionIgnored(findings, rules, context);
+	await refineMissingTypes(suppressed.findings, provider, declared);
+	const partitioned = partitionIgnored(suppressed.findings, rules, context);
 	return {
 		target,
 		source: options.source ?? { kind: 'directory' },
@@ -146,7 +154,7 @@ export async function auditPackage(
 		packageVersion: manifest.version,
 		ok: partitioned.findings.length === 0,
 		findings: partitioned.findings,
-		ignored: partitioned.ignored,
+		ignored: [...suppressed.ignored, ...partitioned.ignored],
 		unchecked,
 		notices,
 		resolvedDeps: resolved,
@@ -176,6 +184,57 @@ function typeCoverageNotices(coverage: TypeCoverage): Notice[] {
 		];
 	}
 	return [];
+}
+
+/** Cap on concurrent registry existence probes, to bound load on the shared registry. */
+const TYPES_PROBE_CONCURRENCY = 8;
+
+type Existence = 'exists' | 'absent' | 'unknown';
+
+/**
+ * Refines `missing-types` findings using the provider's optional registry probe.
+ * When the `@types/*` companion does not exist, the gap is not fixable by declaring a dependency, so the finding is reclassified `types-unavailable` with honest advice.
+ * An `exists`/`unknown` result (or a provider without the capability — e.g. the browser default) leaves the conservative `missing-types` finding unchanged.
+ */
+async function refineMissingTypes(
+	findings: Finding[],
+	provider: RegistryProvider,
+	declared: Set<string>,
+): Promise<void> {
+	if (provider.packageExists === undefined) {
+		return;
+	}
+	// Bind to preserve the receiver — a class-backed custom provider may use `this`.
+	const probe = provider.packageExists.bind(provider);
+	// Distinct packages whose `@types/*` companion we'd suggest and that isn't already declared.
+	const names = [
+		...new Set(
+			findings
+				.filter((f) => f.kind === 'missing-types' && !declared.has(typesPackageFor(f.packageName)))
+				.map((f) => f.packageName),
+		),
+	];
+	if (names.length === 0) {
+		return;
+	}
+	const availability = new Map<string, Existence>();
+	await mapLimit(names, TYPES_PROBE_CONCURRENCY, async (name) => {
+		availability.set(name, await probe(typesPackageFor(name)));
+	});
+	for (const candidate of findings) {
+		if (
+			candidate.kind === 'missing-types' &&
+			availability.get(candidate.packageName) === 'absent'
+		) {
+			candidate.kind = 'types-unavailable';
+			candidate.suggestion = typesUnavailableSuggestion(candidate.packageName);
+		}
+	}
+}
+
+function typesUnavailableSuggestion(packageName: string): string {
+	const typesPackage = typesPackageFor(packageName);
+	return `"${packageName}" publishes no types and no "${typesPackage}" exists on the registry — not fixable by declaring a dependency; ship types upstream, or add a local ambient \`declare module "${packageName}"\``;
 }
 
 function builtinTypeFinding(seen: Seen, packageName: string): Finding {
