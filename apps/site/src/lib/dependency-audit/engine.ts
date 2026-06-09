@@ -27,10 +27,16 @@ const MAX_ENTRIES = 24_000;
 
 /**
  * A permissive npm package name (scope optional). Rejects URLs, paths, and whitespace so a spec
- * can't smuggle extra path segments into the request URLs; the explicit `..` guard blocks traversal.
+ * can't smuggle extra path segments into the request URLs; the `..` guard and the dot-only-segment
+ * guard block the `..`/`.` URL path segments (including the scope-suffixed `@scope/.`, which is never
+ * a real package anyway).
  */
 function isValidPackageName(name: string): boolean {
-	return /^(?:@[a-z0-9-._~]+\/)?[a-z0-9-._~]+$/i.test(name) && !name.includes('..');
+	return (
+		/^(?:@[a-z0-9-._~]+\/)?[a-z0-9-._~]+$/i.test(name) &&
+		!name.includes('..') &&
+		!/(?:^|\/)\.+(?:\/|$)/.test(name)
+	);
 }
 
 export interface ParsedSpec {
@@ -85,7 +91,9 @@ async function gunzipCapped(
 	for (;;) {
 		// eslint-disable-next-line no-await-in-loop -- streaming requires sequential, backpressured reads
 		const { done, value } = await reader.read();
-		if (done) break;
+		if (done) {
+			break;
+		}
 		total += value.byteLength;
 		if (total > maxBytes) {
 			void reader.cancel();
@@ -131,7 +139,9 @@ async function extractInto(
 	for (const file of files) {
 		const segments = pathSegments(file);
 		// Keep only files under the one real root; a stray under another root is a collapsed-`..` path.
-		if (!segments || segments[0] !== root) continue;
+		if (!segments || segments[0] !== root) {
+			continue;
+		}
 		const rel = segments.slice(1).join('/');
 		if (rel) fs.writeFile(`${destDir}/${rel}`, file.text);
 	}
@@ -168,7 +178,40 @@ function dominantRoot(files: { name: string; type?: string }[]): string | undefi
 	return root;
 }
 
-/** A provider that materializes declared deps into the in-memory fs from the CDN. */
+/** `true` if an `exports` field (or any nested branch) carries a `types` condition. */
+function exportsHasTypes(node: unknown): boolean {
+	if (node === null || typeof node !== 'object') {
+		return false;
+	}
+	if (Array.isArray(node)) {
+		return node.some(exportsHasTypes);
+	}
+	const record = node as Record<string, unknown>;
+	return 'types' in record || Object.values(record).some(exportsHasTypes);
+}
+
+/** Whether a package manifest declares its own type declarations (field or `exports` `types`). */
+function declaresOwnTypes(manifest: {
+	types?: unknown;
+	typings?: unknown;
+	typesVersions?: unknown;
+	exports?: unknown;
+}): boolean {
+	return (
+		typeof manifest.types === 'string' ||
+		typeof manifest.typings === 'string' ||
+		manifest.typesVersions !== undefined ||
+		exportsHasTypes(manifest.exports)
+	);
+}
+
+/**
+ * A provider that materializes declared deps into the in-memory fs from the CDN, and implements the
+ * optional registry probes so the playground showcases the same `@types`-aware advice as the CLI:
+ * `packageExists` (does `@types/x` exist → `types-unavailable`) and `latestTypedVersion` (does a
+ * published version ship its own types → "depend on that version"). Both degrade to the conservative
+ * outcome on any network/parse failure.
+ */
 function createCdnProvider(fs: WritableFileSystem, signal?: AbortSignal): RegistryProvider {
 	return {
 		async materialize(name, range, intoDir) {
@@ -176,6 +219,48 @@ function createCdnProvider(fs: WritableFileSystem, signal?: AbortSignal): Regist
 			if (!version) return undefined;
 			await extractInto(fs, name, version, `${intoDir}/node_modules/${name}`, signal);
 			return version;
+		},
+		async packageExists(name) {
+			/* Gate before interpolating into the URL: a validated name is URL-path-safe (the charset is
+			 * RFC 3986 unreserved + the scope `/`) and `..`-free, so no escaping is needed; bail conservatively otherwise. */
+			if (!isValidPackageName(name)) {
+				return 'unknown';
+			}
+			try {
+				const url = `${JSDELIVR_RESOLVE}/${name}/resolved?specifier=latest`;
+				const res = await fetch(url, { signal });
+				// A genuinely-absent package 404s (verified); treat a 200 without a version as inconclusive, not absent.
+				if (res.status === 404) {
+					return 'absent';
+				}
+				if (!res.ok) {
+					return 'unknown';
+				}
+				const body = (await res.json()) as { version?: string | null };
+				return body.version ? 'exists' : 'unknown';
+			} catch {
+				return 'unknown';
+			}
+		},
+		async latestTypedVersion(name, currentVersion) {
+			if (!isValidPackageName(name)) {
+				return undefined;
+			}
+			try {
+				const latest = await resolveVersion(name, 'latest', signal);
+				if (latest === undefined || latest === currentVersion) {
+					return undefined;
+				}
+				// The version manifest carries `types`/`exports` (the abbreviated packument omits them).
+				const res = await fetch(`${REGISTRY}/${name}/${latest}`, { signal });
+				if (!res.ok) {
+					return undefined;
+				}
+				const manifest = (await res.json()) as Parameters<typeof declaresOwnTypes>[0];
+				return declaresOwnTypes(manifest) ? latest : undefined;
+			} catch {
+				return undefined;
+			}
 		},
 	};
 }
