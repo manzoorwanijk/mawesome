@@ -1,0 +1,5 @@
+{
+	"name": "real-legacy-pkg",
+	"version": "1.0.0",
+	"main": "./index.cjs"
+}
