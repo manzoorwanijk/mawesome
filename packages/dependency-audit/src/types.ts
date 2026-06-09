@@ -63,8 +63,10 @@ export interface Finding {
 	 * Declared dependencies whose own public types *also* expose this package — a strong signal (not
 	 * a proof) that the type leaked into the audited package's `.d.ts` through their API rather than a
 	 * direct import (the `.d.ts` portability trap). If so, the durable fix is in the producer and
-	 * declaring the type yourself is a workaround. Set on a `types`-surface `undeclared` finding;
-	 * absent only when no declared dependency exposes the package.
+	 * declaring the type yourself is a workaround. Set only on a `types`-surface `undeclared` finding
+	 * for a package that appeared *solely* as an inline `import("x")` type (the leak signature, though
+	 * a hand-written inline import is indistinguishable from a tsc-synthesized one); absent when no
+	 * declared dependency exposes it, or when the package is imported directly (author-written).
 	 */
 	leakedVia?: string[];
 	/** Package-relative path of the declaration file where it was first seen. */

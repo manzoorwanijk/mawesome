@@ -74,6 +74,16 @@ describe('audit (type surface)', () => {
 		expect(leak?.leakedVia).toHaveLength(2);
 	});
 
+	it('does not attribute a directly-imported package as a leak, even if a dep also exposes it', async () => {
+		// The consumer writes a top-level `import … from 'leaked-lib'` (a direct use), while declared
+		// `leaky-core` also exposes `leaked-lib`. A direct import is author-written, not a synthesized
+		// leak, so it must stay a plain `undeclared` finding with no `leakedVia`.
+		const result = await run('direct-use-types');
+		const finding = result.findings.find((f) => f.packageName === 'leaked-lib');
+		expect(finding?.kind).toBe('undeclared');
+		expect(finding?.leakedVia).toBeUndefined();
+	});
+
 	describe('registry-aware @types refinement (missing-types → types-unavailable)', () => {
 		const withProbe = (verdict: 'exists' | 'absent' | 'unknown'): RegistryProvider => ({
 			materialize: (name, range, intoDir) => fixtureProvider.materialize(name, range, intoDir),
