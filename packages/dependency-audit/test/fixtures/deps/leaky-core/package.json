@@ -1,0 +1,8 @@
+{
+	"name": "leaky-core",
+	"version": "1.0.0",
+	"types": "./index.d.ts",
+	"dependencies": {
+		"leaked-lib": "^1.0.0"
+	}
+}

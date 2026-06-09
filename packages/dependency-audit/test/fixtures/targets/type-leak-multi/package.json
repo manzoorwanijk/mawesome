@@ -1,0 +1,10 @@
+{
+	"name": "@fixture/type-leak-multi",
+	"version": "1.0.0",
+	"type": "module",
+	"types": "./index.d.ts",
+	"dependencies": {
+		"leaky-core": "^1.0.0",
+		"leaky-core2": "^1.0.0"
+	}
+}

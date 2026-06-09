@@ -109,6 +109,7 @@ Distinguish the three by key: an `error` key → could not audit (exit 2); a `sk
 			"kind": "undeclared", // see Findings & notices
 			// "reason": "condition-mismatch", // only on some `unresolved` runtime findings
 			// "causedBy": { "target": "./packages/producer", "notice": "types-unreachable" }, // only when correlated to a producer in the run
+			// "leakedVia": ["some-dep"], // declared dep(s) that also expose this type (likely leaked in; types `undeclared` finding)
 			"firstSeenIn": "dist/index.d.ts", // package-relative path
 			"suggestion": "declare \"@types/react\" …",
 		},

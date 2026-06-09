@@ -59,6 +59,14 @@ export interface Finding {
 	reason?: UnresolvedReason;
 	/** Set in a multi-target run when another audited target (the producer) is the root cause. */
 	causedBy?: FindingCause;
+	/**
+	 * Declared dependencies whose own public types *also* expose this package — a strong signal (not
+	 * a proof) that the type leaked into the audited package's `.d.ts` through their API rather than a
+	 * direct import (the `.d.ts` portability trap). If so, the durable fix is in the producer and
+	 * declaring the type yourself is a workaround. Set on a `types`-surface `undeclared` finding;
+	 * absent only when no declared dependency exposes the package.
+	 */
+	leakedVia?: string[];
 	/** Package-relative path of the declaration file where it was first seen. */
 	firstSeenIn: string;
 	/** Human-readable remediation hint. */

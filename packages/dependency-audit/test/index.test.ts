@@ -53,6 +53,25 @@ describe('audit (type surface)', () => {
 		const csstype = result.findings.find((f) => f.packageName === 'csstype');
 		expect(csstype?.kind).toBe('undeclared');
 		expect(csstype?.suggestion).toContain('@types/csstype');
+		// A genuine direct use (no declared dep exposes it) is not attributed as a leak.
+		expect(csstype?.leakedVia).toBeUndefined();
+	});
+
+	it('attributes a leaked type to the declared dependency whose API exposes it', async () => {
+		const result = await run('type-leak');
+		// `leaked-lib` is undeclared and never imported directly — it enters via `leaky-core`.
+		const leak = result.findings.find((f) => f.packageName === 'leaked-lib');
+		expect(leak).toMatchObject({ surface: 'types', kind: 'undeclared', leakedVia: ['leaky-core'] });
+		expect(leak?.suggestion).toContain('also exposed by declared dependency "leaky-core"');
+		// `leaky-core` itself is declared and resolves — no finding for it.
+		expect(result.findings.some((f) => f.packageName === 'leaky-core')).toBe(false);
+	});
+
+	it('lists every declared dependency that exposes a leaked type', async () => {
+		const result = await run('type-leak-multi');
+		const leak = result.findings.find((f) => f.packageName === 'leaked-lib');
+		expect(leak?.leakedVia).toEqual(expect.arrayContaining(['leaky-core', 'leaky-core2']));
+		expect(leak?.leakedVia).toHaveLength(2);
 	});
 
 	describe('registry-aware @types refinement (missing-types → types-unavailable)', () => {
@@ -163,6 +182,8 @@ describe('audit (type surface)', () => {
 		const finding = result.findings.find((f) => f.packageName === 'path');
 		expect(finding?.kind).toBe('undeclared');
 		expect(finding?.suggestion).toContain('@types/node');
+		// A builtin is never a leak candidate, so it's not attributed to a dependency.
+		expect(finding?.leakedVia).toBeUndefined();
 	});
 
 	it('scans deep-importable .d.ts files when there is no exports field', async () => {
