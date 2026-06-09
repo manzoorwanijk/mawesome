@@ -8,17 +8,17 @@ All results — text and `--json` — are written to **stdout**. Progress and di
 
 The report is a sequence of per-target blocks, then a summary line. Each line is prefixed with two spaces and a **status symbol**:
 
-| Symbol | Meaning                                                                          |
-| ------ | -------------------------------------------------------------------------------- |
-| `✓`    | The target is clean — no findings and no notices.                                |
-| `✗`    | A finding (a real problem that fails the audit).                                 |
-| `ℹ`    | A notice (a coverage gap — no/unreachable type surface; does not fail).          |
-| `–`    | An ignored finding (suppressed by a rule; does not fail). Ends with `— ignored`. |
-| `?`    | An unchecked specifier (dynamic/opaque — surfaced, not resolved).                |
-| `↷`    | A skipped target — a non-package path (does not affect the exit code).           |
-| `⚠`    | An error — the target could not be audited at all.                               |
-| `→`    | A remediation suggestion (continuation of the preceding `✗`/`–` line).           |
-| `↳`    | A root-cause note: the finding is caused by another target audited in the run.   |
+| Symbol | Meaning                                                                                                                                                                             |
+| ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `✓`    | The target is clean — no findings and no notices.                                                                                                                                   |
+| `✗`    | A finding (a real problem that fails the audit).                                                                                                                                    |
+| `ℹ`    | A notice (a coverage gap — no/unreachable type surface; does not fail).                                                                                                             |
+| `–`    | An ignored finding (suppressed by a rule; does not fail). Ends with `— ignored`.                                                                                                    |
+| `?`    | An unchecked specifier (dynamic/opaque — surfaced, not resolved).                                                                                                                   |
+| `↷`    | A skipped target — a non-package path (does not affect the exit code).                                                                                                              |
+| `⚠`    | An error — the target could not be audited at all.                                                                                                                                  |
+| `→`    | A remediation suggestion (continuation of the preceding `✗`/`–` line).                                                                                                              |
+| `↳`    | A root-cause note: the finding is caused by another target audited in the run — a continuation under a finding, or (with `--collapse-root-cause`) a muted, non-failing finding row. |
 
 When stdout is a color-capable terminal, severity is also carried by **color** — red for findings/errors, yellow for notices/unchecked, green for clean, and muted (dim) for ignored/skipped/secondary detail. Color is auto-disabled when the output isn't a TTY (e.g. piped to a file or another program) and honors the [`NO_COLOR`](https://no-color.org) and `FORCE_COLOR` environment variables. The symbols above are the source of truth; color is purely a visual aid (and never emitted under `--json`), so parsers should key on the symbols, not the color.
 
@@ -34,6 +34,7 @@ When stdout is a color-capable terminal, severity is also carried by **color** �
     ✗ <surface>  [<kind>]  <specifier>  (<file>)     # findings
         → <suggestion>
         ↳ caused by <producer-target> (<notice>) …    # only when correlated to a producer in the run
+    ↳ <surface>  [<kind>]  <specifier>  (<file>)  — root cause: <producer> (<notice>)   # only under --collapse-root-cause
     – <surface>  [<kind>]  <specifier>  (<file>)  — ignored   # ignored findings
     ? unchecked  <specifier>  (<reason>; <file>)     # unchecked specifiers
 ```
@@ -54,10 +55,10 @@ When stdout is a color-capable terminal, severity is also carried by **color** �
 ### Summary line
 
 ```
-<N> package[s], <F> finding[s][, <G> ignored][, <C> notice[s]][, <S> skipped][, <E> error[s]].
+<N> package[s], <F> finding[s][, <K> collapsed][, <G> ignored][, <C> notice[s]][, <S> skipped][, <E> error[s]].
 ```
 
-The `ignored`, `notice`, `skipped`, and `error` clauses appear only when their count is non-zero. `<F>` counts non-ignored findings.
+The `collapsed`, `ignored`, `notice`, `skipped`, and `error` clauses appear only when their count is non-zero. `<F>` counts findings that fail the run — non-ignored, and (under `--collapse-root-cause`) non-collapsed.
 
 ## JSON format (`--json`)
 
@@ -149,4 +150,4 @@ Iterate `payload.results` (each `entry` below is one of its elements); read `pay
 
 - **Pass/fail per target:** `entry.error !== undefined` → could not audit; `entry.skipped !== undefined` → a non-package path (neutral, ignore for pass/fail); else `entry.ok` → pass/fail on findings.
 - **Coverage:** count `entry.notices` to report "audited N, M with no analyzable type surface". Treat as failure only if you opt into `--require-types` (CLI) or check `notices.length` yourself (API).
-- **Aggregate exit semantics** mirror the CLI: any error entry → 2; else any `ok === false` → 1; else 0. Skip entries are neutral.
+- **Aggregate exit semantics** mirror the CLI: any error entry → 2; else any `ok === false` → 1; else 0. Skip entries are neutral. (`--collapse-root-cause` is a CLI-only exit/presentation flag — it does not change `entry.ok`, so under it the CLI can exit 0 while an `entry.ok` is `false`; a JSON consumer that wants the same behavior treats a finding with `causedBy` as non-failing itself.)

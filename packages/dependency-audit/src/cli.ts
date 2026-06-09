@@ -6,7 +6,7 @@ import { SkippedTargetError } from './acquire.ts';
 import { audit } from './audit.ts';
 import { color } from './color.ts';
 import { mapLimit } from './concurrency.ts';
-import { correlateRootCauses } from './correlate.ts';
+import { correlateRootCauses, isCollapsed, resultFails } from './correlate.ts';
 import { parseIgnoreRules } from './ignore.ts';
 import { createTtyReporter } from './progress-tty.ts';
 import type { AuditResult, Finding, IgnoreRule } from './types.ts';
@@ -46,6 +46,10 @@ Options:
                     serially. Also via DEPENDENCY_AUDIT_CONCURRENCY.
   --require-types   Treat a missing/unreachable type surface (a coverage notice)
                     as a failure rather than just a notice.
+  --collapse-root-cause  In a multi-target run, don't fail on a finding whose
+                    root cause is another audited target (its types aren't
+                    built/reachable) — fix that producer instead. Such findings
+                    are still listed, muted.
   --json            Emit machine-readable JSON: a { tool, version, results }
                     envelope; results has one entry per target (an AuditResult,
                     or { target, error } for a failed audit).
@@ -79,6 +83,7 @@ async function main(): Promise<number> {
 			condition: { type: 'string', multiple: true },
 			concurrency: { type: 'string' },
 			'require-types': { type: 'boolean', default: false },
+			'collapse-root-cause': { type: 'boolean', default: false },
 			json: { type: 'boolean', default: false },
 			'no-progress': { type: 'boolean', default: false },
 			version: { type: 'boolean', short: 'v', default: false },
@@ -165,6 +170,8 @@ async function main(): Promise<number> {
 
 	// Annotate findings whose root cause is another target in this run (a producer's coverage gap).
 	correlateRootCauses(outcomes.flatMap((outcome) => ('result' in outcome ? [outcome.result] : [])));
+	// `--collapse-root-cause`: such correlated findings no longer fail the run (fix the producer).
+	const collapse = values['collapse-root-cause'] ?? false;
 
 	if (values.json) {
 		/* A `{ tool, version, results }` envelope so a saved audit artifact records the
@@ -179,18 +186,20 @@ async function main(): Promise<number> {
 	} else {
 		for (const outcome of outcomes) {
 			if ('result' in outcome) {
-				printResult(outcome.result);
+				printResult(outcome.result, collapse);
 			} else if ('skipped' in outcome) {
 				printSkipped(outcome);
 			} else {
 				printError(outcome);
 			}
 		}
-		printSummary(outcomes);
+		printSummary(outcomes, collapse);
 	}
 
 	const anyError = outcomes.some((outcome) => 'error' in outcome);
-	const anyFinding = outcomes.some((outcome) => 'result' in outcome && !outcome.result.ok);
+	const anyFinding = outcomes.some(
+		(outcome) => 'result' in outcome && resultFails(outcome.result, collapse),
+	);
 	// `--require-types` promotes a coverage notice (no/unreachable types) to a failure.
 	const anyCoverageGap =
 		(values['require-types'] ?? false) &&
@@ -245,7 +254,7 @@ function loadConfigRules(configPath: string | undefined): IgnoreRule[] {
 	}
 }
 
-function printResult(result: AuditResult): void {
+function printResult(result: AuditResult, collapse: boolean): void {
 	const label = result.packageName ?? result.target;
 	const version = result.packageVersion === undefined ? '' : `@${result.packageVersion}`;
 	console.log(`\n${color.bold(`${label}${version}`)}  ${color.dim(result.target)}`);
@@ -266,6 +275,11 @@ function printResult(result: AuditResult): void {
 		);
 	}
 	for (const finding of result.findings) {
+		if (isCollapsed(finding, collapse) && finding.causedBy !== undefined) {
+			// Collapsed to its producer (`--collapse-root-cause`): muted, does not fail the run.
+			console.log(collapsedRow(finding, finding.causedBy.target, finding.causedBy.notice));
+			continue;
+		}
 		console.log(findingRow(finding));
 		console.log(`      ${color.dim('→')} ${finding.suggestion}`);
 		if (finding.causedBy !== undefined) {
@@ -311,6 +325,15 @@ function ignoredRow(finding: Finding): string {
 	);
 }
 
+/** A finding collapsed to its producer under `--collapse-root-cause` — muted; does not fail. */
+function collapsedRow(finding: Finding, producer: string, notice: string): string {
+	const surface = finding.surface.padEnd(SURFACE_WIDTH);
+	const kind = `[${finding.kind}]`.padEnd(KIND_WIDTH);
+	return color.dim(
+		`  ↳ ${surface}  ${kind}  ${finding.specifier}  (${finding.firstSeenIn})  — root cause: ${producer} (${notice})`,
+	);
+}
+
 /** Reports a target whose audit could not run at all (acquisition/fetch failure). */
 function printError(outcome: { target: string; error: string }): void {
 	console.log(`\n${color.dim(outcome.target)}`);
@@ -341,16 +364,22 @@ function errorMessage(value: unknown): string {
 	}
 }
 
-function printSummary(outcomes: Outcome[]): void {
+function printSummary(outcomes: Outcome[], collapse: boolean): void {
 	const results = outcomes.flatMap((o) => ('result' in o ? [o.result] : []));
 	const skipped = outcomes.filter((o) => 'skipped' in o).length;
 	const errors = outcomes.length - results.length - skipped;
-	const findings = results.reduce((sum, result) => sum + result.findings.length, 0);
+	const allFindings = results.flatMap((result) => result.findings);
+	// Under `--collapse-root-cause`, a correlated finding is counted separately and doesn't fail.
+	const collapsed = allFindings.filter((f) => isCollapsed(f, collapse)).length;
+	const findings = allFindings.length - collapsed;
 	const ignored = results.reduce((sum, result) => sum + result.ignored.length, 0);
 	const notices = results.reduce((sum, result) => sum + result.notices.length, 0);
 	const noun = outcomes.length === 1 ? 'package' : 'packages';
 	// The headline count is the severity signal: red when something fails, green when clean.
 	const parts = [findings > 0 ? color.red(plural(findings, 'finding')) : color.green('0 findings')];
+	if (collapsed > 0) {
+		parts.push(color.dim(`${collapsed} collapsed`));
+	}
 	if (ignored > 0) {
 		parts.push(color.dim(`${ignored} ignored`));
 	}
