@@ -3,7 +3,9 @@ import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import pacote from 'pacote';
 import { DEFAULT_EXTRACT_LIMITS, ExtractLimitError, extractTarball } from './extract.ts';
+import type { Manifest } from './manifest.ts';
 import { withRetry } from './retry.ts';
+import { manifestDeclaresTypes } from './surface.ts';
 import type { ExtractLimits, RegistryProvider } from './types.ts';
 import { buildWorkspaceIndex } from './workspace.ts';
 
@@ -36,6 +38,9 @@ type Existence = 'exists' | 'absent' | 'unknown';
  * `@types/*` lookup across every audited target in a monorepo run (the provider is per-target).
  */
 const existenceCache = new Map<string, Promise<Existence>>();
+
+/* Process-wide cache of "the `@latest` version that ships its own types", keyed by where + name. */
+const typedVersionCache = new Map<string, Promise<string | undefined>>();
 
 const RECURSIVE = { recursive: true, force: true } as const;
 
@@ -105,7 +110,53 @@ export function createPacoteProvider(options: PacoteProviderOptions = {}): Regis
 		packageExists(name: string): Promise<Existence> {
 			return probeExistence(name, where);
 		},
+		latestTypedVersion(name: string, currentVersion: string): Promise<string | undefined> {
+			return probeLatestTypedVersion(name, currentVersion, where);
+		},
 	};
+}
+
+/**
+ * Probes the registry's current version of `name` and returns it when it ships its own types and
+ * differs from `currentVersion` (the resolved version, which ships none).
+ * The `@latest`-ships-types lookup is independent of `currentVersion`, so it is memoized by
+ * `[where, name]` and the version comparison is applied per call — otherwise two targets resolving
+ * different versions of the same package would each re-fetch.
+ */
+function probeLatestTypedVersion(
+	name: string,
+	currentVersion: string,
+	where: string | undefined,
+): Promise<string | undefined> {
+	return latestVersionWithOwnTypes(name, where).then((typed) =>
+		typed !== undefined && typed !== currentVersion ? typed : undefined,
+	);
+}
+
+/**
+ * The registry's `@latest` version of `name` if it ships its own types, else `undefined` — memoized
+ * process-wide by `[where, name]`. Needs `fullMetadata` because abbreviated manifests omit
+ * `types`/`exports`. A fetch failure resolves to `undefined` and is evicted so a transient error
+ * doesn't pin a missing result.
+ */
+function latestVersionWithOwnTypes(
+	name: string,
+	where: string | undefined,
+): Promise<string | undefined> {
+	const key = JSON.stringify([where, name]);
+	const cached = typedVersionCache.get(key);
+	if (cached !== undefined) {
+		return cached;
+	}
+	const result = pacote
+		.manifest(`${name}@latest`, { ...(where !== undefined ? { where } : {}), fullMetadata: true })
+		.then((m) => (manifestDeclaresTypes(m as unknown as Manifest) ? m.version : undefined))
+		.catch(() => {
+			typedVersionCache.delete(key);
+			return undefined;
+		});
+	typedVersionCache.set(key, result);
+	return result;
 }
 
 /**

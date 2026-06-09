@@ -16,6 +16,7 @@ import type {
 	IgnoreRule,
 	Notice,
 	RegistryProvider,
+	ResolvedDependency,
 	Surface,
 	UncheckedSpecifier,
 	UnresolvedReason,
@@ -164,7 +165,9 @@ export async function auditPackage(
 	const rules = options.ignore ?? [];
 	const context = { name: manifest.name, target };
 	const suppressed = partitionIgnored(findings, rules, context);
-	await refineMissingTypes(suppressed.findings, provider, declared);
+	await refineMissingTypes(suppressed.findings, provider, declared, resolved, (name) =>
+		typeResolver.resolvesToDeclaration(name),
+	);
 	const partitioned = partitionIgnored(suppressed.findings, rules, context);
 	return {
 		target,
@@ -219,17 +222,32 @@ async function refineMissingTypes(
 	findings: Finding[],
 	provider: RegistryProvider,
 	declared: Set<string>,
+	resolved: ResolvedDependency[],
+	resolvesBareTypes: (name: string) => boolean,
 ): Promise<void> {
 	if (provider.packageExists === undefined) {
 		return;
 	}
 	// Bind to preserve the receiver — a class-backed custom provider may use `this`.
-	const probe = provider.packageExists.bind(provider);
-	// Distinct packages whose `@types/*` companion we'd suggest and that isn't already declared.
+	const probeTypes = provider.packageExists.bind(provider);
+	const probeTypedVersion = provider.latestTypedVersion?.bind(provider);
+	const versionOf = new Map(resolved.map((dep) => [dep.name, dep.version]));
+	/*
+	 * Refine only packages that ship *no* types of their own — the `@types/*` / version-bump /
+	 * unavailable advice is about a package with no types at all. A `missing-types` for a *subpath*
+	 * of a package whose bare entry does resolve to types is a subpath gap, not that, so it keeps
+	 * its original suggestion. The bare-entry resolution catches implicit `index.d.ts` types too,
+	 * which a manifest-field check (`types`/`exports`) would miss.
+	 */
 	const names = [
 		...new Set(
 			findings
-				.filter((f) => f.kind === 'missing-types' && !declared.has(typesPackageFor(f.packageName)))
+				.filter(
+					(f) =>
+						f.kind === 'missing-types' &&
+						!declared.has(typesPackageFor(f.packageName)) &&
+						!resolvesBareTypes(f.packageName),
+				)
 				.map((f) => f.packageName),
 		),
 	];
@@ -238,13 +256,31 @@ async function refineMissingTypes(
 	}
 	const availability = new Map<string, Existence>();
 	await mapLimit(names, TYPES_PROBE_CONCURRENCY, async (name) => {
-		availability.set(name, await probe(typesPackageFor(name)));
+		availability.set(name, await probeTypes(typesPackageFor(name)));
 	});
+	// For packages with no `@types/*`, see whether a published version ships its own types.
+	const typedVersion = new Map<string, string | undefined>();
+	if (probeTypedVersion !== undefined) {
+		const absent = names.filter((name) => availability.get(name) === 'absent');
+		await mapLimit(absent, TYPES_PROBE_CONCURRENCY, async (name) => {
+			const current = versionOf.get(name);
+			if (current !== undefined) {
+				typedVersion.set(name, await probeTypedVersion(name, current));
+			}
+		});
+	}
 	for (const candidate of findings) {
 		if (
-			candidate.kind === 'missing-types' &&
-			availability.get(candidate.packageName) === 'absent'
+			candidate.kind !== 'missing-types' ||
+			availability.get(candidate.packageName) !== 'absent'
 		) {
+			continue;
+		}
+		const upgrade = typedVersion.get(candidate.packageName);
+		if (upgrade !== undefined) {
+			// Fixable by depending on the version that ships types — stays `missing-types`.
+			candidate.suggestion = typedVersionSuggestion(candidate.packageName, upgrade);
+		} else {
 			candidate.kind = 'types-unavailable';
 			candidate.suggestion = typesUnavailableSuggestion(candidate.packageName);
 		}
@@ -253,7 +289,12 @@ async function refineMissingTypes(
 
 function typesUnavailableSuggestion(packageName: string): string {
 	const typesPackage = typesPackageFor(packageName);
-	return `"${packageName}" publishes no types and no "${typesPackage}" exists on the registry — not fixable by declaring a dependency; ship types upstream, or add a local ambient \`declare module "${packageName}"\``;
+	return `"${packageName}" provides no resolvable types and no "${typesPackage}" exists on the registry — not fixable by declaring a dependency; ship types upstream, or add a local ambient \`declare module "${packageName}"\``;
+}
+
+function typedVersionSuggestion(packageName: string, version: string): string {
+	const typesPackage = typesPackageFor(packageName);
+	return `"${packageName}" provides no types at the resolved version and no "${typesPackage}" exists, but "${packageName}@${version}" ships its own types — depend on that version`;
 }
 
 /**

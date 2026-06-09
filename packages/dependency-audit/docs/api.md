@@ -115,11 +115,13 @@ interface RegistryProvider {
 	materialize(name: string, range: string, intoDir: string): Promise<string | undefined>;
 	/** Optional: does `name` exist on the registry? Used only to refine `missing-types` into `types-unavailable`; return `'unknown'` when the lookup can't run. */
 	packageExists?(name: string): Promise<'exists' | 'absent' | 'unknown'>;
+	/** Optional: the registry's current version of `name` if it ships its own types and differs from `currentVersion`; lets the audit suggest depending on that version instead of `types-unavailable`. */
+	latestTypedVersion?(name: string, currentVersion: string): Promise<string | undefined>;
 }
 ```
 
-- **Node default** — `createPacoteProvider({ where, limits })` (and the ready-made `pacoteProvider`): fetches registry ranges via pacote, links local `file:`/`link:`/`workspace:` deps, and implements `packageExists` (a `pacote.packument` probe; 404 → `absent`, any other failure → `unknown`). `where` is the directory local ranges resolve against (the audited package's own dir).
-- **Inject your own** to resolve against an offline mirror, a local cache, or a CDN (browser). A provider that returns `undefined` for a name means "could not materialize" — references to it then surface as findings. Omitting `packageExists` simply disables the `types-unavailable` refinement.
+- **Node default** — `createPacoteProvider({ where, limits })` (and the ready-made `pacoteProvider`): fetches registry ranges via pacote, links local `file:`/`link:`/`workspace:` deps, and implements `packageExists` (a `pacote.packument` probe; 404 → `absent`, any other failure → `unknown`) and `latestTypedVersion` (a `pacote.manifest` probe with `fullMetadata`). `where` is the directory local ranges resolve against (the audited package's own dir).
+- **Inject your own** to resolve against an offline mirror, a local cache, or a CDN (browser). A provider that returns `undefined` for a name means "could not materialize" — references to it then surface as findings. Omitting `packageExists`/`latestTypedVersion` simply disables the `types-unavailable` refinement / version-bump hint.
 
 ## Exported types
 

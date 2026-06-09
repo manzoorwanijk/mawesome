@@ -12,7 +12,7 @@ import { createPacoteProvider } from '../src/provider.ts';
  * `package.json` so `readVersion` has something to read. This exercises the retry/rethrow logic
  * without a real fetch — the extraction itself is covered by extract.test.ts.
  */
-vi.mock('pacote', () => ({ default: { tarball: vi.fn(), packument: vi.fn() } }));
+vi.mock('pacote', () => ({ default: { tarball: vi.fn(), packument: vi.fn(), manifest: vi.fn() } }));
 vi.mock('../src/extract.ts', async (importOriginal) => ({
 	...(await importOriginal<typeof import('../src/extract.ts')>()),
 	extractTarball: vi.fn(),
@@ -20,7 +20,12 @@ vi.mock('../src/extract.ts', async (importOriginal) => ({
 
 const tarballMock = vi.mocked(pacote.tarball);
 const packumentMock = vi.mocked(pacote.packument);
+const manifestMock = vi.mocked(pacote.manifest);
 const extractMock = vi.mocked(extractTarball);
+
+/** A pacote manifest stub with just the fields `manifestDeclaresTypes`/version checks read. */
+const fakeManifest = (over: { version: string; types?: string }) =>
+	over as unknown as Awaited<ReturnType<typeof pacote.manifest>>;
 
 // packument's resolved value is never inspected (only that it resolves), so a bare object stands in.
 const FAKE_PACKUMENT = {} as Awaited<ReturnType<typeof pacote.packument>>;
@@ -138,5 +143,53 @@ describe('createPacoteProvider — packageExists probe', () => {
 		await createPacoteProvider({ where: '/reg-a' }).packageExists?.('wk-pkg');
 		await createPacoteProvider({ where: '/reg-b' }).packageExists?.('wk-pkg');
 		expect(packumentMock).toHaveBeenCalledTimes(2);
+	});
+});
+
+describe('createPacoteProvider — latestTypedVersion probe', () => {
+	it('returns the latest version when it ships types and differs from the current one', async () => {
+		manifestMock.mockResolvedValueOnce(fakeManifest({ version: '2.0.0', types: './index.d.ts' }));
+		expect(await createPacoteProvider().latestTypedVersion?.('typed-pkg', '1.0.0')).toBe('2.0.0');
+	});
+
+	it('returns undefined when the latest version ships no types', async () => {
+		manifestMock.mockResolvedValueOnce(fakeManifest({ version: '2.0.0' }));
+		expect(
+			await createPacoteProvider().latestTypedVersion?.('untyped-pkg', '1.0.0'),
+		).toBeUndefined();
+	});
+
+	it('returns undefined when the latest version equals the resolved one (no newer release)', async () => {
+		manifestMock.mockResolvedValueOnce(fakeManifest({ version: '1.0.0', types: './index.d.ts' }));
+		expect(await createPacoteProvider().latestTypedVersion?.('same-pkg', '1.0.0')).toBeUndefined();
+	});
+
+	it('returns undefined on a fetch failure, and does not cache it', async () => {
+		manifestMock
+			.mockRejectedValueOnce(new Error('ETIMEDOUT'))
+			.mockResolvedValueOnce(fakeManifest({ version: '2.0.0', types: './index.d.ts' }));
+		const provider = createPacoteProvider();
+		expect(await provider.latestTypedVersion?.('flaky-typed', '1.0.0')).toBeUndefined();
+		// The transient failure was evicted, so a later probe re-fetches and can succeed.
+		expect(await provider.latestTypedVersion?.('flaky-typed', '1.0.0')).toBe('2.0.0');
+		expect(manifestMock).toHaveBeenCalledTimes(2);
+	});
+
+	it('dedups the @latest probe across different resolved versions of the same package', async () => {
+		manifestMock.mockResolvedValue(fakeManifest({ version: '3.0.0', types: './index.d.ts' }));
+		const provider = createPacoteProvider();
+		// Two consumers resolve different versions of `multi-pkg`; the `@latest` lookup is shared.
+		expect(await provider.latestTypedVersion?.('multi-pkg', '1.0.0')).toBe('3.0.0');
+		expect(await provider.latestTypedVersion?.('multi-pkg', '2.0.0')).toBe('3.0.0');
+		expect(manifestMock).toHaveBeenCalledTimes(1);
+	});
+
+	it('fetches the full manifest (abbreviated metadata omits types/exports)', async () => {
+		manifestMock.mockResolvedValueOnce(fakeManifest({ version: '2.0.0', types: './index.d.ts' }));
+		await createPacoteProvider().latestTypedVersion?.('full-pkg', '1.0.0');
+		expect(manifestMock).toHaveBeenCalledWith(
+			'full-pkg@latest',
+			expect.objectContaining({ fullMetadata: true }),
+		);
 	});
 });

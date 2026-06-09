@@ -119,7 +119,7 @@ function typeCoverage(
 }
 
 /** `true` when the manifest explicitly declares type declarations (field or `types` condition). */
-function manifestDeclaresTypes(manifest: Manifest): boolean {
+export function manifestDeclaresTypes(manifest: Manifest): boolean {
 	if (manifest.types !== undefined || manifest.typings !== undefined) {
 		return true;
 	}
