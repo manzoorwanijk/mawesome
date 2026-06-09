@@ -68,8 +68,8 @@ describe('audit (runtime surface)', () => {
 
 	it('resolves an `npm:` aliased dep whose materialized manifest keeps its real name', async () => {
 		const result = await run('runtime-npm-alias');
-		// `aliased` materializes under the alias key but reports `real-aliased-pkg`;
-		// both the bare and deep specifiers resolve through the package's own `exports`.
+		/* Each dep materializes under its alias key but reports a different real name.
+		 * Bare, deep, scoped, and legacy (no-`exports`) specifiers all resolve. */
 		expect(result.findings.filter((f) => f.surface === 'runtime')).toEqual([]);
 	});
 
