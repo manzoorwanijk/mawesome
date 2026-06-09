@@ -1,7 +1,9 @@
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { create } from 'tar';
 import { afterEach, describe, expect, it } from 'vitest';
+import { ExtractLimitError } from '../src/extract.ts';
 import { createPacoteProvider } from '../src/provider.ts';
 import { buildWorkspaceIndex } from '../src/workspace.ts';
 
@@ -108,4 +110,36 @@ describe('createPacoteProvider local materialization', () => {
 		const provider = createPacoteProvider({ where: tempRoot() });
 		expect(await provider.materialize('gone', 'file:./does-not-exist', into)).toBeUndefined();
 	});
+
+	it('fails the target (named) for a local file: .tgz that trips the bomb guard', async () => {
+		// The decompression-bomb guard is deliberate even for a local archive — a hostile
+		// `.tgz` must fail the target, not be silently masked as an absent dependency. The
+		// error names the dep (like the registry path) and preserves the guard as `cause`.
+		const consumer = tempRoot();
+		writeFileSync(join(consumer, 'dep.tgz'), await packTarball());
+		// A 1-byte cap trips the guard on any real tarball.
+		const provider = createPacoteProvider({
+			where: consumer,
+			limits: { maxBytes: 1, maxEntries: 100_000 },
+		});
+		const error = await provider
+			.materialize('dep', 'file:./dep.tgz', tempRoot())
+			.then(() => undefined)
+			.catch((reason: unknown) => reason);
+		expect(error).toBeInstanceOf(Error);
+		expect((error as Error).message).toMatch(/Failed to materialize dep@file:\.\/dep\.tgz/);
+		expect((error as Error).cause).toBeInstanceOf(ExtractLimitError);
+	});
 });
+
+/** Packs a minimal package into a gzipped tarball buffer (under a `package/` prefix, like npm). */
+async function packTarball(): Promise<Buffer> {
+	const src = tempRoot();
+	writePkg(src, { name: 'bomb', version: '1.0.0' });
+	const chunks: Buffer[] = [];
+	const stream = create({ gzip: true, cwd: src, prefix: 'package' }, ['package.json']);
+	for await (const chunk of stream) {
+		chunks.push(Buffer.from(chunk));
+	}
+	return Buffer.concat(chunks);
+}
