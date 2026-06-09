@@ -123,4 +123,4 @@ interface RegistryProvider {
 
 ## Exported types
 
-`AuditOptions`, `AuditResult`, `AuditPackageOptions`, `Finding`, `FindingKind`, `UnresolvedReason`, `Notice`, `NoticeKind`, `Surface`, `UncheckedSpecifier`, `ResolvedDependency`, `AcquiredSource`, `IgnoreRule`, `ExtractLimits`, `RegistryProvider`, `FileSystem`, `WritableFileSystem`, plus `createMemoryFileSystem`, `nodeFileSystem`, `createPacoteProvider`, `pacoteProvider`, `DEFAULT_EXTRACT_LIMITS`, `ExtractLimitError`. See [`src/types.ts`](../src/types.ts) for the authoritative definitions.
+`AuditOptions`, `AuditResult`, `AuditPackageOptions`, `Finding`, `FindingKind`, `UnresolvedReason`, `FindingCause`, `Notice`, `NoticeKind`, `Surface`, `UncheckedSpecifier`, `ResolvedDependency`, `AcquiredSource`, `IgnoreRule`, `ExtractLimits`, `RegistryProvider`, `FileSystem`, `WritableFileSystem`, plus `createMemoryFileSystem`, `nodeFileSystem`, `createPacoteProvider`, `pacoteProvider`, `DEFAULT_EXTRACT_LIMITS`, `ExtractLimitError`. See [`src/types.ts`](../src/types.ts) for the authoritative definitions.

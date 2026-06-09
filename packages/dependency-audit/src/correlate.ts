@@ -1,0 +1,56 @@
+import type { AuditResult, NoticeKind } from './types.ts';
+
+/** The coverage-notice kinds that mean a producer's own types are missing/unreachable. */
+const COVERAGE_NOTICES = new Set<NoticeKind>(['types-not-built', 'types-unreachable']);
+
+/** The consumer finding kinds a producer's coverage gap can explain (package declared, types don't resolve). */
+const CORRELATABLE_KINDS = new Set(['missing-types', 'types-unavailable']);
+
+/** A producer target in the run: the spec as passed, and its coverage notice. */
+interface Producer {
+	target: string;
+	notice: NoticeKind;
+}
+
+/**
+ * Correlates findings across a single multi-target run.
+ *
+ * When a consumer's finding is for a package that is *itself* an audited target carrying a coverage
+ * notice (its own types aren't built/reachable), that producer is the real root cause: it rains a
+ * look-alike `missing-types`/`types-unavailable` finding down on every consumer. This annotates each
+ * such finding with `causedBy` (the producer target + its notice) — pointing every consumer at the
+ * one producer to fix — mutating the findings in place. It is purely additive: nothing is suppressed
+ * or downgraded, so a genuine consumer-side issue is never hidden. Correlates within `results` only.
+ */
+export function correlateRootCauses(results: AuditResult[]): void {
+	// Producer package name → its target + coverage notice. Keyed by name (imports resolve by name);
+	// first-wins, so a duplicate-named target can't clobber an already-recorded producer.
+	const producers = new Map<string, Producer>();
+	for (const result of results) {
+		const notice = result.notices.find((n) => COVERAGE_NOTICES.has(n.kind));
+		if (
+			result.packageName !== undefined &&
+			notice !== undefined &&
+			!producers.has(result.packageName)
+		) {
+			producers.set(result.packageName, { target: result.target, notice: notice.kind });
+		}
+	}
+	if (producers.size === 0) {
+		return;
+	}
+	for (const result of results) {
+		for (const finding of result.findings) {
+			const producer = producers.get(finding.packageName);
+			// Only a "declared but types don't resolve" finding is explained by the producer's gap;
+			// an `undeclared` finding is a consumer-side bug, and we never self-attribute.
+			if (
+				producer !== undefined &&
+				CORRELATABLE_KINDS.has(finding.kind) &&
+				finding.packageName !== result.packageName
+			) {
+				finding.causedBy = { target: producer.target, notice: producer.notice };
+			}
+		}
+	}
+}

@@ -63,6 +63,10 @@ A package that legitimately declares and ships no types (e.g. a Babel/PostCSS pl
 
 Pass `--require-types` (CLI) to promote any coverage notice to a failure (exit 1) — useful in a monorepo gate where every TypeScript package is expected to ship resolvable types. Programmatically, inspect `result.notices.length` yourself.
 
+### Cross-target correlation (`causedBy`)
+
+When you audit many packages at once and one of them (a **producer**) carries a coverage notice — its types aren't built or reachable — every consumer of it gets the same `missing-types` (or `types-unavailable`) finding. In that run the tool annotates each such consumer finding with **`causedBy`** (the producer's target and notice kind), printed as a `↳ caused by <producer-target> …` line, so all the look-alike findings point at the **one producer to fix** rather than reading as N separate problems. An `undeclared` finding is never annotated — that's a consumer-side gap, not the producer's fault. It's purely informational — nothing is suppressed and the exit code is unchanged — and it only correlates within a single run.
+
 ## Unchecked specifiers
 
 A specifier whose value is not a literal — a dynamic `import(someVariable)`, a templated `require()` call, a `createRequire` result stored in a variable — cannot be statically resolved. Rather than drop it (a silent false negative), the tool records it in `result.unchecked` with a `reason`, printed as `?`. Review these manually; they are not failures.
