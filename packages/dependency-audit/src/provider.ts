@@ -63,7 +63,7 @@ export function createPacoteProvider(options: PacoteProviderOptions = {}): Regis
 				if (where === undefined) {
 					return undefined;
 				}
-				return absentOnFailure(dest, () =>
+				return absentOnFailure(name, range, dest, () =>
 					materializeLocal(resolve(where, localPath(range)), dest, limits),
 				);
 			}
@@ -71,7 +71,7 @@ export function createPacoteProvider(options: PacoteProviderOptions = {}): Regis
 				// Resolve the workspace index inside the guard too: building it reads the
 				// workspace file, which can throw — a local lookup failure must degrade to
 				// absence, never error the whole target.
-				return absentOnFailure(dest, () => {
+				return absentOnFailure(name, range, dest, () => {
 					const dir = workspaceDir(workspaceTarget(name, range));
 					return Promise.resolve(dir === undefined ? undefined : linkDir(dir, dest));
 				});
@@ -90,9 +90,7 @@ export function createPacoteProvider(options: PacoteProviderOptions = {}): Regis
 					shouldRetry: (error) => !(error instanceof ExtractLimitError),
 				});
 			} catch (error) {
-				throw new Error(`Failed to materialize ${name}@${range}: ${messageOf(error)}`, {
-					cause: error,
-				});
+				throw materializeError(name, range, error);
 			}
 		},
 	};
@@ -118,17 +116,32 @@ async function fetchAndExtract(
 	}
 }
 
-/** Runs `materialize`, treating any failure as a (cleaned-up) absence — for local specs only. */
+/**
+ * Runs `materialize`, treating a failure as a (cleaned-up) absence — for local specs only.
+ * An `ExtractLimitError` is re-thrown (named, like the registry path), never masked: the
+ * decompression-bomb guard is deliberate even for a local `.tgz`, so a hostile/oversized
+ * archive must fail the target, not look absent.
+ */
 async function absentOnFailure(
+	name: string,
+	range: string,
 	dest: string,
 	materialize: () => Promise<string | undefined>,
 ): Promise<string | undefined> {
 	try {
 		return await materialize();
-	} catch {
+	} catch (error) {
 		rmSync(dest, RECURSIVE);
+		if (error instanceof ExtractLimitError) {
+			throw materializeError(name, range, error);
+		}
 		return undefined;
 	}
+}
+
+/** A target error naming the dependency, with the underlying failure preserved as `cause`. */
+function materializeError(name: string, range: string, cause: unknown): Error {
+	return new Error(`Failed to materialize ${name}@${range}: ${messageOf(cause)}`, { cause });
 }
 
 /** An error's message, without leaking a non-Error's shape. */
