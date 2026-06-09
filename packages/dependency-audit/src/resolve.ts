@@ -6,8 +6,8 @@ import { subdirectories } from './fsutil.ts';
 import type { DeclaredDependency } from './manifest.ts';
 import type { RegistryProvider, ResolvedDependency } from './types.ts';
 
-/** Cap on concurrent dependency materializations, to bound load on the shared registry cache. */
-const MATERIALIZE_CONCURRENCY = 12;
+/** Default cap on concurrent dependency materializations, to bound load on the shared registry cache. */
+export const DEFAULT_MATERIALIZE_CONCURRENCY = 12;
 
 const DECLARATION_EXTENSIONS = new Set<string>([
 	ts.Extension.Dts,
@@ -30,18 +30,20 @@ export interface TypeResolver {
  * Every dep is awaited to completion before this returns or throws, even when one fails: a failure is captured and rethrown only after the rest settle.
  * That keeps progress honest (the count always reaches `total`) and avoids leaving a surviving download writing into `workDir` after the caller starts tearing it down.
  * `onProgress` (if given) fires with the running completion count after each dep settles, including failures.
+ * `concurrency` caps in-flight materializations (default {@link DEFAULT_MATERIALIZE_CONCURRENCY}); lower it to ease the shared-cache load on a large batch.
  */
 export async function materializeDeps(
 	deps: DeclaredDependency[],
 	provider: RegistryProvider,
 	workDir: string,
 	onProgress?: (done: number, total: number) => void,
+	concurrency: number = DEFAULT_MATERIALIZE_CONCURRENCY,
 ): Promise<ResolvedDependency[]> {
 	const total = deps.length;
 	let done = 0;
 	let failed = false;
 	let firstError: unknown;
-	const resolved = await mapLimit(deps, MATERIALIZE_CONCURRENCY, async (dep) => {
+	const resolved = await mapLimit(deps, concurrency, async (dep) => {
 		try {
 			const version = await provider.materialize(dep.name, dep.range, workDir);
 			return { name: dep.name, range: dep.range, version };

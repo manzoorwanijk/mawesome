@@ -17,16 +17,17 @@ A local path that **exists but is not an auditable package** — a non-tarball f
 
 ## Options
 
-| Option               | Argument          | Description                                                                                                                                                           |
-| -------------------- | ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--ignore <value>`   | package/specifier | Suppress findings whose **package** OR exact **specifier** equals `<value>`. Repeatable. Suppressed findings are still listed (`— ignored`) and never fail the audit. |
-| `--config <path>`    | path              | Load ignore rules from a JSON config. Defaults to `./dependency-audit.config.json` if present.                                                                        |
-| `--condition <name>` | condition name    | Activate an extra `exports` resolution condition (e.g. `browser`) for entry discovery **and** resolution. Repeatable.                                                 |
-| `--require-types`    | —                 | Treat a coverage notice (no/unreachable type surface) as a failure (exit 1) rather than just a notice.                                                                |
-| `--json`             | —                 | Emit machine-readable JSON: a `{ tool, version, results }` envelope, one `results` entry per target. See [Output format](./output-format.md).                         |
-| `--no-progress`      | —                 | Suppress the stderr version banner and progress spinner even on a terminal. Also honored via the `NO_PROGRESS` env var.                                               |
-| `-v`, `--version`    | —                 | Print the version and exit.                                                                                                                                           |
-| `-h`, `--help`       | —                 | Print usage and exit.                                                                                                                                                 |
+| Option               | Argument          | Description                                                                                                                                                                                                                               |
+| -------------------- | ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--ignore <value>`   | package/specifier | Suppress findings whose **package** OR exact **specifier** equals `<value>`. Repeatable. Suppressed findings are still listed (`— ignored`) and never fail the audit.                                                                     |
+| `--config <path>`    | path              | Load ignore rules from a JSON config. Defaults to `./dependency-audit.config.json` if present.                                                                                                                                            |
+| `--condition <name>` | condition name    | Activate an extra `exports` resolution condition (e.g. `browser`) for entry discovery **and** resolution. Repeatable.                                                                                                                     |
+| `--concurrency <n>`  | positive integer  | Cap how many targets — and how many dependencies per target — materialize at once (default: 6 targets × 12 deps). Lower it to ease load on a large batch; `--concurrency 1` runs fully serially. Also via `DEPENDENCY_AUDIT_CONCURRENCY`. |
+| `--require-types`    | —                 | Treat a coverage notice (no/unreachable type surface) as a failure (exit 1) rather than just a notice.                                                                                                                                    |
+| `--json`             | —                 | Emit machine-readable JSON: a `{ tool, version, results }` envelope, one `results` entry per target. See [Output format](./output-format.md).                                                                                             |
+| `--no-progress`      | —                 | Suppress the stderr version banner and progress spinner even on a terminal. Also honored via the `NO_PROGRESS` env var.                                                                                                                   |
+| `-v`, `--version`    | —                 | Print the version and exit.                                                                                                                                                                                                               |
+| `-h`, `--help`       | —                 | Print usage and exit.                                                                                                                                                                                                                     |
 
 ## Exit codes
 
@@ -90,3 +91,5 @@ dependency-audit ./packages/*        # one process, bounded-concurrency, isolate
 ```
 
 Local `@scope/*` dependencies declared as `file:`/`workspace:`/`link:` are resolved by linking the already-built sibling, so you do not need to publish or rebuild siblings first — just build them.
+
+A transient registry fetch under heavy concurrency is retried with backoff (`DEPENDENCY_AUDIT_RETRIES`, default 3); if a dependency still cannot be fetched, that **target** fails with an error (exit `2`) rather than reporting its imports as undeclared — so a network blip never produces a false finding. Lower `--concurrency` on a very large batch to reduce the load that triggers those retries.

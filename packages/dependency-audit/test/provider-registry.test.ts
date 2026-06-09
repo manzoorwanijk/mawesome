@@ -21,6 +21,10 @@ vi.mock('../src/extract.ts', async (importOriginal) => ({
 const tarballMock = vi.mocked(pacote.tarball);
 const extractMock = vi.mocked(extractTarball);
 
+// pacote.tarball's return type is `Buffer & FetchResult`; the bytes are never read here (extract
+// is mocked), so a bare buffer cast stands in for a resolved fetch.
+const FAKE_TARBALL = Buffer.from([]) as never;
+
 const temps: string[] = [];
 afterEach(() => {
 	for (const dir of temps.splice(0)) {
@@ -46,7 +50,7 @@ function extractWrites(version: string): void {
 
 describe('createPacoteProvider — registry fault tolerance', () => {
 	beforeEach(() => {
-		tarballMock.mockResolvedValue(new Uint8Array());
+		tarballMock.mockResolvedValue(FAKE_TARBALL);
 		extractWrites('1.2.3');
 	});
 
@@ -54,7 +58,7 @@ describe('createPacoteProvider — registry fault tolerance', () => {
 		tarballMock
 			.mockRejectedValueOnce(new Error('ETIMEDOUT'))
 			.mockRejectedValueOnce(new Error('socket hang up'))
-			.mockResolvedValueOnce(new Uint8Array());
+			.mockResolvedValueOnce(FAKE_TARBALL);
 
 		const provider = createPacoteProvider({ retries: 3 });
 		const version = await provider.materialize('foo', '^1', tempRoot());

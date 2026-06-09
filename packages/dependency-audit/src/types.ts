@@ -140,6 +140,10 @@ export interface AuditOptions {
 	extractLimits?: ExtractLimits;
 	/** Extra resolution conditions to activate (e.g. `["browser"]`), added to the defaults. */
 	conditions?: readonly string[];
+	/** Cap on concurrent dependency materializations for this target (default 12). */
+	materializeConcurrency?: number;
+	/** Extra attempts for a transient registry fetch/extract failure (default 3); ignored when `provider` is set. */
+	retries?: number;
 	/** Optional progress sink, notified at each audit phase (acquire, materialize, scan). */
 	progress?: ProgressReporter;
 }

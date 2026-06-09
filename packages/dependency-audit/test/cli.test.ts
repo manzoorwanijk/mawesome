@@ -78,6 +78,31 @@ describe('cli batch isolation', () => {
 		expect(stdout).toContain('require-forms');
 		expect(stderr).toBe('');
 	});
+
+	it('rejects a non-integer --concurrency before auditing (exit 2)', () => {
+		const { status, stderr } = runCli(['--concurrency', 'abc', okTarget]);
+		expect(status).toBe(2);
+		expect(stderr).toMatch(/Invalid --concurrency.*expected an integer >= 1/);
+	});
+
+	it('rejects --concurrency 0 (must be >= 1)', () => {
+		const { status, stderr } = runCli(['--concurrency', '0', okTarget]);
+		expect(status).toBe(2);
+		expect(stderr).toMatch(/Invalid --concurrency/);
+	});
+
+	it('rejects a malformed DEPENDENCY_AUDIT_RETRIES env value', () => {
+		const { status, stderr } = runCli([okTarget], { DEPENDENCY_AUDIT_RETRIES: '-1' });
+		expect(status).toBe(2);
+		expect(stderr).toMatch(/Invalid DEPENDENCY_AUDIT_RETRIES.*expected an integer >= 0/);
+	});
+
+	it('accepts a valid --concurrency and still audits (exit 1 on the finding)', () => {
+		// A self-contained target (no registry access) exercises the happy path of the knob.
+		const { status, stdout } = runCli(['--concurrency', '1', okTarget]);
+		expect(status).toBe(1);
+		expect(stdout).toContain('require-forms');
+	});
 });
 
 describe('cli output integrity', () => {
