@@ -106,6 +106,46 @@ describe('audit (type surface)', () => {
 			expect(kindFor(await run('missing'), 'react')).toBe('missing-types');
 		});
 
+		it('suggests a version that ships types instead of types-unavailable when one exists', async () => {
+			// No `@types/react`, but a published `react` version ships its own types.
+			const provider: RegistryProvider = {
+				materialize: (name, range, intoDir) => fixtureProvider.materialize(name, range, intoDir),
+				packageExists: () => Promise.resolve('absent'),
+				latestTypedVersion: () => Promise.resolve('99.0.0'),
+			};
+			const result = await audit(join(targetsRoot, 'missing'), { provider });
+			const react = result.findings.find((f) => f.packageName === 'react');
+			// Stays a (fixable) missing-types — not the dead-end types-unavailable.
+			expect(react?.kind).toBe('missing-types');
+			expect(react?.suggestion).toContain('"react@99.0.0" ships its own types');
+		});
+
+		it('does not refine a subpath gap on a package that ships its own (root) types', async () => {
+			// `typed-root` ships root types via an implicit `index.d.ts` (no `types` field — so the gate
+			// must be resolution-based, not manifest-field-based); the failing import is a subpath it
+			// doesn't expose, so the @types/version-bump/unavailable refinement must not apply.
+			const provider: RegistryProvider = {
+				materialize: (name, range, intoDir) => fixtureProvider.materialize(name, range, intoDir),
+				packageExists: () => Promise.resolve('absent'),
+				latestTypedVersion: () => Promise.resolve('9.9.9'),
+			};
+			const result = await audit(join(targetsRoot, 'subpath-types'), { provider });
+			const finding = result.findings.find((f) => f.packageName === 'typed-root');
+			expect(finding?.kind).toBe('missing-types'); // not types-unavailable
+			expect(finding?.suggestion).not.toContain('depend on that version');
+		});
+
+		it('falls back to types-unavailable when no published version ships types', async () => {
+			const provider: RegistryProvider = {
+				materialize: (name, range, intoDir) => fixtureProvider.materialize(name, range, intoDir),
+				packageExists: () => Promise.resolve('absent'),
+				latestTypedVersion: () => Promise.resolve(undefined),
+			};
+			expect(kindFor(await audit(join(targetsRoot, 'missing'), { provider }), 'react')).toBe(
+				'types-unavailable',
+			);
+		});
+
 		it('lets a types-unavailable finding be suppressed by kind', async () => {
 			const result = await audit(join(targetsRoot, 'missing'), {
 				provider: withProbe('absent'),

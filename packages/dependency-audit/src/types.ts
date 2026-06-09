@@ -183,6 +183,13 @@ export interface RegistryProvider {
 	 * omits this method disables the refinement entirely (the browser default has no network).
 	 */
 	packageExists?(name: string): Promise<'exists' | 'absent' | 'unknown'>;
+	/**
+	 * Optional capability: the registry's current version of `name` if it ships its own types and
+	 * differs from `currentVersion` (the resolved one, which ships none) — used to turn a dead-end
+	 * `types-unavailable` into "depend on that version instead". Returns `undefined` when no such
+	 * version is known (or the lookup can't run). A provider that omits this disables the upgrade hint.
+	 */
+	latestTypedVersion?(name: string, currentVersion: string): Promise<string | undefined>;
 }
 
 /** Caps on tarball extraction, to bound decompression bombs. */
