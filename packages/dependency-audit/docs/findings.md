@@ -37,12 +37,18 @@ An `unresolved` finding also carries an optional **`reason`** naming the specifi
 ### How to fix each
 
 - **`undeclared` (runtime):** add the package to `dependencies` (or `peerDependencies`/`optionalDependencies` if that fits its role).
-- **`undeclared` (types):** add the package — or its `@types/*` companion if it ships no types of its own — to `dependencies` (runtime-needed) or `devDependencies` is **not** enough if the type leaks into your published `.d.ts`; a type a consumer must resolve has to be a non-dev dependency.
+- **`undeclared` (types):** add the package — or its `@types/*` companion if it ships no types of its own — to a **non-dev** field. `devDependencies` is **not** enough when the type appears in your published `.d.ts`, because a consumer must resolve it. But first check **`leakedVia`** (below) — if the type entered through a dependency's API rather than your own import, the durable fix is in that producer.
 - **`missing-types`:** declare the `@types/*` package, or upgrade the dependency to a version that bundles its own declarations.
 - **`types-unavailable`:** there is no `@types/*` to declare — the only fixes are upstream (ship types from the package itself) or local (add an ambient `declare module "x"` in your own sources). Treat it as a known gap rather than a missing declaration; suppress with an ignore rule on `{ "kind": "types-unavailable" }` if you've accepted it.
 - **`unresolved`:** let the `reason` guide the fix. `subpath-not-exported` → stop importing the private subpath, or ask the dependency to add it to its `exports`. `condition-mismatch` → the dependency is missing the `require`/`import` export condition you load it under (a real dual-package bug — fix the producer, or load it under the other form). `file-missing` → the mapped target isn't shipped (build/packaging gap). If it is your own subpath that the dependency genuinely exports, it can also indicate a version mismatch in the materialized tree.
 
 The `missing-types` → `types-unavailable` distinction needs a registry lookup for the `@types/*` companion. When the audit can't reach the registry (offline, or a provider without the probe capability — the browser build has no network), it conservatively keeps `missing-types` rather than guessing the companion is absent.
+
+### Leaked types (`leakedVia`)
+
+A package's emitted `.d.ts` often references a type it never imports: TypeScript **inlines** `import("x")` into your declarations when a **declared dependency**'s public API returns/accepts/re-exports a type from `x` (the classic `.d.ts` portability trap). The naive advice — "declare `x`" — is misleading, because you don't use `x` directly; the real fix belongs to the dependency.
+
+When an `undeclared` type finding's package name also appears in a declared dependency's own public type surface, the tool records that dependency in **`leakedVia`** and rewrites the suggestion to _"`x` is also exposed by declared dependency `B` — if you don't import it directly, it likely leaks in through `B`'s API; the durable fix is in `B`, otherwise declare `x` yourself."_ If several declared deps expose it, all are listed; if none do, it's treated as a genuine direct use and not annotated. (`leakedVia` is a strong signal, not a proof — the audit can't distinguish a leaked type from one you genuinely use directly that a dependency also happens to expose. Detected by re-scanning each declared dependency's type surface — no type-checker — so it works wherever the audit runs.)
 
 ### Node builtins
 

@@ -1,9 +1,10 @@
+import { join } from 'node:path';
 import { mapLimit } from './concurrency.ts';
 import type { FileSystem } from './fs.ts';
 import { partitionIgnored } from './ignore.ts';
 import { declaredDependencies, readManifest } from './manifest.ts';
 import { emit, type ProgressReporter } from './progress.ts';
-import { createNormalizer, typesPackageFor } from './normalize.ts';
+import { createNormalizer, type Normalizer, typesPackageFor } from './normalize.ts';
 import { createTypeResolver, materializeDeps } from './resolve.ts';
 import { createRuntimeResolver } from './runtime-resolve.ts';
 import { type CallForm, scanRuntimeSurface } from './runtime-surface.ts';
@@ -143,6 +144,17 @@ export async function auditPackage(
 		}
 	}
 
+	// Attribute leaked types: an undeclared type also exposed by a declared dependency's own API.
+	attributeTypeLeaks(
+		fs,
+		workDir,
+		conditions,
+		findings,
+		materialized,
+		normalizeSpecifier,
+		manifest.name,
+	);
+
 	/*
 	 * Suppress intentional findings first, then refine only the survivors, then re-check them.
 	 * Refining before this would let a `{ kind: "missing-types" }` rule silently stop matching a
@@ -242,6 +254,75 @@ async function refineMissingTypes(
 function typesUnavailableSuggestion(packageName: string): string {
 	const typesPackage = typesPackageFor(packageName);
 	return `"${packageName}" publishes no types and no "${typesPackage}" exists on the registry — not fixable by declaring a dependency; ship types upstream, or add a local ambient \`declare module "${packageName}"\``;
+}
+
+/**
+ * Attributes a likely leaked type: an `undeclared` type-surface reference whose package is *also*
+ * exposed by a declared dependency's own public API — a strong signal it entered the audited
+ * package's `.d.ts` through that dependency rather than a direct import (the `.d.ts` portability
+ * trap). For each such finding it scans every materialized declared dependency's type surface; a
+ * dependency whose surface references the same package name is recorded in `leakedVia`, and the
+ * suggestion is reworded to point at the producer. Reuses {@link scanTypeSurface} (no type-checker),
+ * so it stays runtime-agnostic. Runs only when there are candidate findings.
+ */
+function attributeTypeLeaks(
+	fs: FileSystem,
+	workDir: string,
+	conditions: readonly string[],
+	findings: Finding[],
+	materialized: ReadonlySet<string>,
+	normalizeSpecifier: Normalizer,
+	selfName: string | undefined,
+): void {
+	// Candidates: undeclared type-surface findings for a real package (a Node builtin is never a leak).
+	const candidates = findings.filter(
+		(f) =>
+			f.surface === 'types' &&
+			f.kind === 'undeclared' &&
+			normalizeSpecifier(f.specifier)?.isBuiltin !== true,
+	);
+	if (candidates.length === 0) {
+		return;
+	}
+	const leaked = new Set(candidates.map((f) => f.packageName));
+	const nodeModules = join(workDir, 'node_modules');
+	// Leaked package name → declared deps that expose it (a Set dedups a dep that references it twice).
+	const producersOf = new Map<string, Set<string>>();
+	for (const depName of materialized) {
+		// A package can't leak through itself (it may declare itself, so it can be materialized).
+		if (depName === selfName) {
+			continue;
+		}
+		const depRoot = join(nodeModules, depName);
+		if (!fs.isDirectory(depRoot)) {
+			continue;
+		}
+		// Intersect the dep's own externals with the leaked set as we scan — no nested per-spec loop.
+		for (const external of scanTypeSurface(fs, depRoot, readManifest(fs, depRoot), conditions)
+			.externals) {
+			const name = normalizeSpecifier(external.specifier)?.packageName;
+			if (name !== undefined && leaked.has(name)) {
+				(producersOf.get(name) ?? producersOf.set(name, new Set()).get(name)!).add(depName);
+			}
+		}
+	}
+	for (const candidate of candidates) {
+		const producers = producersOf.get(candidate.packageName);
+		if (producers !== undefined && producers.size > 0) {
+			candidate.leakedVia = [...producers];
+			candidate.suggestion = leakSuggestion(candidate.packageName, candidate.leakedVia);
+		}
+	}
+}
+
+function leakSuggestion(packageName: string, producers: string[]): string {
+	const many = producers.length > 1;
+	const via = producers.map((p) => `"${p}"`).join(', ');
+	// Match `declareHint`: a package already in the `@types/*` namespace has no further `@types/*`.
+	const workaround = packageName.startsWith('@types/')
+		? `declare "${packageName}" yourself`
+		: `declare "${packageName}" (or "${typesPackageFor(packageName)}") yourself`;
+	return `"${packageName}" is also exposed by declared ${many ? 'dependencies' : 'dependency'} ${via} — if you don't import it directly, it likely leaks into your types through ${many ? 'their' : 'its'} public API, and the durable fix is in the producer (bundle "${packageName}"'s types or stop exposing it); otherwise ${workaround}`;
 }
 
 function builtinTypeFinding(seen: Seen, packageName: string): Finding {
