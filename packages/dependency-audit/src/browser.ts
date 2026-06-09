@@ -14,6 +14,7 @@ export type {
 	AcquiredSource,
 	AuditResult,
 	Finding,
+	FindingCause,
 	FindingKind,
 	IgnoreRule,
 	Notice,

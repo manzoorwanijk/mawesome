@@ -6,6 +6,7 @@ import { SkippedTargetError } from './acquire.ts';
 import { audit } from './audit.ts';
 import { color } from './color.ts';
 import { mapLimit } from './concurrency.ts';
+import { correlateRootCauses } from './correlate.ts';
 import { parseIgnoreRules } from './ignore.ts';
 import { createTtyReporter } from './progress-tty.ts';
 import type { AuditResult, Finding, IgnoreRule } from './types.ts';
@@ -162,6 +163,9 @@ async function main(): Promise<number> {
 	// Erase the spinner before any stdout result write so the two streams never interleave.
 	progress.stop();
 
+	// Annotate findings whose root cause is another target in this run (a producer's coverage gap).
+	correlateRootCauses(outcomes.flatMap((outcome) => ('result' in outcome ? [outcome.result] : [])));
+
 	if (values.json) {
 		/* A `{ tool, version, results }` envelope so a saved audit artifact records the
 		 * producing version — the resolution behavior evolves, so output is only reproducible
@@ -264,6 +268,12 @@ function printResult(result: AuditResult): void {
 	for (const finding of result.findings) {
 		console.log(findingRow(finding));
 		console.log(`      ${color.dim('→')} ${finding.suggestion}`);
+		if (finding.causedBy !== undefined) {
+			// The owning package is itself a target in this run; fix it there, not here.
+			console.log(
+				`      ${color.dim('↳')} ${color.dim(`caused by ${finding.causedBy.target} (${finding.causedBy.notice}) — fix that producer`)}`,
+			);
+		}
 	}
 	for (const finding of result.ignored) {
 		console.log(ignoredRow(finding));

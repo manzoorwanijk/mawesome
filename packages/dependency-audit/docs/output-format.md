@@ -18,6 +18,7 @@ The report is a sequence of per-target blocks, then a summary line. Each line is
 | `↷`    | A skipped target — a non-package path (does not affect the exit code).           |
 | `⚠`    | An error — the target could not be audited at all.                               |
 | `→`    | A remediation suggestion (continuation of the preceding `✗`/`–` line).           |
+| `↳`    | A root-cause note: the finding is caused by another target audited in the run.   |
 
 When stdout is a color-capable terminal, severity is also carried by **color** — red for findings/errors, yellow for notices/unchecked, green for clean, and muted (dim) for ignored/skipped/secondary detail. Color is auto-disabled when the output isn't a TTY (e.g. piped to a file or another program) and honors the [`NO_COLOR`](https://no-color.org) and `FORCE_COLOR` environment variables. The symbols above are the source of truth; color is purely a visual aid (and never emitted under `--json`), so parsers should key on the symbols, not the color.
 
@@ -32,6 +33,7 @@ When stdout is a color-capable terminal, severity is also carried by **color** �
     ℹ <surface>  <message>             # notices
     ✗ <surface>  [<kind>]  <specifier>  (<file>)     # findings
         → <suggestion>
+        ↳ caused by <producer-target> (<notice>) …    # only when correlated to a producer in the run
     – <surface>  [<kind>]  <specifier>  (<file>)  — ignored   # ignored findings
     ? unchecked  <specifier>  (<reason>; <file>)     # unchecked specifiers
 ```
@@ -106,6 +108,7 @@ Distinguish the three by key: an `error` key → could not audit (exit 2); a `sk
 			"surface": "types", // "types" | "runtime"
 			"kind": "undeclared", // see Findings & notices
 			// "reason": "condition-mismatch", // only on some `unresolved` runtime findings
+			// "causedBy": { "target": "./packages/producer", "notice": "types-unreachable" }, // only when correlated to a producer in the run
 			"firstSeenIn": "dist/index.d.ts", // package-relative path
 			"suggestion": "declare \"@types/react\" …",
 		},

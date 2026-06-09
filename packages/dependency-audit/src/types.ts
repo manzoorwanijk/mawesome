@@ -33,6 +33,20 @@ export type FindingKind = 'undeclared' | 'missing-types' | 'types-unavailable' |
  */
 export type UnresolvedReason = 'subpath-not-exported' | 'file-missing' | 'condition-mismatch';
 
+/**
+ * Why a finding's real root cause is another audited target in the same run.
+ * Set on a consumer's finding when the owning package is *itself* a target whose coverage
+ * {@link Notice} (its types aren't built/reachable) explains the finding — so every consumer
+ * points at the one producer to fix, rather than N look-alike findings. The producer is the
+ * finding's own {@link Finding.packageName}.
+ */
+export interface FindingCause {
+	/** The producer target (as passed to the audit) whose coverage notice is the root cause. */
+	target: string;
+	/** That producer's coverage notice kind. */
+	notice: NoticeKind;
+}
+
 /** A single undeclared/unresolvable import on a released surface. */
 export interface Finding {
 	/** The bare specifier exactly as written, e.g. `react/jsx-runtime`. */
@@ -43,6 +57,8 @@ export interface Finding {
 	kind: FindingKind;
 	/** For an `unresolved` runtime finding, the classified cause (when determinable). */
 	reason?: UnresolvedReason;
+	/** Set in a multi-target run when another audited target (the producer) is the root cause. */
+	causedBy?: FindingCause;
 	/** Package-relative path of the declaration file where it was first seen. */
 	firstSeenIn: string;
 	/** Human-readable remediation hint. */

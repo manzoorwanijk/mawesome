@@ -20,6 +20,7 @@ export type {
 	AuditResult,
 	ExtractLimits,
 	Finding,
+	FindingCause,
 	FindingKind,
 	IgnoreRule,
 	Notice,
