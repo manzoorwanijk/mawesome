@@ -10,7 +10,7 @@ export interface RetryOptions {
 	shouldRetry(error: unknown): boolean;
 	/** Sleep seam — overridden in tests to avoid real delays and to record them. */
 	sleep?: (ms: number) => Promise<void>;
-	/** Jitter source in `[0, 1)` — overridden in tests for determinism. */
+	/** Jitter source in `[0, 1]`; defaults to `Math.random` (`[0, 1)`). Overridden in tests for determinism. */
 	random?: () => number;
 }
 
@@ -33,7 +33,7 @@ export async function withRetry<T>(fn: () => Promise<T>, options: RetryOptions):
 			if (attempt >= retries || !shouldRetry(error)) {
 				throw error;
 			}
-			// Full jitter: a random point in [0, the capped exponential backoff).
+			// Full jitter: a random point in [0, the capped exponential backoff].
 			const ceiling = Math.min(maxDelayMs, baseDelayMs * 2 ** attempt);
 			// oxlint-disable-next-line no-await-in-loop
 			await sleep(random() * ceiling);
