@@ -221,8 +221,8 @@ function createCdnProvider(fs: WritableFileSystem, signal?: AbortSignal): Regist
 			return version;
 		},
 		async packageExists(name) {
-			/* Gate before interpolating into the URL: a validated name is URL-path-safe (the charset is
-			 * RFC 3986 unreserved + the scope `/`) and `..`-free, so no escaping is needed; bail conservatively otherwise. */
+			/* Gate before interpolating into the URL: a validated name contains only characters legal in a
+			 * URL path (RFC 3986 unreserved, plus the `@`/`/` of a scope) and no `..`, so no escaping is needed; bail conservatively otherwise. */
 			if (!isValidPackageName(name)) {
 				return 'unknown';
 			}
