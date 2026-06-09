@@ -6,9 +6,10 @@ const COVERAGE_NOTICES = new Set<NoticeKind>(['types-not-built', 'types-unreacha
 /** The consumer finding kinds a producer's coverage gap can explain (package declared, types don't resolve). */
 const CORRELATABLE_KINDS = new Set(['missing-types', 'types-unavailable']);
 
-/** A producer target in the run: the spec as passed, and its coverage notice. */
+/** A producer target in the run: the spec as passed, its resolved package name, and its coverage notice. */
 interface Producer {
 	target: string;
+	packageName: string;
 	notice: NoticeKind;
 }
 
@@ -18,7 +19,7 @@ interface Producer {
  * When a consumer's finding is for a package that is *itself* an audited target carrying a coverage
  * notice (its own types aren't built/reachable), that producer is the real root cause: it rains a
  * look-alike `missing-types`/`types-unavailable` finding down on every consumer. This annotates each
- * such finding with `causedBy` (the producer target + its notice) — pointing every consumer at the
+ * such finding with `causedBy` (the producer target, package name, and notice) — pointing every consumer at the
  * one producer to fix — mutating the findings in place. It is purely additive: nothing is suppressed
  * or downgraded, so a genuine consumer-side issue is never hidden. Correlates within `results` only.
  */
@@ -33,7 +34,11 @@ export function correlateRootCauses(results: AuditResult[]): void {
 			notice !== undefined &&
 			!producers.has(result.packageName)
 		) {
-			producers.set(result.packageName, { target: result.target, notice: notice.kind });
+			producers.set(result.packageName, {
+				target: result.target,
+				packageName: result.packageName,
+				notice: notice.kind,
+			});
 		}
 	}
 	if (producers.size === 0) {
@@ -49,7 +54,11 @@ export function correlateRootCauses(results: AuditResult[]): void {
 				CORRELATABLE_KINDS.has(finding.kind) &&
 				finding.packageName !== result.packageName
 			) {
-				finding.causedBy = { target: producer.target, notice: producer.notice };
+				finding.causedBy = {
+					target: producer.target,
+					packageName: producer.packageName,
+					notice: producer.notice,
+				};
 			}
 		}
 	}
