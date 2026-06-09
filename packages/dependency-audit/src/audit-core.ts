@@ -38,6 +38,13 @@ export interface AuditPackageOptions {
 	conditions?: readonly string[];
 	/** Cap on concurrent dep materializations (default {@link DEFAULT_MATERIALIZE_CONCURRENCY}). */
 	materializeConcurrency?: number;
+	/**
+	 * Restricts both surface scans to these package-relative POSIX paths — the package's publish
+	 * set. When set, a file outside it (a test, an example, a build script `npm publish` would
+	 * exclude) is never scanned, so a directory audit matches a packed `.tgz`. Absent = scan every
+	 * file on disk (the Node entry computes this for directory targets; the browser host omits it).
+	 */
+	includeFiles?: ReadonlySet<string>;
 	/** Optional progress sink, notified as deps materialize and surfaces are scanned. */
 	progress?: ProgressReporter;
 }
@@ -86,7 +93,7 @@ export async function auditPackage(
 	const isSelf = (name: string): boolean => manifest.name !== undefined && name === manifest.name;
 
 	emit(progress, { type: 'scan:start', target, surface: 'types' });
-	const typeSurface = scanTypeSurface(fs, root, manifest, conditions);
+	const typeSurface = scanTypeSurface(fs, root, manifest, conditions, options.includeFiles);
 	unchecked.push(...typeSurface.unchecked);
 	const notices = typeCoverageNotices(typeSurface.coverage);
 	for (const external of typeSurface.externals) {
@@ -114,7 +121,7 @@ export async function auditPackage(
 	}
 
 	emit(progress, { type: 'scan:start', target, surface: 'runtime' });
-	const runtimeSurface = scanRuntimeSurface(fs, root, manifest, conditions);
+	const runtimeSurface = scanRuntimeSurface(fs, root, manifest, conditions, options.includeFiles);
 	unchecked.push(...runtimeSurface.unchecked);
 	for (const external of runtimeSurface.externals) {
 		const normalized = normalizeSpecifier(external.specifier);
@@ -169,7 +176,7 @@ function typeCoverageNotices(coverage: TypeCoverage): Notice[] {
 				kind: 'types-not-built',
 				surface: 'types',
 				message:
-					'declares type declarations, but none resolve from the package root — the build output looks missing (build the package before auditing, or fix the declared types path)',
+					'declares type declarations, but none resolve from the package root — the build output looks missing (build the package before auditing, fix the declared types path, or include it in the publish set)',
 			},
 		];
 	}

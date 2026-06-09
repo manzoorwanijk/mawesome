@@ -81,6 +81,8 @@ interface AuditPackageOptions {
 	builtins?: readonly string[];
 	/** Extra resolution conditions to activate, added to the defaults. */
 	conditions?: readonly string[];
+	/** Package-relative POSIX paths to restrict the scan to (the publish set). Absent = scan every file. The Node entry computes this for directory targets via `npm-packlist`. */
+	includeFiles?: ReadonlySet<string>;
 }
 ```
 

@@ -1,0 +1,9 @@
+{
+	"name": "@fixture/pack-set",
+	"version": "1.0.0",
+	"bin": "./bin/cli.js",
+	"files": [
+		"lib"
+	],
+	"main": "./lib/index.js"
+}

@@ -42,6 +42,9 @@ importers:
 
   packages/dependency-audit:
     dependencies:
+      npm-packlist:
+        specifier: ^10.0.4
+        version: 10.0.4
       pacote:
         specifier: ^21.5.0
         version: 21.5.0

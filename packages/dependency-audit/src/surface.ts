@@ -1,7 +1,7 @@
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import ts from 'typescript';
 import type { FileSystem } from './fs.ts';
-import { expandPatternTarget, isWithin } from './fsutil.ts';
+import { expandPatternTarget, isWithin, publishedPredicate } from './fsutil.ts';
 import type { Manifest } from './manifest.ts';
 import type { UncheckedSpecifier } from './types.ts';
 import { activeTypesVersions } from './typesversions.ts';
@@ -53,13 +53,15 @@ export function scanTypeSurface(
 	root: string,
 	manifest: Manifest,
 	conditions: readonly string[] = [],
+	includeFiles?: ReadonlySet<string>,
 ): SurfaceScan {
 	const externals: ExternalSpecifier[] = [];
 	const unchecked: UncheckedSpecifier[] = [];
 	const seenExternal = new Set<string>();
 	const visited = new Set<string>();
+	const published = publishedPredicate(root, includeFiles);
 	const active = new Set([...ACTIVE_CONDITIONS, ...conditions]);
-	const queue = [...typeEntryPoints(fs, root, manifest, active)];
+	const queue = [...typeEntryPoints(fs, root, manifest, active, published)];
 
 	while (queue.length > 0) {
 		const file = queue.shift();
@@ -72,7 +74,8 @@ export function scanTypeSurface(
 		for (const ref of specifiersIn(fs, file)) {
 			if (ref.kind === 'module' && isRelative(ref.specifier)) {
 				const target = resolveRelativeDts(fs, file, ref.specifier, root);
-				if (target !== undefined && !visited.has(target)) {
+				// Only follow into a file the package actually publishes — a consumer can't reach the rest.
+				if (target !== undefined && !visited.has(target) && published(target)) {
 					queue.push(target);
 				}
 				continue;
@@ -89,7 +92,7 @@ export function scanTypeSurface(
 		}
 	}
 
-	const coverage = typeCoverage(fs, root, manifest, visited.size > 0);
+	const coverage = typeCoverage(fs, root, manifest, visited.size > 0, published);
 	return { files: [...visited].map((f) => relative(root, f)), externals, unchecked, coverage };
 }
 
@@ -99,6 +102,7 @@ function typeCoverage(
 	root: string,
 	manifest: Manifest,
 	scannedAny: boolean,
+	published: (abs: string) => boolean,
 ): TypeCoverage {
 	if (scannedAny) {
 		return 'covered';
@@ -107,8 +111,8 @@ function typeCoverage(
 	if (manifestDeclaresTypes(manifest)) {
 		return 'not-built';
 	}
-	// Declarations exist on disk but nothing in the manifest exposes them.
-	if (allDeclarationFiles(fs, root).length > 0) {
+	// Published declarations exist on disk but nothing in the manifest exposes them.
+	if (allDeclarationFiles(fs, root, published).length > 0) {
 		return 'unreachable';
 	}
 	return 'none';
@@ -146,13 +150,14 @@ function typeEntryPoints(
 	root: string,
 	manifest: Manifest,
 	active: ReadonlySet<string>,
+	published: (abs: string) => boolean,
 ): string[] {
 	const found = new Set<string>();
 	const addTarget = (target: string | undefined): void => {
 		const dts = target === undefined ? undefined : toDeclarationPath(target);
 		if (dts !== undefined) {
 			const abs = resolve(root, dts);
-			if (fs.isFile(abs)) {
+			if (fs.isFile(abs) && published(abs)) {
 				found.add(abs);
 			}
 		}
@@ -190,7 +195,7 @@ function typeEntryPoints(
 	for (const target of tv?.targets ?? []) {
 		expandPatternTarget(fs, root, target).forEach(addTarget);
 	}
-	for (const file of allDeclarationFiles(fs, root)) {
+	for (const file of allDeclarationFiles(fs, root, published)) {
 		found.add(file);
 	}
 	return [...found];
@@ -257,15 +262,22 @@ function selectConditionTarget(node: unknown, active: ReadonlySet<string>): stri
 	return undefined;
 }
 
-/** Lists every declaration file in the extracted tarball, excluding bundled deps. */
-function allDeclarationFiles(fs: FileSystem, root: string): string[] {
+/** Lists every published declaration file in the tree, excluding bundled deps. */
+function allDeclarationFiles(
+	fs: FileSystem,
+	root: string,
+	published: (abs: string) => boolean,
+): string[] {
 	const out: string[] = [];
 	for (const rel of fs.readdirRecursive(root)) {
 		if (rel.split(sep).includes('node_modules')) {
 			continue;
 		}
 		if (DTS_RE.test(rel)) {
-			out.push(resolve(root, rel));
+			const abs = resolve(root, rel);
+			if (published(abs)) {
+				out.push(abs);
+			}
 		}
 	}
 	return out;

@@ -1,8 +1,9 @@
-import { cpSync, existsSync, readFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { audit, type RegistryProvider } from '../src/index.ts';
+import { audit, auditPackage, nodeFileSystem, type RegistryProvider } from '../src/index.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const depsRoot = join(here, 'fixtures', 'deps');
@@ -239,5 +240,52 @@ describe('audit (type surface)', () => {
 		// undeclared `ghost` import in src/legacy.d.ts is outside the surface and not flagged.
 		expect(result.findings.some((f) => f.packageName === 'ghost')).toBe(false);
 		expect(result.ok).toBe(true);
+	});
+});
+
+describe('audit (publish set in directory mode)', () => {
+	/*
+	 * `@fixture/pack-set` has `files: ["lib"]` plus a string `bin: "./bin/cli.js"`: lib/index.js
+	 * requires `published-ghost` and the (force-included) bin requires `bin-ghost`, while the
+	 * excluded test/ and src/ files require `excluded-ghost`/`src-ghost`.
+	 */
+	const packSetTarget = join(targetsRoot, 'pack-set');
+
+	it('audits only what npm would publish, ignoring references in excluded files', async () => {
+		const result = await audit(packSetTarget, { provider: fixtureProvider });
+		// The undeclared require in a *published* file is flagged…
+		expect(result.findings.find((f) => f.packageName === 'published-ghost')).toMatchObject({
+			surface: 'runtime',
+			kind: 'undeclared',
+		});
+		// …a `bin` is force-included even though it's outside `files` (exercises bin normalization)…
+		expect(result.findings.some((f) => f.packageName === 'bin-ghost')).toBe(true);
+		// …but `files: ["lib"]` excludes test/ and src/, so their requires are never scanned.
+		expect(result.findings.some((f) => f.packageName === 'excluded-ghost')).toBe(false);
+		expect(result.findings.some((f) => f.packageName === 'src-ghost')).toBe(false);
+	});
+
+	it('honors .npmignore for a package without a files allowlist', async () => {
+		const result = await audit(join(targetsRoot, 'pack-set-npmignore'), {
+			provider: fixtureProvider,
+		});
+		// Published root file is scanned; the `.npmignore`-excluded internal/ dir is not.
+		expect(result.findings.some((f) => f.packageName === 'kept-ghost')).toBe(true);
+		expect(result.findings.some((f) => f.packageName === 'ignored-ghost')).toBe(false);
+	});
+
+	it('without the publish-set filter, scans the excluded files too (proves the filter is the cause)', async () => {
+		// auditPackage on the raw directory, with no `includeFiles`, is the unfiltered behavior.
+		const workDir = mkdtempSync(join(tmpdir(), 'da-packset-'));
+		try {
+			const result = await auditPackage(nodeFileSystem, packSetTarget, {
+				provider: fixtureProvider,
+				workDir,
+			});
+			expect(result.findings.some((f) => f.packageName === 'excluded-ghost')).toBe(true);
+			expect(result.findings.some((f) => f.packageName === 'src-ghost')).toBe(true);
+		} finally {
+			rmSync(workDir, { recursive: true, force: true });
+		}
 	});
 });

@@ -7,6 +7,26 @@ export function isWithin(root: string, target: string): boolean {
 	return rel !== '' && !rel.startsWith('..') && !isAbsolute(rel);
 }
 
+/**
+ * Builds a predicate gating file discovery to a package's publish set (package-relative POSIX
+ * paths, as `npm-packlist` emits). An absent `includeFiles` admits everything — today's behavior
+ * for a tarball/spec target (already the publish set) or when the set can't be computed.
+ */
+export function publishedPredicate(
+	root: string,
+	includeFiles: ReadonlySet<string> | undefined,
+): (abs: string) => boolean {
+	if (includeFiles === undefined) {
+		return () => true;
+	}
+	return (abs) => includeFiles.has(toPosix(relative(root, abs)));
+}
+
+/** Normalizes an OS-relative path to the POSIX form (`/` separators). */
+function toPosix(path: string): string {
+	return sep === '/' ? path : path.split(sep).join('/');
+}
+
 /** Immediate subdirectories of `path` (used by the TS module-resolution host). */
 export function subdirectories(fs: FileSystem, path: string): string[] {
 	return fs.listDir(path).filter((name) => fs.isDirectory(join(path, name)));

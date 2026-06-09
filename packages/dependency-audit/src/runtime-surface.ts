@@ -1,7 +1,7 @@
 import { dirname, extname, join, relative, resolve, sep } from 'node:path';
 import ts from 'typescript';
 import type { FileSystem } from './fs.ts';
-import { expandPatternTarget, isWithin } from './fsutil.ts';
+import { expandPatternTarget, isWithin, publishedPredicate } from './fsutil.ts';
 import type { Manifest } from './manifest.ts';
 import type { UncheckedSpecifier } from './types.ts';
 
@@ -39,12 +39,14 @@ export function scanRuntimeSurface(
 	root: string,
 	manifest: Manifest,
 	conditions: readonly string[] = [],
+	includeFiles?: ReadonlySet<string>,
 ): RuntimeScan {
 	const externals: RuntimeSpecifier[] = [];
 	const unchecked: UncheckedSpecifier[] = [];
 	const seen = new Set<string>();
 	const visited = new Set<string>();
-	const queue = [...runtimeEntryPoints(fs, root, manifest, conditions)];
+	const published = publishedPredicate(root, includeFiles);
+	const queue = [...runtimeEntryPoints(fs, root, manifest, conditions, published)];
 	const rootIsModule = manifest.type === 'module';
 
 	while (queue.length > 0) {
@@ -58,7 +60,8 @@ export function scanRuntimeSurface(
 		for (const ref of specifiersInJs(fs, file, isEsmFile(file, rootIsModule))) {
 			if (isRelative(ref.specifier)) {
 				const target = resolveRelativeJs(fs, file, ref.specifier, root);
-				if (target !== undefined && !visited.has(target)) {
+				// Only follow into a file the package actually publishes — a consumer can't reach the rest.
+				if (target !== undefined && !visited.has(target) && published(target)) {
 					queue.push(target);
 				}
 				continue;
@@ -84,12 +87,13 @@ function runtimeEntryPoints(
 	root: string,
 	manifest: Manifest,
 	conditions: readonly string[],
+	published: (abs: string) => boolean,
 ): string[] {
 	const found = new Set<string>();
 	const add = (target: string | undefined): void => {
 		if (target !== undefined && JS_RE.test(target)) {
 			const abs = resolve(root, target);
-			if (fs.isFile(abs)) {
+			if (fs.isFile(abs) && published(abs)) {
 				found.add(abs);
 			}
 		}
@@ -103,7 +107,7 @@ function runtimeEntryPoints(
 		// No `exports`: any published JS is deep-importable.
 		add(manifest.main);
 		add(manifest.module);
-		for (const file of allJsFiles(fs, root)) {
+		for (const file of allJsFiles(fs, root, published)) {
 			found.add(file);
 		}
 	}
@@ -111,7 +115,7 @@ function runtimeEntryPoints(
 	// extensionless with a `#!/usr/bin/env node` shebang, so accept those too.
 	for (const target of binTargets(manifest)) {
 		const abs = resolve(root, target);
-		if (fs.isFile(abs) && (JS_RE.test(target) || hasNodeShebang(fs, abs))) {
+		if (fs.isFile(abs) && published(abs) && (JS_RE.test(target) || hasNodeShebang(fs, abs))) {
 			found.add(abs);
 		}
 	}
@@ -190,15 +194,18 @@ function binTargets(manifest: Manifest): string[] {
 	return [];
 }
 
-/** Lists every JS file in the extracted tarball, excluding bundled deps. */
-function allJsFiles(fs: FileSystem, root: string): string[] {
+/** Lists every published JS file in the tree, excluding bundled deps. */
+function allJsFiles(fs: FileSystem, root: string, published: (abs: string) => boolean): string[] {
 	const out: string[] = [];
 	for (const rel of fs.readdirRecursive(root)) {
 		if (rel.split(sep).includes('node_modules')) {
 			continue;
 		}
 		if (JS_RE.test(rel)) {
-			out.push(resolve(root, rel));
+			const abs = resolve(root, rel);
+			if (published(abs)) {
+				out.push(abs);
+			}
 		}
 	}
 	return out;
