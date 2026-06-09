@@ -52,6 +52,7 @@ describe('correlateRootCauses', () => {
 
 		expect(consumer.findings[0]?.causedBy).toEqual({
 			target: './packages/producer',
+			packageName: 'producer',
 			notice: 'types-unreachable',
 		});
 	});
@@ -102,6 +103,7 @@ describe('correlateRootCauses', () => {
 
 		expect(consumer.findings[0]?.causedBy).toEqual({
 			target: './a',
+			packageName: 'dup',
 			notice: 'types-unreachable',
 		});
 	});
@@ -166,7 +168,9 @@ describe('correlateRootCauses', () => {
 });
 
 describe('isCollapsed / resultFails (--collapse-root-cause)', () => {
-	const correlated = finding({ causedBy: { target: './producer', notice: 'types-unreachable' } });
+	const correlated = finding({
+		causedBy: { target: './producer', packageName: 'producer', notice: 'types-unreachable' },
+	});
 
 	it('isCollapsed needs both the flag and a causedBy annotation', () => {
 		expect(isCollapsed(correlated, true)).toBe(true);

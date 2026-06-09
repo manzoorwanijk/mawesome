@@ -37,12 +37,17 @@ export type UnresolvedReason = 'subpath-not-exported' | 'file-missing' | 'condit
  * Why a finding's real root cause is another audited target in the same run.
  * Set on a consumer's finding when the owning package is *itself* a target whose coverage
  * {@link Notice} (its types aren't built/reachable) explains the finding — so every consumer
- * points at the one producer to fix, rather than N look-alike findings. The producer is the
- * finding's own {@link Finding.packageName}.
+ * points at the one producer to fix, rather than N look-alike findings.
  */
 export interface FindingCause {
-	/** The producer target (as passed to the audit) whose coverage notice is the root cause. */
+	/** The producer target (as passed to the audit, e.g. a directory path) whose coverage notice is the root cause. */
 	target: string;
+	/**
+	 * The producer's resolved package name — equal to the consumer finding's own
+	 * {@link Finding.packageName}, surfaced here so a JSON consumer can correlate producers by
+	 * name without mapping the {@link FindingCause.target} spec back to a name.
+	 */
+	packageName: string;
 	/** That producer's coverage notice kind. */
 	notice: NoticeKind;
 }
