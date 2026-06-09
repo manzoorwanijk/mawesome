@@ -1,5 +1,39 @@
 # @mawesome/dependency-audit
 
+## 0.3.0
+
+### Minor Changes
+
+- [#37](https://github.com/manzoorwanijk/mawesome/pull/37) [`f8f4b97`](https://github.com/manzoorwanijk/mawesome/commit/f8f4b97ae3db86de9929efdcd967f31113b0a5a7) Thanks [@manzoorwanijk](https://github.com/manzoorwanijk)! - Add `--collapse-root-cause`: in a multi-target run, a finding whose root cause is another audited target (a producer with a coverage notice) no longer fails the run — it's listed muted and counted as `collapsed`, so you fix the one producer instead of every consumer.
+
+- [#35](https://github.com/manzoorwanijk/mawesome/pull/35) [`9058c6f`](https://github.com/manzoorwanijk/mawesome/commit/9058c6f2f96b60a95bd438a967c4b0306946d2be) Thanks [@manzoorwanijk](https://github.com/manzoorwanijk)! - In a multi-target run, a finding whose package is itself an audited target with a coverage notice is now annotated with `causedBy`, pointing every consumer at the one producer to fix instead of N look-alike findings.
+
+- [#39](https://github.com/manzoorwanijk/mawesome/pull/39) [`550153a`](https://github.com/manzoorwanijk/mawesome/commit/550153a4ce9889a82f847affda85be9979da28c2) Thanks [@manzoorwanijk](https://github.com/manzoorwanijk)! - `leakedVia` is now attributed only to a type that appears solely as a synthesized inline `import("x")`, not to a package you import directly — so a genuine direct import is no longer mislabeled as leaked through a dependency.
+
+- [#38](https://github.com/manzoorwanijk/mawesome/pull/38) [`7a860fd`](https://github.com/manzoorwanijk/mawesome/commit/7a860fd970ff954fa4306f2b1026f4a6d4c49630) Thanks [@manzoorwanijk](https://github.com/manzoorwanijk)! - When a package ships no types and has no `@types/*` companion but a published version ships its own types, the finding now names that version ("depend on `x@2.0.0`") instead of the dead-end `types-unavailable`.
+
+- [#34](https://github.com/manzoorwanijk/mawesome/pull/34) [`ad3bbbb`](https://github.com/manzoorwanijk/mawesome/commit/ad3bbbbfaab7895167c10ef96b11c52765e2215b) Thanks [@manzoorwanijk](https://github.com/manzoorwanijk)! - A directory audit now scans only npm's publish set (via `npm-packlist`), so references in files `npm publish` excludes are no longer flagged — matching a packed `.tgz`.
+
+- [#33](https://github.com/manzoorwanijk/mawesome/pull/33) [`979d64e`](https://github.com/manzoorwanijk/mawesome/commit/979d64efcac44708b825a08ef965bd022507a49b) Thanks [@manzoorwanijk](https://github.com/manzoorwanijk)! - A `missing-types` finding is now reported as a distinct `types-unavailable` kind when no `@types/*` companion exists on the registry, instead of suggesting a package that doesn't exist.
+
+- [#31](https://github.com/manzoorwanijk/mawesome/pull/31) [`2b3628a`](https://github.com/manzoorwanijk/mawesome/commit/2b3628a756d688bd425204a2f1dbcec45a59206a) Thanks [@manzoorwanijk](https://github.com/manzoorwanijk)! - Ignore rules can now be scoped to a `target` (package name or spec) and/or `path` (a `firstSeenIn` glob), so a localized suppression no longer hides the same specifier elsewhere.
+
+- [#36](https://github.com/manzoorwanijk/mawesome/pull/36) [`8f075b9`](https://github.com/manzoorwanijk/mawesome/commit/8f075b938ee6afe6de1b64496c15d834bc9a5e6d) Thanks [@manzoorwanijk](https://github.com/manzoorwanijk)! - An `undeclared` type finding for a type that isn't imported directly but leaks in through a declared dependency's API is now annotated with `leakedVia` (the producer deps), so the suggestion points at the real fix instead of telling you to declare a type you don't use.
+
+- [#32](https://github.com/manzoorwanijk/mawesome/pull/32) [`35463ee`](https://github.com/manzoorwanijk/mawesome/commit/35463ee5be30950cabeda30f20644b91896b54f3) Thanks [@manzoorwanijk](https://github.com/manzoorwanijk)! - Runtime `unresolved` findings now carry a `reason` (`subpath-not-exported`, `file-missing`, or `condition-mismatch`) pinpointing the cause, including ESM/CJS export-condition mismatches.
+
+### Patch Changes
+
+- [#41](https://github.com/manzoorwanijk/mawesome/pull/41) [`d769673`](https://github.com/manzoorwanijk/mawesome/commit/d769673608323a5756930b2049cc7ad0f27ddf8d) Thanks [@manzoorwanijk](https://github.com/manzoorwanijk)! - `Finding.causedBy` now carries the producer's `packageName` alongside its `target`, so a JSON consumer can correlate producers by name without parsing the target spec.
+
+- [#30](https://github.com/manzoorwanijk/mawesome/pull/30) [`52d5d4a`](https://github.com/manzoorwanijk/mawesome/commit/52d5d4a1b1c6f9a826138511151139318a2c9081) Thanks [@manzoorwanijk](https://github.com/manzoorwanijk)! - Stop masking the decompression-bomb guard for local `file:` tarballs: an oversized/hostile `.tgz` now fails its target instead of being silently treated as an absent dependency.
+
+- [#27](https://github.com/manzoorwanijk/mawesome/pull/27) [`ab1f9ee`](https://github.com/manzoorwanijk/mawesome/commit/ab1f9eeb01cab0705e9f671df78a298d0621091a) Thanks [@manzoorwanijk](https://github.com/manzoorwanijk)! - Retry transient registry fetches and fail the target if one still can't be fetched, instead of emitting false `undeclared` findings on large batches. Adds `--concurrency` to tune fan-out.
+
+- [#29](https://github.com/manzoorwanijk/mawesome/pull/29) [`aea0899`](https://github.com/manzoorwanijk/mawesome/commit/aea089997249b5c2027e0571af269c27c2fefcb0) Thanks [@manzoorwanijk](https://github.com/manzoorwanijk)! - Fix false `unresolved` runtime findings for `npm:` aliased dependencies.
+
+- [#42](https://github.com/manzoorwanijk/mawesome/pull/42) [`b95be85`](https://github.com/manzoorwanijk/mawesome/commit/b95be854a5a9e6350602ba9c804dead752c2f9e0) Thanks [@manzoorwanijk](https://github.com/manzoorwanijk)! - A subpath `missing-types` finding now qualifies its suggestion to note the `@types/*` companion or typed version may not declare that exact subpath, pointing to a local ambient `declare module` as the fallback.
+
 ## 0.2.2
 
 ### Patch Changes
