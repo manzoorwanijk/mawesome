@@ -32,6 +32,8 @@ describe('audit (runtime surface)', () => {
 		const result = await run('runtime-undeclared');
 		const leftpad = result.findings.find((f) => f.packageName === 'leftpad');
 		expect(leftpad).toMatchObject({ surface: 'runtime', kind: 'undeclared' });
+		// `reason` is only ever set on `unresolved` findings, never on `undeclared` ones.
+		expect(leftpad).not.toHaveProperty('reason');
 		// `node:fs/promises` is a builtin — never a runtime finding.
 		expect(result.findings.some((f) => f.packageName === 'fs')).toBe(false);
 		// The non-literal dynamic import is surfaced as unchecked, not dropped.
@@ -63,7 +65,26 @@ describe('audit (runtime surface)', () => {
 		// `exporter/sub` resolves; `exporter/private` does not.
 		expect(result.findings.find((f) => f.specifier === 'exporter/sub')).toBeUndefined();
 		const priv = result.findings.find((f) => f.specifier === 'exporter/private');
-		expect(priv).toMatchObject({ surface: 'runtime', kind: 'unresolved', packageName: 'exporter' });
+		expect(priv).toMatchObject({
+			surface: 'runtime',
+			kind: 'unresolved',
+			packageName: 'exporter',
+			reason: 'subpath-not-exported',
+		});
+	});
+
+	it('classifies the cause of each unresolved runtime finding', async () => {
+		const result = await run('runtime-reasons');
+		const reasonFor = (pkg: string) =>
+			result.findings.find((f) => f.packageName === pkg && f.kind === 'unresolved')?.reason;
+		// `require('esm-only')` — the `exports` map exposes only the `import` condition.
+		expect(reasonFor('esm-only')).toBe('condition-mismatch');
+		// `require('broken-exports')` — `exports` maps `.` to a file that is not shipped.
+		expect(reasonFor('broken-exports')).toBe('file-missing');
+		/* `require('dual-broken')` — the `require` condition *is* mapped, but its file is absent; a present `import` target must not mask this as a condition mismatch. */
+		expect(reasonFor('dual-broken')).toBe('file-missing');
+		/* `require('legacy-module-only')` — no `exports`/`main`; a bundler `module` field alone is not an export condition, so the absent CJS entry is a missing file, not a mismatch. */
+		expect(reasonFor('legacy-module-only')).toBe('file-missing');
 	});
 
 	it('resolves an `npm:` aliased dep whose materialized manifest keeps its real name', async () => {

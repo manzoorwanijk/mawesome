@@ -22,4 +22,5 @@ export type {
 	ResolvedDependency,
 	Surface,
 	UncheckedSpecifier,
+	UnresolvedReason,
 } from './types.ts';

@@ -5,7 +5,7 @@ import { emit, type ProgressReporter } from './progress.ts';
 import { createNormalizer, typesPackageFor } from './normalize.ts';
 import { createTypeResolver, materializeDeps } from './resolve.ts';
 import { createRuntimeResolver } from './runtime-resolve.ts';
-import { scanRuntimeSurface } from './runtime-surface.ts';
+import { type CallForm, scanRuntimeSurface } from './runtime-surface.ts';
 import { scanTypeSurface, type TypeCoverage } from './surface.ts';
 import type {
 	AcquiredSource,
@@ -16,6 +16,7 @@ import type {
 	RegistryProvider,
 	Surface,
 	UncheckedSpecifier,
+	UnresolvedReason,
 } from './types.ts';
 
 /** Options for {@link auditPackage}. */
@@ -120,8 +121,17 @@ export async function auditPackage(
 		if (normalized === null || normalized.isBuiltin || isSelf(normalized.packageName)) {
 			continue;
 		}
-		if (!runtimeResolver.resolvesRuntime(external.specifier, external.form)) {
-			findings.push(runtimeFinding(external, normalized.packageName, declared));
+		const resolution = runtimeResolver.resolvesRuntime(external.specifier, external.form);
+		if (!resolution.resolved) {
+			findings.push(
+				runtimeFinding(
+					external,
+					normalized.packageName,
+					declared,
+					external.form,
+					resolution.reason,
+				),
+			);
 		}
 	}
 
@@ -200,7 +210,13 @@ function typeFinding(seen: Seen, packageName: string, declared: Set<string>): Fi
 	);
 }
 
-function runtimeFinding(seen: Seen, packageName: string, declared: Set<string>): Finding {
+function runtimeFinding(
+	seen: Seen,
+	packageName: string,
+	declared: Set<string>,
+	form: CallForm,
+	reason: UnresolvedReason | undefined,
+): Finding {
 	if (!declared.has(packageName)) {
 		return finding(
 			seen,
@@ -210,13 +226,40 @@ function runtimeFinding(seen: Seen, packageName: string, declared: Set<string>):
 			`declare "${packageName}" (it is imported at runtime but not a declared dependency)`,
 		);
 	}
-	return finding(
+	const result = finding(
 		seen,
 		packageName,
 		'runtime',
 		'unresolved',
-		`"${seen.specifier}" does not resolve through declared "${packageName}" (subpath not exported, or the target file is missing)`,
+		unresolvedSuggestion(seen.specifier, packageName, form, reason),
 	);
+	if (reason !== undefined) {
+		result.reason = reason;
+	}
+	return result;
+}
+
+/** The remediation hint for an `unresolved` finding, named by its classified cause. */
+function unresolvedSuggestion(
+	specifier: string,
+	packageName: string,
+	form: CallForm,
+	reason: UnresolvedReason | undefined,
+): string {
+	switch (reason) {
+		case 'condition-mismatch': {
+			const used = form === 'require' ? 'require (CJS)' : 'import (ESM)';
+			const works = form === 'require' ? 'import (ESM)' : 'require (CJS)';
+			const missing = form === 'require' ? 'require' : 'import';
+			return `"${specifier}" resolves for ${works} but was loaded via ${used} — "${packageName}" exposes no "${missing}" export condition (ESM/CJS mismatch)`;
+		}
+		case 'subpath-not-exported':
+			return `"${specifier}" is not exported by "${packageName}" (its "exports" map does not expose this subpath)`;
+		case 'file-missing':
+			return `"${specifier}" maps through "${packageName}" to a target file that is missing`;
+		default:
+			return `"${specifier}" does not resolve through declared "${packageName}" (subpath not exported, or the target file is missing)`;
+	}
 }
 
 function declareHint(packageName: string, typesPackage: string): string {

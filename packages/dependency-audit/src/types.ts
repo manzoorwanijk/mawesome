@@ -16,6 +16,16 @@ export type Surface = 'types' | 'runtime';
  */
 export type FindingKind = 'undeclared' | 'missing-types' | 'unresolved';
 
+/**
+ * The specific cause of a runtime `unresolved` finding, when static analysis can determine it:
+ * - `subpath-not-exported`: the package's `exports` map does not expose this subpath.
+ * - `file-missing`: the specifier maps to a target file that is not present.
+ * - `condition-mismatch`: it resolves under the *other* call form — a `require` (CJS) of an `import`-only `exports`, or vice-versa (the ESM/CJS dual-package hazard).
+ *
+ * Absent when the cause is indeterminate (e.g. the package is not in the resolution tree).
+ */
+export type UnresolvedReason = 'subpath-not-exported' | 'file-missing' | 'condition-mismatch';
+
 /** A single undeclared/unresolvable import on a released surface. */
 export interface Finding {
 	/** The bare specifier exactly as written, e.g. `react/jsx-runtime`. */
@@ -24,6 +34,8 @@ export interface Finding {
 	packageName: string;
 	surface: Surface;
 	kind: FindingKind;
+	/** For an `unresolved` runtime finding, the classified cause (when determinable). */
+	reason?: UnresolvedReason;
 	/** Package-relative path of the declaration file where it was first seen. */
 	firstSeenIn: string;
 	/** Human-readable remediation hint. */

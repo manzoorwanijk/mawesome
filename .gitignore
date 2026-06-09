@@ -23,10 +23,13 @@ pnpm-debug.log*
 .env.*
 !.env.example
 
-# Project-scoped Claude commands/skills are versioned (override a global `.claude/` ignore);
-# keep machine-local settings out.
+# Only the project-scoped Claude commands/skills are versioned; everything else under `.claude/`
+# is machine-local (settings.local.json, scheduled_tasks.lock, …) and stays out of git.
+# `!.claude/` first overrides a global `.claude/` ignore so the negations below can take effect.
 !.claude/
-.claude/settings.local.json
+.claude/*
+!.claude/commands/
+!.claude/skills/
 
 # VS Code: recommended settings are opt-in via `pnpm vscode:setup` (settings.dist.jsonc);
 # the generated local copy is the developer's own.
