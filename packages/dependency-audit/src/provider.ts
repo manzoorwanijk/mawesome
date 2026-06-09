@@ -2,7 +2,8 @@ import { mkdirSync, readFileSync, rmSync, statSync, symlinkSync } from 'node:fs'
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import pacote from 'pacote';
-import { DEFAULT_EXTRACT_LIMITS, extractTarball } from './extract.ts';
+import { DEFAULT_EXTRACT_LIMITS, ExtractLimitError, extractTarball } from './extract.ts';
+import { withRetry } from './retry.ts';
 import type { ExtractLimits, RegistryProvider } from './types.ts';
 import { buildWorkspaceIndex } from './workspace.ts';
 
@@ -16,11 +17,18 @@ export interface PacoteProviderOptions {
 	 * sibling instead of failing as a registry lookup.
 	 */
 	where?: string | undefined;
+	/** Extra attempts for a transient registry fetch/extract failure (default {@link DEFAULT_RETRIES}). */
+	retries?: number | undefined;
 }
 
 const FILE_PREFIX = 'file:';
 const LINK_PREFIX = 'link:';
 const WORKSPACE_PREFIX = 'workspace:';
+
+/** Default extra registry attempts — 3 retries (4 calls total) absorbs transient races under load. */
+export const DEFAULT_RETRIES = 3;
+
+const RECURSIVE = { recursive: true, force: true } as const;
 
 /**
  * Builds the default registry provider. A `name@range` is fetched from npm at the highest
@@ -32,6 +40,7 @@ const WORKSPACE_PREFIX = 'workspace:';
 export function createPacoteProvider(options: PacoteProviderOptions = {}): RegistryProvider {
 	const limits = options.limits ?? DEFAULT_EXTRACT_LIMITS;
 	const where = options.where;
+	const retries = options.retries ?? DEFAULT_RETRIES;
 	// The workspace index is built once, lazily, on the first `workspace:` dep.
 	let workspace: Map<string, string> | undefined | null;
 	const workspaceDir = (name: string): string | undefined => {
@@ -44,29 +53,85 @@ export function createPacoteProvider(options: PacoteProviderOptions = {}): Regis
 	return {
 		async materialize(name: string, range: string, intoDir: string): Promise<string | undefined> {
 			const dest = join(intoDir, 'node_modules', name);
+
+			/* `file:`/`link:` ranges point at a local directory or tarball — resolve them
+			 * ourselves so a local spec never reaches pacote's `DirFetcher` (which would
+			 * need an Arborist tree to pack a directory that has its own dependencies).
+			 * A local failure is deterministic (a bad path stays bad), so it degrades to
+			 * "absent" (undefined) rather than erroring the whole target — and is never retried. */
+			if (range.startsWith(FILE_PREFIX) || range.startsWith(LINK_PREFIX)) {
+				if (where === undefined) {
+					return undefined;
+				}
+				return absentOnFailure(dest, () =>
+					materializeLocal(resolve(where, localPath(range)), dest, limits),
+				);
+			}
+			if (range.startsWith(WORKSPACE_PREFIX)) {
+				const dir = workspaceDir(workspaceTarget(name, range));
+				if (dir === undefined) {
+					return undefined;
+				}
+				return absentOnFailure(dest, () => Promise.resolve(linkDir(dir, dest)));
+			}
+
+			/* Registry spec: a failure is far more often a transient race (shared npm cache,
+			 * flaky network under heavy concurrency) than a genuine absence, so retry with
+			 * backoff. An exhausted retry *throws* so the caller fails the target with an
+			 * honest error (exit 2) — never silently degrading into a false "undeclared" finding. */
 			try {
-				/* `file:`/`link:` ranges point at a local directory or tarball — resolve them
-				 * ourselves so a local spec never reaches pacote's `DirFetcher` (which would
-				 * need an Arborist tree to pack a directory that has its own dependencies). */
-				if (range.startsWith(FILE_PREFIX) || range.startsWith(LINK_PREFIX)) {
-					return where === undefined
-						? undefined
-						: materializeLocal(resolve(where, localPath(range)), dest, limits);
-				}
-				if (range.startsWith(WORKSPACE_PREFIX)) {
-					const dir = workspaceDir(workspaceTarget(name, range));
-					return dir === undefined ? undefined : linkDir(dir, dest);
-				}
-				const fetched = await pacote.tarball(`${name}@${range}`, { where });
-				await extractTarball(fetched, dest, limits);
-				return readVersion(dest);
-			} catch {
-				// Don't leave a partial extraction that could resolve to a broken tree.
-				rmSync(dest, { recursive: true, force: true });
-				return undefined;
+				return await withRetry(() => fetchAndExtract(name, range, dest, where, limits), {
+					retries,
+					baseDelayMs: 150,
+					maxDelayMs: 2000,
+					// A decompression-bomb guard is deliberate — never retry or mask it.
+					shouldRetry: (error) => !(error instanceof ExtractLimitError),
+				});
+			} catch (error) {
+				throw new Error(`Failed to materialize ${name}@${range}: ${messageOf(error)}`, {
+					cause: error,
+				});
 			}
 		},
 	};
+}
+
+/** Fetches and bomb-guard-extracts a registry tarball, leaving no partial tree behind on failure. */
+async function fetchAndExtract(
+	name: string,
+	range: string,
+	dest: string,
+	where: string | undefined,
+	limits: ExtractLimits,
+): Promise<string | undefined> {
+	try {
+		const fetched = await pacote.tarball(`${name}@${range}`, { where });
+		await extractTarball(fetched, dest, limits);
+		return readVersion(dest);
+	} catch (error) {
+		// Clear the partial extraction before a retry or the rethrow; rethrow the original
+		// error so `shouldRetry` still sees its real type (e.g. ExtractLimitError).
+		rmSync(dest, RECURSIVE);
+		throw error;
+	}
+}
+
+/** Runs `materialize`, treating any failure as a (cleaned-up) absence — for local specs only. */
+async function absentOnFailure(
+	dest: string,
+	materialize: () => Promise<string | undefined>,
+): Promise<string | undefined> {
+	try {
+		return await materialize();
+	} catch {
+		rmSync(dest, RECURSIVE);
+		return undefined;
+	}
+}
+
+/** An error's message, without leaking a non-Error's shape. */
+function messageOf(error: unknown): string {
+	return error instanceof Error ? error.message : String(error);
 }
 
 /** Materializes a `file:` dependency: link a local directory, or extract a local `.tgz`. */
