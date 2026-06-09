@@ -11,10 +11,17 @@ export type Surface = 'types' | 'runtime';
  * - `missing-types`: the package is declared but provides no resolvable declarations
  *   for the exact specifier (the headline type bug — e.g. a `.d.ts` `import('react')`
  *   with no `@types/react` declared).
+ * - `types-unavailable`: like `missing-types`, but a registry probe found that no
+ *   `@types/*` companion exists — so the gap is *not* fixable by declaring a dependency
+ *   (ship types upstream, or add a local ambient `declare module`). Distinct so a CI gate
+ *   can treat a genuinely-unfixable gap differently from a forgotten declaration.
  * - `unresolved`: the package is declared but the runtime specifier does not resolve
  *   to a file (e.g. a deep import of a subpath the dep's `exports` does not expose).
+ *
+ * Treat this as an open set — new kinds may be added in a minor release, so consumers
+ * switching on it should keep a default branch rather than assuming exhaustiveness.
  */
-export type FindingKind = 'undeclared' | 'missing-types' | 'unresolved';
+export type FindingKind = 'undeclared' | 'missing-types' | 'types-unavailable' | 'unresolved';
 
 /**
  * The specific cause of a runtime `unresolved` finding, when static analysis can determine it:
@@ -143,6 +150,15 @@ export interface AuditResult {
  */
 export interface RegistryProvider {
 	materialize(name: string, range: string, intoDir: string): Promise<string | undefined>;
+	/**
+	 * Optional capability: does `name` exist on the registry?
+	 * Used only to refine a `missing-types` finding into honest advice — when the probed
+	 * `@types/*` companion is `absent`, the gap is reclassified `types-unavailable`.
+	 * Returns `unknown` when the lookup can't run (offline, no network, or a transient
+	 * error), which preserves the conservative `missing-types` message. A provider that
+	 * omits this method disables the refinement entirely (the browser default has no network).
+	 */
+	packageExists?(name: string): Promise<'exists' | 'absent' | 'unknown'>;
 }
 
 /** Caps on tarball extraction, to bound decompression bombs. */

@@ -28,6 +28,15 @@ const WORKSPACE_PREFIX = 'workspace:';
 /** Default extra registry attempts — 3 retries (4 calls total) absorbs transient races under load. */
 export const DEFAULT_RETRIES = 3;
 
+type Existence = 'exists' | 'absent' | 'unknown';
+
+/*
+ * Process-wide cache of registry existence probes, keyed by `where` + package name (see `probeExistence`).
+ * Existence is range-independent and stable within a run, so memoizing here dedups the same
+ * `@types/*` lookup across every audited target in a monorepo run (the provider is per-target).
+ */
+const existenceCache = new Map<string, Promise<Existence>>();
+
 const RECURSIVE = { recursive: true, force: true } as const;
 
 /**
@@ -93,7 +102,47 @@ export function createPacoteProvider(options: PacoteProviderOptions = {}): Regis
 				throw materializeError(name, range, error);
 			}
 		},
+		packageExists(name: string): Promise<Existence> {
+			return probeExistence(name, where);
+		},
 	};
+}
+
+/**
+ * Probes whether `name` exists on the registry, memoized process-wide.
+ * A 404 is a definitive `absent`; any other failure (offline, network, auth) is `unknown`, so the caller keeps its conservative advice rather than falsely reporting a package as absent.
+ * The cache key includes `where` because it selects the registry/auth config — the same name can exist on one registry and not another, so results must not leak between targets resolving against different configs.
+ */
+function probeExistence(name: string, where: string | undefined): Promise<Existence> {
+	// JSON-encode the pair so the key is unambiguous for any path and keeps `undefined` (no
+	// config dir) distinct from an empty-string `where`.
+	const key = JSON.stringify([where, name]);
+	const cached = existenceCache.get(key);
+	if (cached !== undefined) {
+		return cached;
+	}
+	const probe = pacote
+		.packument(name, where !== undefined ? { where } : {})
+		.then((): Existence => 'exists')
+		.catch((error: unknown): Existence => (is404(error) ? 'absent' : 'unknown'));
+	// A transient `unknown` must not poison the cache — drop it so a later probe can retry.
+	const result = probe.then((value) => {
+		if (value === 'unknown') {
+			existenceCache.delete(key);
+		}
+		return value;
+	});
+	existenceCache.set(key, result);
+	return result;
+}
+
+/** `true` if a registry error is a definitive "not found" (404), not a transient failure. */
+function is404(error: unknown): boolean {
+	if (typeof error !== 'object' || error === null) {
+		return false;
+	}
+	const e = error as { statusCode?: unknown; code?: unknown };
+	return e.statusCode === 404 || e.code === 'E404';
 }
 
 /** Fetches and bomb-guard-extracts a registry tarball, leaving no partial tree behind on failure. */

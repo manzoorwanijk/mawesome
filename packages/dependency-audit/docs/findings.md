@@ -6,11 +6,12 @@ A **finding** is a real problem that fails the audit (`ok: false`, exit 1). A **
 
 Every finding has a `surface` (`types` or `runtime`) and a `kind`:
 
-| Kind            | Surface         | Meaning                                                                                                                                                                                      |
-| --------------- | --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `undeclared`    | types / runtime | The owning package is reachable on the surface but is **not declared** in any non-dev manifest field.                                                                                        |
-| `missing-types` | types           | The package **is declared** but provides **no resolvable declarations** for the specifier (the headline bug — e.g. a `.d.ts` `import('react')` with `react` declared but no `@types/react`). |
-| `unresolved`    | runtime         | The package **is declared** but the specifier does **not resolve to a file** — typically a deep import of a subpath the dependency's `exports` does not expose, or a missing target file.    |
+| Kind                | Surface         | Meaning                                                                                                                                                                                                                                                                        |
+| ------------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `undeclared`        | types / runtime | The owning package is reachable on the surface but is **not declared** in any non-dev manifest field.                                                                                                                                                                          |
+| `missing-types`     | types           | The package **is declared** but provides **no resolvable declarations** for the specifier (the headline bug — e.g. a `.d.ts` `import('react')` with `react` declared but no `@types/react`).                                                                                   |
+| `types-unavailable` | types           | Like `missing-types`, but a registry probe found **no `@types/*` companion exists** — so the gap is **not fixable by declaring a dependency**. A distinct kind so a CI gate can treat a genuinely-unfixable gap differently (e.g. suppress `{ "kind": "types-unavailable" }`). |
+| `unresolved`        | runtime         | The package **is declared** but the specifier does **not resolve to a file** — typically a deep import of a subpath the dependency's `exports` does not expose, or a missing target file.                                                                                      |
 
 An `unresolved` finding also carries an optional **`reason`** naming the specific cause, so the diagnosis isn't a guess:
 
@@ -38,7 +39,10 @@ An `unresolved` finding also carries an optional **`reason`** naming the specifi
 - **`undeclared` (runtime):** add the package to `dependencies` (or `peerDependencies`/`optionalDependencies` if that fits its role).
 - **`undeclared` (types):** add the package — or its `@types/*` companion if it ships no types of its own — to `dependencies` (runtime-needed) or `devDependencies` is **not** enough if the type leaks into your published `.d.ts`; a type a consumer must resolve has to be a non-dev dependency.
 - **`missing-types`:** declare the `@types/*` package, or upgrade the dependency to a version that bundles its own declarations.
+- **`types-unavailable`:** there is no `@types/*` to declare — the only fixes are upstream (ship types from the package itself) or local (add an ambient `declare module "x"` in your own sources). Treat it as a known gap rather than a missing declaration; suppress with an ignore rule on `{ "kind": "types-unavailable" }` if you've accepted it.
 - **`unresolved`:** let the `reason` guide the fix. `subpath-not-exported` → stop importing the private subpath, or ask the dependency to add it to its `exports`. `condition-mismatch` → the dependency is missing the `require`/`import` export condition you load it under (a real dual-package bug — fix the producer, or load it under the other form). `file-missing` → the mapped target isn't shipped (build/packaging gap). If it is your own subpath that the dependency genuinely exports, it can also indicate a version mismatch in the materialized tree.
+
+The `missing-types` → `types-unavailable` distinction needs a registry lookup for the `@types/*` companion. When the audit can't reach the registry (offline, or a provider without the probe capability — the browser build has no network), it conservatively keeps `missing-types` rather than guessing the companion is absent.
 
 ### Node builtins
 

@@ -111,11 +111,13 @@ The port that materializes a declared dependency so resolution runs against the 
 interface RegistryProvider {
 	/** Extract name@(highest satisfying range) into `${intoDir}/node_modules/${name}`; return the resolved version (or undefined if it could not be materialized). */
 	materialize(name: string, range: string, intoDir: string): Promise<string | undefined>;
+	/** Optional: does `name` exist on the registry? Used only to refine `missing-types` into `types-unavailable`; return `'unknown'` when the lookup can't run. */
+	packageExists?(name: string): Promise<'exists' | 'absent' | 'unknown'>;
 }
 ```
 
-- **Node default** — `createPacoteProvider({ where, limits })` (and the ready-made `pacoteProvider`): fetches registry ranges via pacote, links local `file:`/`link:`/`workspace:` deps. `where` is the directory local ranges resolve against (the audited package's own dir).
-- **Inject your own** to resolve against an offline mirror, a local cache, or a CDN (browser). A provider that returns `undefined` for a name means "could not materialize" — references to it then surface as findings.
+- **Node default** — `createPacoteProvider({ where, limits })` (and the ready-made `pacoteProvider`): fetches registry ranges via pacote, links local `file:`/`link:`/`workspace:` deps, and implements `packageExists` (a `pacote.packument` probe; 404 → `absent`, any other failure → `unknown`). `where` is the directory local ranges resolve against (the audited package's own dir).
+- **Inject your own** to resolve against an offline mirror, a local cache, or a CDN (browser). A provider that returns `undefined` for a name means "could not materialize" — references to it then surface as findings. Omitting `packageExists` simply disables the `types-unavailable` refinement.
 
 ## Exported types
 
