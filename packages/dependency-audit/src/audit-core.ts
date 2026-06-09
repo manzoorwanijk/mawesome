@@ -34,6 +34,8 @@ export interface AuditPackageOptions {
 	builtins?: readonly string[];
 	/** Extra resolution conditions to activate (e.g. `["browser"]`), added to the defaults. */
 	conditions?: readonly string[];
+	/** Cap on concurrent dep materializations (default {@link DEFAULT_MATERIALIZE_CONCURRENCY}). */
+	materializeConcurrency?: number;
 	/** Optional progress sink, notified as deps materialize and surfaces are scanned. */
 	progress?: ProgressReporter;
 }
@@ -61,8 +63,12 @@ export async function auditPackage(
 	const deps = declaredDependencies(manifest);
 	const declared = new Set(deps.map((dep) => dep.name));
 	emit(progress, { type: 'materialize:start', target, total: deps.length });
-	const resolved = await materializeDeps(deps, provider, workDir, (done, total) =>
-		emit(progress, { type: 'materialize:progress', target, done, total }),
+	const resolved = await materializeDeps(
+		deps,
+		provider,
+		workDir,
+		(done, total) => emit(progress, { type: 'materialize:progress', target, done, total }),
+		options.materializeConcurrency,
 	);
 	// Only deps that actually materialized can satisfy a reference.
 	const materialized = new Set(

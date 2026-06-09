@@ -39,6 +39,10 @@ Options:
                     ./dependency-audit.config.json if present).
   --condition <name>  Activate an extra resolution condition (e.g. browser) for
                     entry discovery and resolution (repeatable).
+  --concurrency <n>  Cap how many targets — and how many deps per target —
+                    materialize at once (default: 6 targets x 12 deps). Lower it
+                    to ease load on a large batch; --concurrency 1 runs fully
+                    serially. Also via DEPENDENCY_AUDIT_CONCURRENCY.
   --require-types   Treat a missing/unreachable type surface (a coverage notice)
                     as a failure rather than just a notice.
   --json            Emit machine-readable JSON: a { tool, version, results }
@@ -72,6 +76,7 @@ async function main(): Promise<number> {
 			ignore: { type: 'string', multiple: true },
 			config: { type: 'string' },
 			condition: { type: 'string', multiple: true },
+			concurrency: { type: 'string' },
 			'require-types': { type: 'boolean', default: false },
 			json: { type: 'boolean', default: false },
 			'no-progress': { type: 'boolean', default: false },
@@ -96,6 +101,18 @@ async function main(): Promise<number> {
 	const ignore = [...loadConfigRules(values.config), ...cliIgnoreRules(values.ignore ?? [])];
 	const conditions = values.condition ?? [];
 
+	/* One `--concurrency` knob, flag over env, caps both fan-out levels: how many targets run at
+	 * once and how many deps each target materializes. Left unset it keeps the defaults (6 targets,
+	 * 12 deps) — overriding only the target count would still let each target fan out 12-wide, so
+	 * `--concurrency 1` would not actually serialize. `retries` is env-only (no everyday flag). */
+	const concurrency = intOption(
+		values.concurrency ?? process.env['DEPENDENCY_AUDIT_CONCURRENCY'],
+		'--concurrency / DEPENDENCY_AUDIT_CONCURRENCY',
+		1,
+	);
+	const targetConcurrency = concurrency ?? TARGET_CONCURRENCY;
+	const retries = intOption(process.env['DEPENDENCY_AUDIT_RETRIES'], 'DEPENDENCY_AUDIT_RETRIES', 0);
+
 	/* A live stderr spinner (no-op unless stderr is an interactive TTY) so a long audit never looks hung.
 	 * It only touches stderr, so `--json` / `> file` stdout stays clean.
 	 * The cleanup handles are exposed module-wide so `finish()` and the background-error handler can keep the line tidy. */
@@ -119,12 +136,20 @@ async function main(): Promise<number> {
 	 * that target instead of discarding every other target's result. */
 	const outcomes = await mapLimit(
 		positionals,
-		TARGET_CONCURRENCY,
+		targetConcurrency,
 		async (target): Promise<Outcome> => {
 			try {
 				return {
 					target,
-					result: await audit(target, { ignore, conditions, progress: progress.reporter }),
+					result: await audit(target, {
+						ignore,
+						conditions,
+						progress: progress.reporter,
+						// Only override the per-target materialize cap when `--concurrency` is set,
+						// so the default stays 12 rather than collapsing to the target count.
+						...(concurrency !== undefined ? { materializeConcurrency: concurrency } : {}),
+						...(retries !== undefined ? { retries } : {}),
+					}),
 				};
 			} catch (error) {
 				if (error instanceof SkippedTargetError) {
@@ -176,6 +201,21 @@ function jsonEntry(
 	outcome: Outcome,
 ): AuditResult | { target: string; error: string } | { target: string; skipped: string } {
 	return 'result' in outcome ? outcome.result : outcome;
+}
+
+/**
+ * Parses an integer option (flag or env), returning `undefined` when unset so a caller can
+ * fall back to its own default. Rejects a non-integer or below-`min` value with a clear error.
+ */
+function intOption(raw: string | undefined, label: string, min: number): number | undefined {
+	if (raw === undefined || raw === '') {
+		return undefined;
+	}
+	const value = Number(raw);
+	if (!Number.isInteger(value) || value < min) {
+		throw new Error(`Invalid ${label}: "${raw}" — expected an integer >= ${min}.`);
+	}
+	return value;
 }
 
 /** A CLI `--ignore <value>` matches a finding by package OR exact specifier. */

@@ -100,4 +100,12 @@ describe('createPacoteProvider local materialization', () => {
 		const provider = createPacoteProvider({ where: tempRoot() });
 		expect(await provider.materialize('@fix/missing', 'workspace:*', into)).toBeUndefined();
 	});
+
+	it('returns undefined (no throw) for a file: dep whose path does not exist', async () => {
+		// A local spec fails deterministically, so it degrades to absence — never an error
+		// that fails the whole target, and never retried.
+		const into = tempRoot();
+		const provider = createPacoteProvider({ where: tempRoot() });
+		expect(await provider.materialize('gone', 'file:./does-not-exist', into)).toBeUndefined();
+	});
 });

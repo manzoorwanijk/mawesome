@@ -22,7 +22,11 @@ export async function audit(target: string, options: AuditOptions = {}): Promise
 		// the acquired package (so a monorepo's `file:../sibling` deps materialize locally).
 		const provider =
 			options.provider ??
-			createPacoteProvider({ limits: options.extractLimits, where: acquired.root });
+			createPacoteProvider({
+				limits: options.extractLimits,
+				where: acquired.root,
+				retries: options.retries,
+			});
 		const workDir = mkdtempSync(join(tmpdir(), 'dep-audit-deps-'));
 		try {
 			return await auditPackage(nodeFileSystem, acquired.root, {
@@ -33,6 +37,9 @@ export async function audit(target: string, options: AuditOptions = {}): Promise
 				ignore: options.ignore ?? [],
 				conditions: options.conditions ?? [],
 				// Only set when present — the option type is exact-optional (no explicit `undefined`).
+				...(options.materializeConcurrency !== undefined
+					? { materializeConcurrency: options.materializeConcurrency }
+					: {}),
 				...(options.progress ? { progress: options.progress } : {}),
 				// Use the running Node's live builtin list (the core defaults to a hardcoded one).
 				builtins: builtinModules,
