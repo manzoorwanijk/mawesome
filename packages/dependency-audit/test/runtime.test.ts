@@ -66,6 +66,13 @@ describe('audit (runtime surface)', () => {
 		expect(priv).toMatchObject({ surface: 'runtime', kind: 'unresolved', packageName: 'exporter' });
 	});
 
+	it('resolves an `npm:` aliased dep whose materialized manifest keeps its real name', async () => {
+		const result = await run('runtime-npm-alias');
+		// `aliased` materializes under the alias key but reports `real-aliased-pkg`;
+		// both the bare and deep specifiers resolve through the package's own `exports`.
+		expect(result.findings.filter((f) => f.surface === 'runtime')).toEqual([]);
+	});
+
 	it('extracts require() specifiers from a CJS entry (require call form)', async () => {
 		const result = await run('runtime-require');
 		expect(result.findings.find((f) => f.packageName === 'leftpad')).toBeUndefined();

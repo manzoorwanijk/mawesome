@@ -1,0 +1,8 @@
+{
+	"name": "@fixture/runtime-npm-alias",
+	"version": "1.0.0",
+	"main": "./lib/index.cjs",
+	"dependencies": {
+		"aliased": "npm:real-aliased-pkg@3.0.3"
+	}
+}

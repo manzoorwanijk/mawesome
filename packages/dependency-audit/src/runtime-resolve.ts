@@ -40,10 +40,17 @@ export function createRuntimeResolver(
 			const pkg = JSON.parse(fs.readFile(manifestPath)) as DepManifest;
 
 			if (pkg.exports !== undefined) {
-				// `exports` encapsulates the package: only mapped subpaths resolve. An
-				// array target is a fallback list — the first that exists as a file wins.
+				/**
+				 * `exports` encapsulates the package: only mapped subpaths resolve. An
+				 * array target is a fallback list — the first that exists as a file wins.
+				 * Resolve against the subpath entry (`.`/`./sub`), not the raw specifier:
+				 * an `npm:` alias materializes under the alias key while its manifest keeps
+				 * its real name, so `resolve.exports` would otherwise read the specifier as a
+				 * missing subpath of that real name.
+				 */
+				const entry = subpath === '' ? '.' : `./${subpath}`;
 				try {
-					const targets = resolveExports(pkg, specifier, {
+					const targets = resolveExports(pkg, entry, {
 						require: form === 'require',
 						...(extraConditions !== undefined ? { conditions: extraConditions } : {}),
 					});
