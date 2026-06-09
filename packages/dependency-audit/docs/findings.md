@@ -67,4 +67,15 @@ An **IgnoreRule** matches a finding when **every** field it sets equals the find
 { "surface": "runtime", "kind": "unresolved" }            // all unresolved runtime findings
 ```
 
-A CLI `--ignore <value>` is shorthand for "match `package === value` OR `specifier === value`".
+`package`/`specifier`/`surface`/`kind` match the finding itself. Two optional fields **scope** a rule, so a localized suppression can't also hide a real regression of the same specifier in another package:
+
+- **`target`** — restricts the rule to one audited target. It matches that target's package **name** (most reliable — e.g. `my-pkg`) **or** the target string **exactly as passed** to the audit (a directory, `.tgz` path, or spec). The spec form is not path-normalized, so prefer the package name when you can.
+- **`path`** — a glob over the finding's package-relative `firstSeenIn`. A `path` rule alone applies in **every** target (it scopes by location, not by package); combine it with `target` to scope to one package's files.
+
+Glob syntax (the common gitignore subset): `*` matches within a single path segment, `?` matches one non-`/` character, and `**` is a globstar only as a whole segment — a leading/inner `**/` matches zero or more segments (`**/x` matches `x` and `a/b/x`), and a trailing `/**` matches all descendants (`fixtures/**` matches `fixtures/x` but not `fixtures` itself).
+
+```jsonc
+{ "target": "my-pkg", "path": "fixtures/**", "specifier": "x" } // only in my-pkg's fixtures
+```
+
+A CLI `--ignore <value>` is shorthand for "match `package === value` OR `specifier === value`" (an unscoped, global rule); use a config file for `target`/`path` scoping.

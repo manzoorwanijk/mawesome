@@ -125,7 +125,10 @@ export async function auditPackage(
 		}
 	}
 
-	const partitioned = partitionIgnored(findings, options.ignore ?? []);
+	const partitioned = partitionIgnored(findings, options.ignore ?? [], {
+		name: manifest.name,
+		target,
+	});
 	return {
 		target,
 		source: options.source ?? { kind: 'directory' },
