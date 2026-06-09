@@ -12,6 +12,14 @@ const targets = join(here, 'fixtures', 'targets');
 const okTarget = join(targets, 'require-forms');
 const badTarget = join(targets, '__no_such_target__');
 
+/*
+ * Some behaviors are tested at the unit level rather than here: the CLI always uses the real
+ * pacote provider, so any multi-target fixture that produces a `causedBy`/`--collapse-root-cause`
+ * scenario (a producer with a coverage notice + a consumer of it) would fire the registry `@types`
+ * probe from the Phase C refinement — a real network call, flaky in CI. So `correlateRootCauses`,
+ * `isCollapsed`, and `resultFails` are covered in `correlate.test.ts` (pure, hermetic) instead.
+ */
+
 /**
  * Runs the CLI as a subprocess (Node strips the TS types), capturing status + stdout + stderr.
  * `spawnSync` always captures both streams (even on a clean exit), so a test can assert that a successful run emits nothing on stderr — the child's stderr is a pipe, not a TTY, so the progress spinner stays silent.

@@ -1,4 +1,4 @@
-import type { AuditResult, NoticeKind } from './types.ts';
+import type { AuditResult, Finding, NoticeKind } from './types.ts';
 
 /** The coverage-notice kinds that mean a producer's own types are missing/unreachable. */
 const COVERAGE_NOTICES = new Set<NoticeKind>(['types-not-built', 'types-unreachable']);
@@ -53,4 +53,17 @@ export function correlateRootCauses(results: AuditResult[]): void {
 			}
 		}
 	}
+}
+
+/**
+ * Under `--collapse-root-cause`, a correlated finding (one annotated with `causedBy`) no longer
+ * fails its consumer — the fix belongs to the producer, audited separately in the same run.
+ */
+export function isCollapsed(finding: Finding, collapse: boolean): boolean {
+	return collapse && finding.causedBy !== undefined;
+}
+
+/** Whether a result still fails the run: it has a finding that isn't collapsed to a producer. */
+export function resultFails(result: AuditResult, collapse: boolean): boolean {
+	return result.findings.some((finding) => !isCollapsed(finding, collapse));
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { correlateRootCauses } from '../src/correlate.ts';
+import { correlateRootCauses, isCollapsed, resultFails } from '../src/correlate.ts';
 import type { AuditResult, Finding, NoticeKind } from '../src/types.ts';
 
 const finding = (over: Partial<Finding> = {}): Finding => ({
@@ -12,19 +12,23 @@ const finding = (over: Partial<Finding> = {}): Finding => ({
 	...over,
 });
 
-const result = (over: Partial<AuditResult> = {}): AuditResult => ({
-	target: over.packageName ?? 'pkg',
-	source: { kind: 'directory' },
-	packageName: 'pkg',
-	packageVersion: '1.0.0',
-	ok: true,
-	findings: [],
-	ignored: [],
-	unchecked: [],
-	notices: [],
-	resolvedDeps: [],
-	...over,
-});
+const result = (over: Partial<AuditResult> = {}): AuditResult => {
+	const merged: AuditResult = {
+		target: over.packageName ?? 'pkg',
+		source: { kind: 'directory' },
+		packageName: 'pkg',
+		packageVersion: '1.0.0',
+		ok: true,
+		findings: [],
+		ignored: [],
+		unchecked: [],
+		notices: [],
+		resolvedDeps: [],
+		...over,
+	};
+	// Keep `ok` consistent with the AuditResult contract (false when findings remain) unless set.
+	return { ...merged, ok: over.ok ?? merged.findings.length === 0 };
+};
 
 const notice = (kind: NoticeKind): AuditResult['notices'][number] => ({
 	kind,
@@ -158,5 +162,31 @@ describe('correlateRootCauses', () => {
 
 		expect(a.findings[0]?.causedBy).toBeUndefined();
 		expect(b.findings[0]?.causedBy).toBeUndefined();
+	});
+});
+
+describe('isCollapsed / resultFails (--collapse-root-cause)', () => {
+	const correlated = finding({ causedBy: { target: './producer', notice: 'types-unreachable' } });
+
+	it('isCollapsed needs both the flag and a causedBy annotation', () => {
+		expect(isCollapsed(correlated, true)).toBe(true);
+		expect(isCollapsed(correlated, false)).toBe(false);
+		expect(isCollapsed(finding(), true)).toBe(false);
+	});
+
+	it('resultFails drops collapsed findings only when the flag is set', () => {
+		const r = result({ findings: [correlated] });
+		expect(resultFails(r, false)).toBe(true); // collapse off → a finding still fails
+		expect(resultFails(r, true)).toBe(false); // every finding collapsed → passes
+	});
+
+	it('resultFails still fails when a non-collapsed finding remains', () => {
+		const r = result({ findings: [correlated, finding({ packageName: 'own-bug' })] });
+		expect(resultFails(r, true)).toBe(true);
+	});
+
+	it('resultFails is false for a result with no findings', () => {
+		expect(resultFails(result(), true)).toBe(false);
+		expect(resultFails(result(), false)).toBe(false);
 	});
 });
