@@ -68,11 +68,13 @@ export function createPacoteProvider(options: PacoteProviderOptions = {}): Regis
 				);
 			}
 			if (range.startsWith(WORKSPACE_PREFIX)) {
-				const dir = workspaceDir(workspaceTarget(name, range));
-				if (dir === undefined) {
-					return undefined;
-				}
-				return absentOnFailure(dest, () => Promise.resolve(linkDir(dir, dest)));
+				// Resolve the workspace index inside the guard too: building it reads the
+				// workspace file, which can throw — a local lookup failure must degrade to
+				// absence, never error the whole target.
+				return absentOnFailure(dest, () => {
+					const dir = workspaceDir(workspaceTarget(name, range));
+					return Promise.resolve(dir === undefined ? undefined : linkDir(dir, dest));
+				});
 			}
 
 			/* Registry spec: a failure is far more often a transient race (shared npm cache,

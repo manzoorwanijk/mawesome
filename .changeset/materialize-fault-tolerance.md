@@ -2,4 +2,4 @@
 '@mawesome/dependency-audit': minor
 ---
 
-Retry transient registry materialization failures and, when a dependency still can't be fetched, fail that target with an error instead of silently reporting its imports as undeclared — fixing non-deterministic false findings on large batches. Adds a `--concurrency` flag (plus `DEPENDENCY_AUDIT_CONCURRENCY` / `DEPENDENCY_AUDIT_RETRIES`) to tune fan-out and the retry budget.
+Fix non-deterministic false findings on large batches: a transient registry fetch is now retried, and a dependency that still can't be fetched fails its target instead of being reported as an undeclared import. Adds `--concurrency` to tune fan-out.

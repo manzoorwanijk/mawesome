@@ -21,9 +21,9 @@ vi.mock('../src/extract.ts', async (importOriginal) => ({
 const tarballMock = vi.mocked(pacote.tarball);
 const extractMock = vi.mocked(extractTarball);
 
-// pacote.tarball's return type is `Buffer & FetchResult`; the bytes are never read here (extract
-// is mocked), so a bare buffer cast stands in for a resolved fetch.
-const FAKE_TARBALL = Buffer.from([]) as never;
+// pacote.tarball resolves to `Buffer & FetchResult`; the bytes are never read here (extract is
+// mocked), so a bare buffer stands in — cast to the real resolved type so it tracks any drift.
+const FAKE_TARBALL = Buffer.from([]) as Awaited<ReturnType<typeof pacote.tarball>>;
 
 const temps: string[] = [];
 afterEach(() => {
