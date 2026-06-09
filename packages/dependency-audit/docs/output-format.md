@@ -105,6 +105,7 @@ Distinguish the three by key: an `error` key → could not audit (exit 2); a `sk
 			"packageName": "react", // the normalized owning package
 			"surface": "types", // "types" | "runtime"
 			"kind": "undeclared", // see Findings & notices
+			// "reason": "condition-mismatch", // only on some `unresolved` runtime findings
 			"firstSeenIn": "dist/index.d.ts", // package-relative path
 			"suggestion": "declare \"@types/react\" …",
 		},

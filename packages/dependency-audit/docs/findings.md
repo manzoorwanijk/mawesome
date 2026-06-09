@@ -12,7 +12,15 @@ Every finding has a `surface` (`types` or `runtime`) and a `kind`:
 | `missing-types` | types           | The package **is declared** but provides **no resolvable declarations** for the specifier (the headline bug — e.g. a `.d.ts` `import('react')` with `react` declared but no `@types/react`). |
 | `unresolved`    | runtime         | The package **is declared** but the specifier does **not resolve to a file** — typically a deep import of a subpath the dependency's `exports` does not expose, or a missing target file.    |
 
-Each finding carries a `suggestion` with concrete remediation. Examples:
+An `unresolved` finding also carries an optional **`reason`** naming the specific cause, so the diagnosis isn't a guess:
+
+| `reason`               | Meaning                                                                                                                      |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `subpath-not-exported` | The package's `exports` map does not expose this subpath.                                                                    |
+| `file-missing`         | The specifier maps to a target file that is not present.                                                                     |
+| `condition-mismatch`   | It resolves under the **other** call form — a `require` (CJS) of an `import`-only `exports`, or vice-versa (ESM/CJS hazard). |
+
+`reason` is omitted when the cause is indeterminate (e.g. the package is not in the resolution tree). Each finding also carries a `suggestion` with concrete remediation. Examples:
 
 ```
 ✗ types      [undeclared]     csstype  (dist/index.d.ts)
@@ -21,8 +29,8 @@ Each finding carries a `suggestion` with concrete remediation. Examples:
 ✗ types      [missing-types]  react  (dist/index.d.ts)
     → "react" is declared but provides no resolvable declarations for "react"; add "@types/react" or a version that ships types
 
-✗ runtime    [unresolved]     exporter/private  (dist/index.js)
-    → "exporter/private" does not resolve through declared "exporter" (subpath not exported, or the target file is missing)
+✗ runtime    [unresolved]     @wordpress/boot  (build/index.cjs)
+    → "@wordpress/boot" resolves for import (ESM) but was loaded via require (CJS) — "@wordpress/boot" exposes no "require" export condition (ESM/CJS mismatch)
 ```
 
 ### How to fix each
@@ -30,7 +38,7 @@ Each finding carries a `suggestion` with concrete remediation. Examples:
 - **`undeclared` (runtime):** add the package to `dependencies` (or `peerDependencies`/`optionalDependencies` if that fits its role).
 - **`undeclared` (types):** add the package — or its `@types/*` companion if it ships no types of its own — to `dependencies` (runtime-needed) or `devDependencies` is **not** enough if the type leaks into your published `.d.ts`; a type a consumer must resolve has to be a non-dev dependency.
 - **`missing-types`:** declare the `@types/*` package, or upgrade the dependency to a version that bundles its own declarations.
-- **`unresolved`:** stop importing the private subpath, or (if it should be public) ask the dependency to add it to its `exports`. If it is your own subpath import that the dependency genuinely exports, this can indicate a version mismatch in the materialized tree.
+- **`unresolved`:** let the `reason` guide the fix. `subpath-not-exported` → stop importing the private subpath, or ask the dependency to add it to its `exports`. `condition-mismatch` → the dependency is missing the `require`/`import` export condition you load it under (a real dual-package bug — fix the producer, or load it under the other form). `file-missing` → the mapped target isn't shipped (build/packaging gap). If it is your own subpath that the dependency genuinely exports, it can also indicate a version mismatch in the materialized tree.
 
 ### Node builtins
 

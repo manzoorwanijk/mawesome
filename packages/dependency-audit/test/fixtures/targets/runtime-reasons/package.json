@@ -1,0 +1,11 @@
+{
+	"name": "@fixture/runtime-reasons",
+	"version": "1.0.0",
+	"main": "./index.cjs",
+	"dependencies": {
+		"broken-exports": "^1.0.0",
+		"dual-broken": "^1.0.0",
+		"esm-only": "^1.0.0",
+		"legacy-module-only": "^1.0.0"
+	}
+}
