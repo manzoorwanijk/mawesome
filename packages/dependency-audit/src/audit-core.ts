@@ -299,7 +299,11 @@ async function refineMissingTypes(
 		const upgrade = typedVersion.get(candidate.packageName);
 		if (upgrade !== undefined) {
 			// Fixable by depending on the version that ships types — stays `missing-types`.
-			candidate.suggestion = typedVersionSuggestion(candidate.packageName, upgrade);
+			candidate.suggestion = typedVersionSuggestion(
+				candidate.packageName,
+				upgrade,
+				candidate.specifier,
+			);
 		} else {
 			candidate.kind = 'types-unavailable';
 			candidate.suggestion = typesUnavailableSuggestion(candidate.packageName);
@@ -312,9 +316,12 @@ function typesUnavailableSuggestion(packageName: string): string {
 	return `"${packageName}" provides no resolvable types and no "${typesPackage}" exists on the registry — not fixable by declaring a dependency; ship types upstream, or add a local ambient \`declare module "${packageName}"\``;
 }
 
-function typedVersionSuggestion(packageName: string, version: string): string {
+function typedVersionSuggestion(packageName: string, version: string, specifier: string): string {
 	const typesPackage = typesPackageFor(packageName);
-	return `"${packageName}" provides no types at the resolved version and no "${typesPackage}" exists, but "${packageName}@${version}" ships its own types — depend on that version`;
+	const base = `"${packageName}" provides no types at the resolved version and no "${typesPackage}" exists, but "${packageName}@${version}" ships its own types — depend on that version`;
+	return isSubpathSpecifier(specifier, packageName)
+		? `${base} (if it does not declare the "${specifier}" subpath, add a local ambient \`declare module "${specifier}"\`)`
+		: base;
 }
 
 /**
@@ -421,8 +428,29 @@ function typeFinding(seen: Seen, packageName: string, declared: Set<string>): Fi
 		packageName,
 		'types',
 		'missing-types',
-		`"${packageName}" is declared but provides no resolvable declarations for "${seen.specifier}"; add "${typesPackage}" or a version that ships types`,
+		missingTypesSuggestion(packageName, seen.specifier, typesPackage),
 	);
+}
+
+/** `true` when the specifier reaches a subpath of its package rather than the bare package entry. */
+function isSubpathSpecifier(specifier: string, packageName: string): boolean {
+	return specifier !== packageName;
+}
+
+/**
+ * The `missing-types` remediation hint.
+ * A *subpath* import gets a caveat, since the `@types/*` companion (or a typed version) may not declare that exact subpath even when it exists.
+ * The fallback fix is then a local ambient `declare module`.
+ */
+function missingTypesSuggestion(
+	packageName: string,
+	specifier: string,
+	typesPackage: string,
+): string {
+	if (isSubpathSpecifier(specifier, packageName)) {
+		return `"${packageName}" is declared but provides no resolvable declarations for the subpath "${specifier}"; add "${typesPackage}" or a version that ships types — if it does not declare this subpath, add a local ambient \`declare module "${specifier}"\``;
+	}
+	return `"${packageName}" is declared but provides no resolvable declarations for "${specifier}"; add "${typesPackage}" or a version that ships types`;
 }
 
 function runtimeFinding(

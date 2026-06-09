@@ -143,6 +143,31 @@ describe('audit (type surface)', () => {
 			const finding = result.findings.find((f) => f.packageName === 'typed-root');
 			expect(finding?.kind).toBe('missing-types'); // not types-unavailable
 			expect(finding?.suggestion).not.toContain('depend on that version');
+			// A subpath gap is qualified: the companion/version may not declare this exact subpath.
+			expect(finding?.suggestion).toContain('subpath "typed-root/sub"');
+			expect(finding?.suggestion).toContain('declare module "typed-root/sub"');
+		});
+
+		it('qualifies the typed-version-bump suggestion for a subpath gap too', async () => {
+			// `react` ships no types and the import is a subpath, so the typed-version-bump path fires;
+			// the suggestion must still name the subpath and the `declare module` fallback.
+			const provider: RegistryProvider = {
+				materialize: (name, range, intoDir) => fixtureProvider.materialize(name, range, intoDir),
+				packageExists: () => Promise.resolve('absent'),
+				latestTypedVersion: () => Promise.resolve('99.0.0'),
+			};
+			const result = await audit(join(targetsRoot, 'subpath-untyped'), { provider });
+			const finding = result.findings.find((f) => f.packageName === 'react');
+			expect(finding?.kind).toBe('missing-types');
+			expect(finding?.suggestion).toContain('"react@99.0.0" ships its own types');
+			expect(finding?.suggestion).toContain('declare module "react/jsx-runtime"');
+		});
+
+		it('does not qualify a bare-entry missing-types finding with the subpath caveat', async () => {
+			// `missing` imports bare `react` (specifier === packageName), so no subpath note applies.
+			const react = (await run('missing')).findings.find((f) => f.packageName === 'react');
+			expect(react?.kind).toBe('missing-types');
+			expect(react?.suggestion).not.toContain('subpath');
 		});
 
 		it('falls back to types-unavailable when no published version ships types', async () => {

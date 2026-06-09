@@ -1,0 +1,9 @@
+{
+	"name": "@fixture/subpath-untyped",
+	"version": "1.0.0",
+	"type": "module",
+	"types": "./index.d.ts",
+	"dependencies": {
+		"react": "^18.0.0"
+	}
+}
