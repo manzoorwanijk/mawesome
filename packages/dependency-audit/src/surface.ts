@@ -15,6 +15,13 @@ export interface ExternalSpecifier {
 	kind: SpecifierKind;
 	/** Package-relative path of the `.d.ts` it appears in. */
 	firstSeenIn: string;
+	/**
+	 * `true` when *every* occurrence of this specifier was an inline `import("x")` type — i.e. it
+	 * never appeared as an author-written top-level `import`/`export`. A strong leaked-type signal
+	 * (tsc inlines `import()` when a dependency's API pulls a type in), though a hand-written inline
+	 * import is indistinguishable in the `.d.ts`, so it's not a proof.
+	 */
+	inlineOnly: boolean;
 }
 
 /**
@@ -55,9 +62,9 @@ export function scanTypeSurface(
 	conditions: readonly string[] = [],
 	includeFiles?: ReadonlySet<string>,
 ): SurfaceScan {
-	const externals: ExternalSpecifier[] = [];
+	// Keyed by `${kind}:${specifier}`; values aggregate `inlineOnly` across every occurrence.
+	const externalsByKey = new Map<string, ExternalSpecifier>();
 	const unchecked: UncheckedSpecifier[] = [];
-	const seenExternal = new Set<string>();
 	const visited = new Set<string>();
 	const published = publishedPredicate(root, includeFiles);
 	const active = new Set([...ACTIVE_CONDITIONS, ...conditions]);
@@ -85,14 +92,23 @@ export function scanTypeSurface(
 				continue;
 			}
 			const dedupeKey = `${ref.kind}:${ref.specifier}`;
-			if (!seenExternal.has(dedupeKey)) {
-				seenExternal.add(dedupeKey);
-				externals.push({ specifier: ref.specifier, kind: ref.kind, firstSeenIn: rel });
+			const existing = externalsByKey.get(dedupeKey);
+			if (existing === undefined) {
+				externalsByKey.set(dedupeKey, {
+					specifier: ref.specifier,
+					kind: ref.kind,
+					firstSeenIn: rel,
+					inlineOnly: ref.inlineImport,
+				});
+			} else if (!ref.inlineImport) {
+				// A later author-written occurrence means it's no longer inline-only (a direct reference).
+				existing.inlineOnly = false;
 			}
 		}
 	}
 
 	const coverage = typeCoverage(fs, root, manifest, visited.size > 0, published);
+	const externals = [...externalsByKey.values()];
 	return { files: [...visited].map((f) => relative(root, f)), externals, unchecked, coverage };
 }
 
@@ -304,6 +320,12 @@ interface RawSpecifier {
 	specifier: string;
 	kind: SpecifierKind;
 	dynamic: boolean;
+	/**
+	 * `true` for an inline `import("x")` type node (vs an author-written top-level import). tsc
+	 * usually *synthesizes* these when a dependency's API leaks a type, so they're a strong leak
+	 * signal — but a hand-written inline import looks identical in the `.d.ts`, so it's not a proof.
+	 */
+	inlineImport: boolean;
 }
 
 /** Extracts all module specifiers and type references from a declaration file. */
@@ -315,7 +337,12 @@ function specifiersIn(fs: FileSystem, file: string): RawSpecifier[] {
 
 	for (const directive of sf.typeReferenceDirectives) {
 		// `/// <reference types="x" />` — a type-only requirement (resolved as a directive).
-		out.push({ specifier: directive.fileName, kind: 'type-reference', dynamic: false });
+		out.push({
+			specifier: directive.fileName,
+			kind: 'type-reference',
+			dynamic: false,
+			inlineImport: false,
+		});
 	}
 
 	const visit = (node: ts.Node): void => {
@@ -324,19 +351,41 @@ function specifiersIn(fs: FileSystem, file: string): RawSpecifier[] {
 			node.moduleSpecifier !== undefined &&
 			ts.isStringLiteral(node.moduleSpecifier)
 		) {
-			out.push({ specifier: node.moduleSpecifier.text, kind: 'module', dynamic: false });
+			// A top-level `import`/`export … from` is author-written, not an inline import type.
+			out.push({
+				specifier: node.moduleSpecifier.text,
+				kind: 'module',
+				dynamic: false,
+				inlineImport: false,
+			});
 		} else if (
 			ts.isImportEqualsDeclaration(node) &&
 			ts.isExternalModuleReference(node.moduleReference) &&
 			ts.isStringLiteral(node.moduleReference.expression)
 		) {
-			out.push({ specifier: node.moduleReference.expression.text, kind: 'module', dynamic: false });
+			out.push({
+				specifier: node.moduleReference.expression.text,
+				kind: 'module',
+				dynamic: false,
+				inlineImport: false,
+			});
 		} else if (ts.isImportTypeNode(node)) {
 			const arg = node.argument;
 			if (ts.isLiteralTypeNode(arg) && ts.isStringLiteral(arg.literal)) {
-				out.push({ specifier: arg.literal.text, kind: 'module', dynamic: false });
+				/* An inline `import("x").T` type — usually tsc-synthesized when a dependency's API leaks `x`'s type (the leak signal), though indistinguishable from a hand-written one. */
+				out.push({
+					specifier: arg.literal.text,
+					kind: 'module',
+					dynamic: false,
+					inlineImport: true,
+				});
 			} else {
-				out.push({ specifier: arg.getText(sf), kind: 'module', dynamic: true });
+				out.push({
+					specifier: arg.getText(sf),
+					kind: 'module',
+					dynamic: true,
+					inlineImport: false,
+				});
 			}
 		} else if (ts.isModuleDeclaration(node) && ts.isStringLiteral(node.name)) {
 			// A `declare module "x"` augmentation in an external-module file requires `x`
@@ -344,7 +393,7 @@ function specifiersIn(fs: FileSystem, file: string): RawSpecifier[] {
 			// (`*.svg`) provide a module instead and are not requirements.
 			const name = node.name.text;
 			if (isModule && !name.includes('*')) {
-				out.push({ specifier: name, kind: 'module', dynamic: false });
+				out.push({ specifier: name, kind: 'module', dynamic: false, inlineImport: false });
 			}
 		}
 		ts.forEachChild(node, visit);

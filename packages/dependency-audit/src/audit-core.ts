@@ -145,6 +145,25 @@ export async function auditPackage(
 		}
 	}
 
+	/*
+	 * Packages referenced *only* via inline `import("x")` types (never an author-written top-level
+	 * import or `/// <reference>`) — a strong leaked-type signal (tsc inlines `import()` when a
+	 * dependency's API pulls a type in). Used to gate leak attribution so a genuine direct import
+	 * isn't called a leak.
+	 */
+	const inlineLeaked = new Set<string>();
+	const directlyReferenced = new Set<string>();
+	for (const external of typeSurface.externals) {
+		const normalized = normalizeSpecifier(external.specifier);
+		if (normalized === null || isSelf(normalized.packageName)) {
+			continue;
+		}
+		(external.inlineOnly ? inlineLeaked : directlyReferenced).add(normalized.packageName);
+	}
+	for (const name of directlyReferenced) {
+		inlineLeaked.delete(name);
+	}
+
 	// Attribute leaked types: an undeclared type also exposed by a declared dependency's own API.
 	attributeTypeLeaks(
 		fs,
@@ -154,6 +173,7 @@ export async function auditPackage(
 		materialized,
 		normalizeSpecifier,
 		manifest.name,
+		inlineLeaked,
 	);
 
 	/*
@@ -305,6 +325,10 @@ function typedVersionSuggestion(packageName: string, version: string): string {
  * dependency whose surface references the same package name is recorded in `leakedVia`, and the
  * suggestion is reworded to point at the producer. Reuses {@link scanTypeSurface} (no type-checker),
  * so it stays runtime-agnostic. Runs only when there are candidate findings.
+ *
+ * Candidates are restricted to `inlineLeaked` — packages that appeared *only* as inline `import()`
+ * types — so a package the audited code imports directly (an author-written import) is never
+ * mislabeled a leak.
  */
 function attributeTypeLeaks(
 	fs: FileSystem,
@@ -314,12 +338,15 @@ function attributeTypeLeaks(
 	materialized: ReadonlySet<string>,
 	normalizeSpecifier: Normalizer,
 	selfName: string | undefined,
+	inlineLeaked: ReadonlySet<string>,
 ): void {
-	// Candidates: undeclared type-surface findings for a real package (a Node builtin is never a leak).
+	// Candidates: undeclared type-surface findings for a real package that only leaked in inline
+	// (a Node builtin is never a leak; a directly-imported package is a direct use, not a leak).
 	const candidates = findings.filter(
 		(f) =>
 			f.surface === 'types' &&
 			f.kind === 'undeclared' &&
+			inlineLeaked.has(f.packageName) &&
 			normalizeSpecifier(f.specifier)?.isBuiltin !== true,
 	);
 	if (candidates.length === 0) {
