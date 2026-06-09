@@ -74,12 +74,13 @@ A JSON config supplies ignore rules (see [Findings & notices → ignoring](./fin
 	"ignore": [
 		{ "package": "optional-plugin" },
 		{ "specifier": "react/jsx-runtime", "surface": "types" },
-		{ "surface": "runtime", "kind": "unresolved" }
+		{ "surface": "runtime", "kind": "unresolved" },
+		{ "target": "my-pkg", "path": "fixtures/**", "specifier": "x" }
 	]
 }
 ```
 
-A rule matches a finding when **every** field it sets equals the finding's; an empty rule matches nothing. CLI `--ignore` rules are merged with config rules.
+A rule matches a finding when **every** field it sets equals the finding's; an empty rule matches nothing. Two optional fields **scope** a rule: `target` (audited package name or target spec) restricts it to one audited package, while `path` (a `**`/`*`/`?` glob over the finding's `firstSeenIn`) scopes by location and still applies in **every** target — combine them to confine a rule to one package's files. CLI `--ignore` rules (always global) are merged with config rules. See [Findings → ignoring](./findings.md#ignoring-intentional-findings) for the full glob semantics.
 
 ## Monorepo usage
 

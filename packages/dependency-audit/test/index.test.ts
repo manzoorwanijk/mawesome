@@ -96,6 +96,24 @@ describe('audit (type surface)', () => {
 		expect(result.ok).toBe(false);
 	});
 
+	it('scopes a target/path ignore rule via the run context threaded through auditPackage', async () => {
+		// `@fixture/missing` reports csstype in lib/index.d.ts; scope by package name + path.
+		const scoped = { target: '@fixture/missing', path: 'lib/**', package: 'csstype' };
+		const matched = await audit(join(targetsRoot, 'missing'), {
+			provider: fixtureProvider,
+			ignore: [scoped],
+		});
+		expect(matched.ignored.some((f) => f.packageName === 'csstype')).toBe(true);
+		expect(matched.findings.some((f) => f.packageName === 'csstype')).toBe(false);
+
+		// A rule scoped to a different target must not suppress here (proves the name is threaded).
+		const otherTarget = await audit(join(targetsRoot, 'missing'), {
+			provider: fixtureProvider,
+			ignore: [{ ...scoped, target: 'some-other-pkg' }],
+		});
+		expect(otherTarget.findings.some((f) => f.packageName === 'csstype')).toBe(true);
+	});
+
 	it('is ok when an ignore rule suppresses every finding', async () => {
 		const result = await audit(join(targetsRoot, 'missing'), {
 			provider: fixtureProvider,

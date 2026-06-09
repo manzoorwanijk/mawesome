@@ -81,6 +81,13 @@ export interface AcquiredSource {
  * Suppresses intentional findings (e.g. an optional/plugin import static analysis can't
  * prove). A rule matches a finding when every field it specifies equals the finding's;
  * an empty rule matches nothing. Suppressed findings are echoed in {@link AuditResult.ignored}.
+ *
+ * `package`/`specifier`/`surface`/`kind` match the finding itself and apply across every
+ * audited target. `target`/`path` *scope* a rule to where it fires, so a localized suppression
+ * (a test fixture, a generated file) can't also hide a genuine regression of the same specifier
+ * elsewhere in the run: `target` restricts it to one audited package, while `path` alone scopes
+ * by location (a `firstSeenIn` glob) and still applies in every target — combine the two to
+ * confine a rule to one package's files.
  */
 export interface IgnoreRule {
 	/** Match by owning package name (e.g. `react`). */
@@ -91,6 +98,10 @@ export interface IgnoreRule {
 	surface?: Surface;
 	/** Match by finding kind. */
 	kind?: FindingKind;
+	/** Scope to one audited target — its package name *or* the target as passed (dir/`.tgz`/spec). */
+	target?: string;
+	/** Scope to files whose package-relative `firstSeenIn` matches this glob (`**`, `*`, `?`). */
+	path?: string;
 }
 
 /** The result of auditing a single target. */
