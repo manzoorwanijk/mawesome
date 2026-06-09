@@ -154,12 +154,12 @@ describe('audit (type surface)', () => {
 			const provider: RegistryProvider = {
 				materialize: (name, range, intoDir) => fixtureProvider.materialize(name, range, intoDir),
 				packageExists: () => Promise.resolve('absent'),
-				latestTypedVersion: () => Promise.resolve('9.9.9'),
+				latestTypedVersion: () => Promise.resolve('99.0.0'),
 			};
 			const result = await audit(join(targetsRoot, 'subpath-untyped'), { provider });
 			const finding = result.findings.find((f) => f.packageName === 'react');
 			expect(finding?.kind).toBe('missing-types');
-			expect(finding?.suggestion).toContain('"react@9.9.9" ships its own types');
+			expect(finding?.suggestion).toContain('"react@99.0.0" ships its own types');
 			expect(finding?.suggestion).toContain('declare module "react/jsx-runtime"');
 		});
 
