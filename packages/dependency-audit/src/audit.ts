@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { acquire } from './acquire.ts';
 import { auditPackage } from './audit-core.ts';
 import { nodeFileSystem } from './fs-node.ts';
+import { computePackSet } from './pack-set.ts';
 import { emit } from './progress.ts';
 import { createPacoteProvider } from './provider.ts';
 import type { AuditOptions, AuditResult } from './types.ts';
@@ -28,6 +29,14 @@ export async function audit(target: string, options: AuditOptions = {}): Promise
 				retries: options.retries,
 			});
 		const workDir = mkdtempSync(join(tmpdir(), 'dep-audit-deps-'));
+		/*
+		 * In directory mode the source is read in place, so restrict the scan to npm's publish set —
+		 * otherwise files `npm publish` would exclude (tests, examples, build scripts) are audited,
+		 * diverging from a packed `.tgz`. A tarball/spec is already the publish set (the extracted
+		 * pack), so it needs no filtering; an uncomputable set falls back to scanning everything.
+		 */
+		const includeFiles =
+			acquired.source.kind === 'directory' ? await computePackSet(acquired.root) : undefined;
 		try {
 			return await auditPackage(nodeFileSystem, acquired.root, {
 				provider,
@@ -36,6 +45,7 @@ export async function audit(target: string, options: AuditOptions = {}): Promise
 				source: acquired.source,
 				ignore: options.ignore ?? [],
 				conditions: options.conditions ?? [],
+				...(includeFiles !== undefined ? { includeFiles } : {}),
 				// Only set when present — the option type is exact-optional (no explicit `undefined`).
 				...(options.materializeConcurrency !== undefined
 					? { materializeConcurrency: options.materializeConcurrency }

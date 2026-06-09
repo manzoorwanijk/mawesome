@@ -73,6 +73,7 @@
 		"check:exports": "attw --pack . --profile node16 && publint --strict"
 	},
 	"dependencies": {
+		"npm-packlist": "^10.0.4",
 		"pacote": "^21.5.0",
 		"resolve.exports": "^2.0.3",
 		"tar": "^7.5.16",
