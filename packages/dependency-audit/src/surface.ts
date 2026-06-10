@@ -349,7 +349,7 @@ function attributeResolutionMode(
 	return undefined;
 }
 
-/** Maps a parsed triple-slash `resolution-mode` (a `ts.ModuleKind`) to the port-level union. */
+/** Maps a parsed triple-slash `resolution-mode` (a `ts.ResolutionMode`) to the port-level union. */
 function directiveResolutionMode(mode: ts.ResolutionMode): TypeResolutionMode | undefined {
 	if (mode === ts.ModuleKind.CommonJS) {
 		return 'require';
