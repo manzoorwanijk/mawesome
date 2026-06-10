@@ -192,7 +192,12 @@ export async function auditPackage(
 	await refineMissingTypes(suppressed.findings, provider, declared, resolved, (name) =>
 		typeResolver.resolvesToDeclaration(name),
 	);
-	await refineUndeclaredAdvice(suppressed.findings, provider, normalizeSpecifier, directiveFindings);
+	await refineUndeclaredAdvice(
+		suppressed.findings,
+		provider,
+		normalizeSpecifier,
+		directiveFindings,
+	);
 	const partitioned = partitionIgnored(suppressed.findings, rules, context);
 	return {
 		target,
