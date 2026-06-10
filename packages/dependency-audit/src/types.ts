@@ -173,6 +173,11 @@ export interface AuditResult {
 	findings: Finding[];
 	/** Findings suppressed by an {@link IgnoreRule}, surfaced for auditability. */
 	ignored: Finding[];
+	/**
+	 * The subset of the run's ignore rules (the same objects, in rule order) that suppressed at least one finding in this target.
+	 * A rule unused across *every* target of a run is stale — judge staleness at run level, since a `target`-scoped rule is legitimately unused elsewhere.
+	 */
+	usedIgnoreRules: IgnoreRule[];
 	unchecked: UncheckedSpecifier[];
 	/** Non-fatal coverage notices (e.g. a package whose types were not built / unreachable). */
 	notices: Notice[];

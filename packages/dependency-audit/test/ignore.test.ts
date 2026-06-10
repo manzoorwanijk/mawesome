@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { matchesRule, parseIgnoreRules, partitionIgnored } from '../src/ignore.ts';
-import type { Finding } from '../src/types.ts';
+import type { Finding, IgnoreRule } from '../src/types.ts';
 
 const finding = (over: Partial<Finding> = {}): Finding => ({
 	specifier: 'react/jsx-runtime',
@@ -152,6 +152,24 @@ describe('partitionIgnored', () => {
 	it('returns everything visible when there are no rules', () => {
 		const findings = [finding()];
 		expect(partitionIgnored(findings, []).ignored).toEqual([]);
+	});
+
+	it('records every rule that suppressed a finding, not just the first match', () => {
+		const byPackage: IgnoreRule = { package: 'react' };
+		const bySurface: IgnoreRule = { surface: 'types' };
+		const unrelated: IgnoreRule = { package: 'vue' };
+		const used = new Set<IgnoreRule>();
+		const { ignored } = partitionIgnored(
+			[finding()],
+			[byPackage, bySurface, unrelated],
+			undefined,
+			used,
+		);
+		expect(ignored).toHaveLength(1);
+		// Both overlapping matches register (by identity); a non-matching rule never does.
+		expect(used.has(byPackage)).toBe(true);
+		expect(used.has(bySurface)).toBe(true);
+		expect(used.has(unrelated)).toBe(false);
 	});
 });
 

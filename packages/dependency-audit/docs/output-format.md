@@ -118,6 +118,9 @@ Distinguish the three by key: an `error` key → could not audit (exit 2); a `sk
 	"ignored": [
 		/* Finding[] suppressed by an ignore rule, same shape */
 	],
+	"usedIgnoreRules": [
+		{ "package": "optional-plugin" }, // the run's ignore rules that suppressed something in this target
+	],
 	"unchecked": [
 		{ "specifier": "…", "reason": "dynamic specifier", "firstSeenIn": "dist/index.js" },
 	],
@@ -130,19 +133,20 @@ Distinguish the three by key: an `error` key → could not audit (exit 2); a `sk
 
 ### Field reference
 
-| Field             | Type                                     | Notes                                                                                            |
-| ----------------- | ---------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| `target`          | string                                   | The target as passed on the CLI / to `audit()`.                                                  |
-| `source.kind`     | `"directory"` \| `"tarball"` \| `"spec"` | How the target was acquired.                                                                     |
-| `source.resolved` | object \| absent                         | Present only for a fetched spec/URL; records the moving target's identity + SRI.                 |
-| `packageName`     | string \| undefined                      | From the target manifest.                                                                        |
-| `packageVersion`  | string \| undefined                      | From the target manifest.                                                                        |
-| `ok`              | boolean                                  | `true` ⇔ `findings` is empty. **Notices and unchecked do not affect `ok`.**                      |
-| `findings`        | Finding[]                                | Non-ignored problems. See [Findings](./findings.md#findings).                                    |
-| `ignored`         | Finding[]                                | Findings suppressed by a rule, echoed for auditability.                                          |
-| `unchecked`       | UncheckedSpecifier[]                     | Dynamic/opaque specifiers static analysis could not resolve.                                     |
-| `notices`         | Notice[]                                 | Coverage gaps. See [Notices](./findings.md#notices).                                             |
-| `resolvedDeps`    | ResolvedDependency[]                     | Every declared dep and the version materialized (`undefined` if it could not be fetched/linked). |
+| Field             | Type                                     | Notes                                                                                                                                                                                              |
+| ----------------- | ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `target`          | string                                   | The target as passed on the CLI / to `audit()`.                                                                                                                                                    |
+| `source.kind`     | `"directory"` \| `"tarball"` \| `"spec"` | How the target was acquired.                                                                                                                                                                       |
+| `source.resolved` | object \| absent                         | Present only for a fetched spec/URL; records the moving target's identity + SRI.                                                                                                                   |
+| `packageName`     | string \| undefined                      | From the target manifest.                                                                                                                                                                          |
+| `packageVersion`  | string \| undefined                      | From the target manifest.                                                                                                                                                                          |
+| `ok`              | boolean                                  | `true` ⇔ `findings` is empty. **Notices and unchecked do not affect `ok`.**                                                                                                                        |
+| `findings`        | Finding[]                                | Non-ignored problems. See [Findings](./findings.md#findings).                                                                                                                                      |
+| `ignored`         | Finding[]                                | Findings suppressed by a rule, echoed for auditability.                                                                                                                                            |
+| `usedIgnoreRules` | IgnoreRule[]                             | The ignore rules that suppressed at least one finding in this target — a rule unused across every target of a run is stale (the CLI warns; see [Stale ignore rules](./cli.md#stale-ignore-rules)). |
+| `unchecked`       | UncheckedSpecifier[]                     | Dynamic/opaque specifiers static analysis could not resolve.                                                                                                                                       |
+| `notices`         | Notice[]                                 | Coverage gaps. See [Notices](./findings.md#notices).                                                                                                                                               |
+| `resolvedDeps`    | ResolvedDependency[]                     | Every declared dep and the version materialized (`undefined` if it could not be fetched/linked).                                                                                                   |
 
 ### Consuming the JSON
 

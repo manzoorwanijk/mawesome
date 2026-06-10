@@ -21,6 +21,7 @@ A local path that **exists but is not an auditable package** — a non-tarball f
 | ----------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `--ignore <value>`      | package/specifier | Suppress findings whose **package** OR exact **specifier** equals `<value>`. Repeatable. Suppressed findings are still listed (`— ignored`) and never fail the audit.                                                                                                    |
 | `--config <path>`       | path              | Load ignore rules from a JSON config. Defaults to `./dependency-audit.config.json` if present.                                                                                                                                                                           |
+| `--fail-unused-ignores` | —                 | Fail (exit 1) when an ignore rule (config or `--ignore`) matched nothing in this run. Stale rules are otherwise only warned on stderr.                                                                                                                                   |
 | `--condition <name>`    | condition name    | Activate an extra `exports` resolution condition (e.g. `browser`) for entry discovery **and** resolution. Repeatable.                                                                                                                                                    |
 | `--concurrency <n>`     | positive integer  | Cap how many targets — and how many dependencies per target — materialize at once (default: 6 targets × 12 deps). Lower it to ease load on a large batch; `--concurrency 1` runs fully serially. Also via `DEPENDENCY_AUDIT_CONCURRENCY`.                                |
 | `--require-types`       | —                 | Treat a coverage notice (no/unreachable type surface) as a failure (exit 1) rather than just a notice.                                                                                                                                                                   |
@@ -39,6 +40,10 @@ A local path that **exists but is not an auditable package** — a non-tarball f
 | `2`  | At least one target could not be audited at all (acquisition/fetch/parse error). Takes priority.                                                                  |
 
 When multiple targets are audited, the **highest** applicable exit code wins: any error → `2`; else any finding → `1`; else `0`. **Skipped** targets (non-package paths) are neutral — they never raise the exit code.
+
+### Stale ignore rules
+
+An ignore rule that matched nothing across the whole run is reported as a stderr warning (`warning: unused ignore rule — … matched nothing in this run`), so a rule outlives the gap it suppressed for no longer than one run. A `--ignore <value>` flag counts as used when **either** of its package/specifier forms matched; staleness is judged run-wide, so a `target`-scoped config rule is not warned just because some targets didn't need it. The warnings are suppressed when any target **errored** (the failed audit might have contained the match), and `--fail-unused-ignores` escalates them to exit `1`. Programmatic consumers get the same signal per target via `AuditResult.usedIgnoreRules`.
 
 ## Examples
 

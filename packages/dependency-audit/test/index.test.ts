@@ -198,12 +198,16 @@ describe('audit (type surface)', () => {
 		});
 
 		it('lets a types-unavailable finding be suppressed by kind', async () => {
+			// The kind exists only after refinement, so this rule can match only in the second pass.
+			const rule = { kind: 'types-unavailable' as const };
 			const result = await audit(join(targetsRoot, 'missing'), {
 				provider: withProbe('absent'),
-				ignore: [{ kind: 'types-unavailable' }],
+				ignore: [rule],
 			});
 			expect(result.findings.some((f) => f.packageName === 'react')).toBe(false);
 			expect(result.ignored.some((f) => f.kind === 'types-unavailable')).toBe(true);
+			// A second-pass match still registers the rule as used.
+			expect(result.usedIgnoreRules).toContain(rule);
 		});
 
 		it('keeps an existing missing-types ignore matching even when the gap would be reclassified', async () => {
@@ -365,6 +369,19 @@ describe('audit (type surface)', () => {
 		expect(result.ignored.some((f) => f.packageName === 'csstype')).toBe(true);
 		expect(result.findings.some((f) => f.packageName === 'react')).toBe(true);
 		expect(result.ok).toBe(false);
+	});
+
+	it('reports which ignore rules actually suppressed something (usedIgnoreRules)', async () => {
+		const usedRule = { package: 'csstype' };
+		const staleRule = { package: 'rememo' };
+		const result = await audit(join(targetsRoot, 'missing'), {
+			provider: fixtureProvider,
+			ignore: [usedRule, staleRule],
+		});
+		// The same rule object comes back (identity), so a multi-target caller can union across results.
+		expect(result.usedIgnoreRules).toHaveLength(1);
+		expect(result.usedIgnoreRules[0]).toBe(usedRule);
+		expect(result.usedIgnoreRules).not.toContain(staleRule);
 	});
 
 	it('scopes a target/path ignore rule via the run context threaded through auditPackage', async () => {

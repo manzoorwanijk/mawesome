@@ -188,7 +188,9 @@ export async function auditPackage(
 	 */
 	const rules = options.ignore ?? [];
 	const context = { name: manifest.name, target };
-	const suppressed = partitionIgnored(findings, rules, context);
+	// Rules that suppressed something, across both passes — the caller judges staleness run-wide.
+	const usedRules = new Set<IgnoreRule>();
+	const suppressed = partitionIgnored(findings, rules, context, usedRules);
 	await refineMissingTypes(suppressed.findings, provider, declared, resolved, (name) =>
 		typeResolver.resolvesToDeclaration(name),
 	);
@@ -198,7 +200,7 @@ export async function auditPackage(
 		normalizeSpecifier,
 		directiveFindings,
 	);
-	const partitioned = partitionIgnored(suppressed.findings, rules, context);
+	const partitioned = partitionIgnored(suppressed.findings, rules, context, usedRules);
 	return {
 		target,
 		source: options.source ?? { kind: 'directory' },
@@ -207,6 +209,7 @@ export async function auditPackage(
 		ok: partitioned.findings.length === 0,
 		findings: partitioned.findings,
 		ignored: [...suppressed.ignored, ...partitioned.ignored],
+		usedIgnoreRules: rules.filter((rule) => usedRules.has(rule)),
 		unchecked,
 		notices,
 		resolvedDeps: resolved,

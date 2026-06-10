@@ -38,6 +38,8 @@ Options:
                     (repeatable). Suppressed findings are still listed.
   --config <path>   Load ignore rules from a JSON config (default:
                     ./dependency-audit.config.json if present).
+  --fail-unused-ignores  Fail (exit 1) when an ignore rule matched nothing in
+                    this run. Stale rules are otherwise only warned on stderr.
   --condition <name>  Activate an extra resolution condition (e.g. browser) for
                     entry discovery and resolution (repeatable).
   --concurrency <n>  Cap how many targets — and how many deps per target —
@@ -80,6 +82,7 @@ async function main(): Promise<number> {
 		options: {
 			ignore: { type: 'string', multiple: true },
 			config: { type: 'string' },
+			'fail-unused-ignores': { type: 'boolean', default: false },
 			condition: { type: 'string', multiple: true },
 			concurrency: { type: 'string' },
 			'require-types': { type: 'boolean', default: false },
@@ -104,7 +107,8 @@ async function main(): Promise<number> {
 		return 2;
 	}
 
-	const ignore = [...loadConfigRules(values.config), ...cliIgnoreRules(values.ignore ?? [])];
+	const ignoreSources = [...loadConfigRules(values.config), ...cliIgnoreRules(values.ignore ?? [])];
+	const ignore = ignoreSources.flatMap((source) => source.rules);
 	const conditions = values.condition ?? [];
 
 	/* One `--concurrency` knob, flag over env, caps both fan-out levels: how many targets run at
@@ -196,6 +200,13 @@ async function main(): Promise<number> {
 		printSummary(outcomes, collapse);
 	}
 
+	/* Stale-ignore detection, judged across the whole run. Warnings go to stderr so `--json` /
+	 * redirected stdout stays clean; `--fail-unused-ignores` additionally fails the run. */
+	const unusedIgnores = unusedIgnoreSources(ignoreSources, outcomes);
+	for (const source of unusedIgnores) {
+		console.error(`warning: unused ignore rule — ${source.label} matched nothing in this run`);
+	}
+
 	const anyError = outcomes.some((outcome) => 'error' in outcome);
 	const anyFinding = outcomes.some(
 		(outcome) => 'result' in outcome && resultFails(outcome.result, collapse),
@@ -204,9 +215,10 @@ async function main(): Promise<number> {
 	const anyCoverageGap =
 		(values['require-types'] ?? false) &&
 		outcomes.some((outcome) => 'result' in outcome && outcome.result.notices.length > 0);
+	const anyUnusedIgnore = (values['fail-unused-ignores'] ?? false) && unusedIgnores.length > 0;
 	// An audit that could not run at all is a harder failure (exit 2) than findings (exit 1);
 	// a skip is neutral, so a stray glob match never escalates a findings run into an error run.
-	return anyError ? 2 : anyFinding || anyCoverageGap ? 1 : 0;
+	return anyError ? 2 : anyFinding || anyCoverageGap || anyUnusedIgnore ? 1 : 0;
 }
 
 /** The JSON shape per target: the result, `{ target, error }`, or `{ target, skipped }`. */
@@ -231,13 +243,26 @@ function intOption(raw: string | undefined, label: string, min: number): number 
 	return value;
 }
 
+/**
+ * One user-visible ignore entry (a config rule or a `--ignore` flag) and the rule objects it
+ * expanded to. Staleness is judged per source: a `--ignore` value expands to a package-OR-specifier
+ * rule pair, so it is unused only when *both* of its rules matched nothing.
+ */
+interface IgnoreSource {
+	label: string;
+	rules: IgnoreRule[];
+}
+
 /** A CLI `--ignore <value>` matches a finding by package OR exact specifier. */
-function cliIgnoreRules(values: string[]): IgnoreRule[] {
-	return values.flatMap((value) => [{ package: value }, { specifier: value }]);
+function cliIgnoreRules(values: string[]): IgnoreSource[] {
+	return values.map((value) => ({
+		label: `--ignore ${value}`,
+		rules: [{ package: value }, { specifier: value }],
+	}));
 }
 
 /** Loads `ignore` rules from a JSON config (explicit `--config`, else the default file). */
-function loadConfigRules(configPath: string | undefined): IgnoreRule[] {
+function loadConfigRules(configPath: string | undefined): IgnoreSource[] {
 	const path = configPath ?? DEFAULT_CONFIG;
 	const abs = resolve(path);
 	if (configPath === undefined && !existsSync(abs)) {
@@ -246,12 +271,30 @@ function loadConfigRules(configPath: string | undefined): IgnoreRule[] {
 	try {
 		// Parse inside the try so a malformed JSON file gets the same `Invalid config` context.
 		const parsed = JSON.parse(readFileSync(abs, 'utf8')) as { ignore?: unknown };
-		return parseIgnoreRules(parsed.ignore);
+		return parseIgnoreRules(parsed.ignore).map((rule) => ({
+			label: `${path}: ${JSON.stringify(rule)}`,
+			rules: [rule],
+		}));
 	} catch (error) {
 		throw new Error(`Invalid config ${path}: ${error instanceof Error ? error.message : error}`, {
 			cause: error,
 		});
 	}
+}
+
+/**
+ * The ignore sources whose rules matched nothing across the whole run — stale entries.
+ * Suppressed entirely when any target errored: the failed audit might have been the one match,
+ * so a warning there would push someone to delete a rule that is still needed.
+ */
+function unusedIgnoreSources(sources: IgnoreSource[], outcomes: Outcome[]): IgnoreSource[] {
+	if (sources.length === 0 || outcomes.some((outcome) => 'error' in outcome)) {
+		return [];
+	}
+	const used = new Set(
+		outcomes.flatMap((outcome) => ('result' in outcome ? outcome.result.usedIgnoreRules : [])),
+	);
+	return sources.filter((source) => source.rules.every((rule) => !used.has(rule)));
 }
 
 function printResult(result: AuditResult, collapse: boolean): void {
