@@ -163,7 +163,7 @@ describe('cli unused ignore rules', () => {
 		expect(stderr).not.toContain('unused ignore rule');
 	});
 
-	it('still warns when a target is merely skipped (a skip can hide no match)', () => {
+	it('still warns when a target is merely skipped (a non-package target cannot have contained the match)', () => {
 		const notPkg = join(here, 'fixtures', 'not-a-package.md');
 		const { status, stderr } = runCli(['--ignore', 'nope', okTarget, notPkg]);
 		expect(status).toBe(1);
