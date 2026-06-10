@@ -40,6 +40,22 @@ describe('audit (type surface)', () => {
 		});
 	});
 
+	it('resolves declarations in the ESM profile mode, not the CJS union', async () => {
+		/* `esm-adjacent-types` (rememo-shaped) has no `types` export condition; its `.d.ts` sits adjacent to the `import` target, so it resolves only in ESM mode — no finding.
+		 * `cjs-only-types` carries its `types` condition only under `require`, invisible to the ESM profile — flagged, since an ESM consumer cannot reach those types. */
+		const result = await run('esm-profile-types');
+		expect(kindFor(result, 'esm-adjacent-types')).toBeUndefined();
+		expect(kindFor(result, 'cjs-only-types')).toBe('missing-types');
+	});
+
+	it('honours a per-specifier `resolution-mode` attribute over the profile default', async () => {
+		/* The target reaches `cjs-only-types` (typed only under `require`) via every require-mode form: a `with { 'resolution-mode': 'require' }` attribute on a top-level import and an inline `import()` type, a `resolution-mode="require"` triple-slash directive, and an `import x = require(…)`.
+		 * tsc resolves each of those in CJS mode regardless of the surrounding file, so the audit must too. */
+		const result = await run('resolution-mode-types');
+		expect(result.ok).toBe(true);
+		expect(result.findings).toEqual([]);
+	});
+
 	it('flags a declared package that ships no declarations as missing-types', async () => {
 		const result = await run('missing');
 		const react = result.findings.find((f) => f.packageName === 'react');

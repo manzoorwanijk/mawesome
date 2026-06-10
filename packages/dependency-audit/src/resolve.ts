@@ -4,7 +4,7 @@ import { mapLimit } from './concurrency.ts';
 import type { FileSystem } from './fs.ts';
 import { subdirectories } from './fsutil.ts';
 import type { DeclaredDependency } from './manifest.ts';
-import type { RegistryProvider, ResolvedDependency } from './types.ts';
+import type { RegistryProvider, ResolvedDependency, TypeResolutionMode } from './types.ts';
 
 /** Default cap on concurrent dependency materializations, to bound load on the shared registry cache. */
 export const DEFAULT_MATERIALIZE_CONCURRENCY = 12;
@@ -17,10 +17,15 @@ const DECLARATION_EXTENSIONS = new Set<string>([
 
 /** Resolves bare specifiers against a freshly-materialized declared-dependency tree. */
 export interface TypeResolver {
-	/** `true` if `specifier` resolves to a declaration file in the declared tree. */
-	resolvesToDeclaration(specifier: string): boolean;
-	/** `true` if a `/// <reference types="name" />` directive resolves (e.g. via `@types/*`). */
-	resolvesTypeReference(name: string): boolean;
+	/** `true` if `specifier` resolves to a declaration file in the declared tree; an explicit `resolution-mode` attribute overrides the profile's ESM default. */
+	resolvesToDeclaration(specifier: string, resolutionMode?: TypeResolutionMode): boolean;
+	/** `true` if a `/// <reference types="name" />` directive resolves (e.g. via `@types/*`); a `resolution-mode` attribute overrides the same ESM default. */
+	resolvesTypeReference(name: string, resolutionMode?: TypeResolutionMode): boolean;
+}
+
+/** Maps a port-level resolution mode to TypeScript's; an absent override means the profile default (ESM). */
+function toTsResolutionMode(mode: TypeResolutionMode | undefined): ts.ResolutionMode {
+	return mode === 'require' ? ts.ModuleKind.CommonJS : ts.ModuleKind.ESNext;
 }
 
 /**
@@ -67,8 +72,8 @@ export async function materializeDeps(
 
 /**
  * Builds a TypeScript-accurate resolver over an already-materialized `<workDir>`.
- * Resolution uses NodeNext from an ESM (`.d.mts`) probe context, so `react` falls
- * back to `@types/react` exactly as a consumer's type-checker would.
+ * Resolution runs NodeNext in ESM mode, matching the profile the type surface is scanned under (`import`-condition entry points; see `ACTIVE_CONDITIONS` in surface.ts) — `ts.resolveModuleName` never infers mode from the probe file's extension, so the mode is passed explicitly.
+ * `react` falls back to `@types/react` exactly as a consumer's type-checker would.
  */
 export function createTypeResolver(
 	fs: FileSystem,
@@ -93,7 +98,7 @@ export function createTypeResolver(
 		getCurrentDirectory: () => workDir,
 		useCaseSensitiveFileNames: true,
 	};
-	// The probe is never read; its path only sets the (ESM) resolution context.
+	// The probe is never read; its path only anchors resolution at `workDir` (mode is passed explicitly, never inferred from the extension).
 	const containingFile = join(workDir, '__dependency_audit_probe__.d.mts');
 	const moduleCache = ts.createModuleResolutionCache(workDir, (x) => x, options);
 	const typeRefCache = ts.createTypeReferenceDirectiveResolutionCache(
@@ -104,12 +109,20 @@ export function createTypeResolver(
 	);
 
 	const resolver: TypeResolver = {
-		resolvesToDeclaration(specifier: string): boolean {
-			const result = ts.resolveModuleName(specifier, containingFile, options, host, moduleCache);
+		resolvesToDeclaration(specifier: string, resolutionMode?: TypeResolutionMode): boolean {
+			const result = ts.resolveModuleName(
+				specifier,
+				containingFile,
+				options,
+				host,
+				moduleCache,
+				undefined,
+				toTsResolutionMode(resolutionMode),
+			);
 			const mod = result.resolvedModule;
 			return mod !== undefined && DECLARATION_EXTENSIONS.has(mod.extension);
 		},
-		resolvesTypeReference(name: string): boolean {
+		resolvesTypeReference(name: string, resolutionMode?: TypeResolutionMode): boolean {
 			const result = ts.resolveTypeReferenceDirective(
 				name,
 				containingFile,
@@ -117,6 +130,7 @@ export function createTypeResolver(
 				host,
 				undefined,
 				typeRefCache,
+				toTsResolutionMode(resolutionMode),
 			);
 			return result.resolvedTypeReferenceDirective?.resolvedFileName !== undefined;
 		},

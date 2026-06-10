@@ -34,6 +34,12 @@ export type FindingKind = 'undeclared' | 'missing-types' | 'types-unavailable' |
 export type UnresolvedReason = 'subpath-not-exported' | 'file-missing' | 'condition-mismatch';
 
 /**
+ * A per-specifier `resolution-mode` import attribute (`import type … from "x" with { "resolution-mode": "require" }`, an inline `import("x", { with: … })` type, or a `/// <reference types … resolution-mode="…" />` directive).
+ * TypeScript resolves such a specifier in the requested mode regardless of the surrounding file, so the audit must honour it over the profile default (ESM).
+ */
+export type TypeResolutionMode = 'import' | 'require';
+
+/**
  * Why a finding's real root cause is another audited target in the same run.
  * Set on a consumer's finding when the owning package is *itself* a target whose coverage
  * {@link Notice} (its types aren't built/reachable) explains the finding — so every consumer

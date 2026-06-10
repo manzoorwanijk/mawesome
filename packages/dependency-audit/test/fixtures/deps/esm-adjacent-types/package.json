@@ -1,0 +1,13 @@
+{
+	"name": "esm-adjacent-types",
+	"version": "1.0.0",
+	"type": "module",
+	"main": "index.cjs",
+	"types": "index.d.ts",
+	"exports": {
+		".": {
+			"import": "./index.js",
+			"require": "./index.cjs"
+		}
+	}
+}
