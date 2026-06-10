@@ -8,6 +8,7 @@ import { defineConfig } from 'tsdown';
  *   `bin` field, never imported, so a CJS twin and `.d.ts` are dead weight.
  * Both emit .js/.cjs (not fixed .mjs/.cjs) to match the manifest, since type:module.
  * `browser` is platform:neutral so no Node globals leak into the browser bundle.
+ * `target` matches the `engines` floor (Node >=20.19) so emitted syntax never exceeds it.
  */
 export default defineConfig([
 	{
@@ -16,7 +17,7 @@ export default defineConfig([
 		dts: true,
 		fixedExtension: false,
 		platform: 'node',
-		target: 'node24',
+		target: 'node20.19',
 		sourcemap: true,
 		clean: true,
 	},
@@ -29,7 +30,7 @@ export default defineConfig([
 		// The core imports only `node:path` (bundler-aliased to path-browserify); keep it
 		// external so neutral platform doesn't warn about an unresolved Node builtin.
 		external: [/^node:/],
-		target: 'node24',
+		target: 'node20.19',
 		sourcemap: true,
 		clean: false,
 	},
@@ -39,7 +40,7 @@ export default defineConfig([
 		dts: false,
 		fixedExtension: false,
 		platform: 'node',
-		target: 'node24',
+		target: 'node20.19',
 		sourcemap: true,
 		clean: false,
 	},
