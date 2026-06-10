@@ -276,6 +276,19 @@ describe('audit (type surface)', () => {
 			expect(node?.suggestion).toContain('@types/node');
 		});
 
+		it('still refines a module import of a package that is also referenced by a directive', async () => {
+			/* `dual-ref` is reached both by `/// <reference types="dual-ref" />` and a top-level `import type` — two distinct findings.
+			 * The directive exclusion is by finding identity, so only the directive keeps the `@types/dual-ref` alternative; the import drops it. */
+			const result = await audit(join(targetsRoot, 'typeref-and-import'), {
+				provider: withProbe('absent'),
+			});
+			const suggestions = result.findings
+				.filter((f) => f.packageName === 'dual-ref')
+				.map((f) => f.suggestion);
+			expect(suggestions).toContain('declare "dual-ref"');
+			expect(suggestions.some((s) => s.includes('@types/dual-ref'))).toBe(true);
+		});
+
 		it('does not probe a finding already suppressed (refinement runs only on survivors)', async () => {
 			const probed: string[] = [];
 			const provider: RegistryProvider = {

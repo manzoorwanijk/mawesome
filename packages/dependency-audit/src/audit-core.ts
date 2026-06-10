@@ -91,6 +91,8 @@ export async function auditPackage(
 	const normalizeSpecifier = createNormalizer(options.builtins);
 
 	const findings: Finding[] = [];
+	// Findings born from a `/// <reference types … />` directive, tracked by identity — a same-named module import stays refinable.
+	const directiveFindings = new Set<Finding>();
 	const unchecked: UncheckedSpecifier[] = [];
 	const isSelf = (name: string): boolean => manifest.name !== undefined && name === manifest.name;
 
@@ -105,7 +107,9 @@ export async function auditPackage(
 		}
 		if (external.kind === 'type-reference') {
 			if (!typeResolver.resolvesTypeReference(external.specifier, external.resolutionMode)) {
-				findings.push(typeFinding(external, normalized.packageName, declared));
+				const directiveFinding = typeFinding(external, normalized.packageName, declared);
+				directiveFindings.add(directiveFinding);
+				findings.push(directiveFinding);
 			}
 			continue;
 		}
@@ -188,16 +192,7 @@ export async function auditPackage(
 	await refineMissingTypes(suppressed.findings, provider, declared, resolved, (name) =>
 		typeResolver.resolvesToDeclaration(name),
 	);
-	// Directive-originated findings keep their `@types/*` advice — that *is* a directive's fix.
-	const directiveSpecifiers = new Set(
-		typeSurface.externals.filter((e) => e.kind === 'type-reference').map((e) => e.specifier),
-	);
-	await refineUndeclaredAdvice(
-		suppressed.findings,
-		provider,
-		normalizeSpecifier,
-		directiveSpecifiers,
-	);
+	await refineUndeclaredAdvice(suppressed.findings, provider, normalizeSpecifier, directiveFindings);
 	const partitioned = partitionIgnored(suppressed.findings, rules, context);
 	return {
 		target,
@@ -330,7 +325,7 @@ async function refineUndeclaredAdvice(
 	findings: Finding[],
 	provider: RegistryProvider,
 	normalizeSpecifier: Normalizer,
-	directiveSpecifiers: ReadonlySet<string>,
+	directiveFindings: ReadonlySet<Finding>,
 ): Promise<void> {
 	if (provider.packageExists === undefined) {
 		return;
@@ -341,13 +336,14 @@ async function refineUndeclaredAdvice(
 	 * A Node builtin's finding already points at "@types/node" (which exists), and an `@types/*`
 	 * name has no further companion — neither carries an alternative to drop.
 	 * A `/// <reference types="x" />` directive resolves *through* `@types/*` (e.g. `types="node"` → `@types/node`), so its alternative is the fix itself, never noise.
+	 * The exclusion is by finding identity, so a same-named module import is still refined.
 	 */
 	const candidates = findings.filter(
 		(f) =>
 			f.surface === 'types' &&
 			f.kind === 'undeclared' &&
 			!f.packageName.startsWith('@types/') &&
-			!directiveSpecifiers.has(f.specifier) &&
+			!directiveFindings.has(f) &&
 			normalizeSpecifier(f.specifier)?.isBuiltin !== true,
 	);
 	const names = [...new Set(candidates.map((f) => f.packageName))];
