@@ -3,7 +3,7 @@ import ts from 'typescript';
 import type { FileSystem } from './fs.ts';
 import { expandPatternTarget, isWithin, publishedPredicate } from './fsutil.ts';
 import type { Manifest } from './manifest.ts';
-import type { UncheckedSpecifier } from './types.ts';
+import type { TypeResolutionMode, UncheckedSpecifier } from './types.ts';
 import { activeTypesVersions } from './typesversions.ts';
 
 /** How an external requirement was expressed — affects how it is resolved. */
@@ -22,6 +22,8 @@ export interface ExternalSpecifier {
 	 * import is indistinguishable in the `.d.ts`, so it's not a proof.
 	 */
 	inlineOnly: boolean;
+	/** An explicit `resolution-mode` attribute on the reference; absent → the profile default (ESM). */
+	resolutionMode: TypeResolutionMode | undefined;
 }
 
 /**
@@ -62,7 +64,7 @@ export function scanTypeSurface(
 	conditions: readonly string[] = [],
 	includeFiles?: ReadonlySet<string>,
 ): SurfaceScan {
-	// Keyed by `${kind}:${specifier}`; values aggregate `inlineOnly` across every occurrence.
+	// Keyed by `${kind}:${mode}:${specifier}`; values aggregate `inlineOnly` across every occurrence.
 	const externalsByKey = new Map<string, ExternalSpecifier>();
 	const unchecked: UncheckedSpecifier[] = [];
 	const visited = new Set<string>();
@@ -91,7 +93,9 @@ export function scanTypeSurface(
 				unchecked.push({ specifier: ref.specifier, reason: 'dynamic specifier', firstSeenIn: rel });
 				continue;
 			}
-			const dedupeKey = `${ref.kind}:${ref.specifier}`;
+			/* The mode is part of the key: each requested resolution mode is a distinct requirement.
+			 * An absent attribute collapses with an explicit `import` — both resolve in the profile default (ESM). */
+			const dedupeKey = `${ref.kind}:${ref.resolutionMode ?? 'import'}:${ref.specifier}`;
 			const existing = externalsByKey.get(dedupeKey);
 			if (existing === undefined) {
 				externalsByKey.set(dedupeKey, {
@@ -99,6 +103,7 @@ export function scanTypeSurface(
 					kind: ref.kind,
 					firstSeenIn: rel,
 					inlineOnly: ref.inlineImport,
+					resolutionMode: ref.resolutionMode,
 				});
 			} else if (!ref.inlineImport) {
 				// A later author-written occurrence means it's no longer inline-only (a direct reference).
@@ -326,6 +331,33 @@ interface RawSpecifier {
 	 * signal — but a hand-written inline import looks identical in the `.d.ts`, so it's not a proof.
 	 */
 	inlineImport: boolean;
+	resolutionMode: TypeResolutionMode | undefined;
+}
+
+/** The `resolution-mode` import attribute carried by a reference, when present and valid. */
+function attributeResolutionMode(
+	attributes: ts.ImportAttributes | undefined,
+): TypeResolutionMode | undefined {
+	for (const element of attributes?.elements ?? []) {
+		if (element.name.text === 'resolution-mode' && ts.isStringLiteral(element.value)) {
+			const value = element.value.text;
+			if (value === 'import' || value === 'require') {
+				return value;
+			}
+		}
+	}
+	return undefined;
+}
+
+/** Maps a parsed triple-slash `resolution-mode` (a `ts.ModuleKind`) to the port-level union. */
+function directiveResolutionMode(mode: ts.ResolutionMode): TypeResolutionMode | undefined {
+	if (mode === ts.ModuleKind.CommonJS) {
+		return 'require';
+	}
+	if (mode === ts.ModuleKind.ESNext) {
+		return 'import';
+	}
+	return undefined;
 }
 
 /** Extracts all module specifiers and type references from a declaration file. */
@@ -342,6 +374,7 @@ function specifiersIn(fs: FileSystem, file: string): RawSpecifier[] {
 			kind: 'type-reference',
 			dynamic: false,
 			inlineImport: false,
+			resolutionMode: directiveResolutionMode(directive.resolutionMode),
 		});
 	}
 
@@ -357,17 +390,20 @@ function specifiersIn(fs: FileSystem, file: string): RawSpecifier[] {
 				kind: 'module',
 				dynamic: false,
 				inlineImport: false,
+				resolutionMode: attributeResolutionMode(node.attributes),
 			});
 		} else if (
 			ts.isImportEqualsDeclaration(node) &&
 			ts.isExternalModuleReference(node.moduleReference) &&
 			ts.isStringLiteral(node.moduleReference.expression)
 		) {
+			// `import x = require("y")` is require-shaped — tsc resolves it in CJS mode.
 			out.push({
 				specifier: node.moduleReference.expression.text,
 				kind: 'module',
 				dynamic: false,
 				inlineImport: false,
+				resolutionMode: 'require',
 			});
 		} else if (ts.isImportTypeNode(node)) {
 			const arg = node.argument;
@@ -378,6 +414,7 @@ function specifiersIn(fs: FileSystem, file: string): RawSpecifier[] {
 					kind: 'module',
 					dynamic: false,
 					inlineImport: true,
+					resolutionMode: attributeResolutionMode(node.attributes),
 				});
 			} else {
 				out.push({
@@ -385,6 +422,7 @@ function specifiersIn(fs: FileSystem, file: string): RawSpecifier[] {
 					kind: 'module',
 					dynamic: true,
 					inlineImport: false,
+					resolutionMode: undefined,
 				});
 			}
 		} else if (ts.isModuleDeclaration(node) && ts.isStringLiteral(node.name)) {
@@ -393,7 +431,13 @@ function specifiersIn(fs: FileSystem, file: string): RawSpecifier[] {
 			// (`*.svg`) provide a module instead and are not requirements.
 			const name = node.name.text;
 			if (isModule && !name.includes('*')) {
-				out.push({ specifier: name, kind: 'module', dynamic: false, inlineImport: false });
+				out.push({
+					specifier: name,
+					kind: 'module',
+					dynamic: false,
+					inlineImport: false,
+					resolutionMode: undefined,
+				});
 			}
 		}
 		ts.forEachChild(node, visit);

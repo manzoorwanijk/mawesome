@@ -104,7 +104,7 @@ export async function auditPackage(
 			continue;
 		}
 		if (external.kind === 'type-reference') {
-			if (!typeResolver.resolvesTypeReference(external.specifier)) {
+			if (!typeResolver.resolvesTypeReference(external.specifier, external.resolutionMode)) {
 				findings.push(typeFinding(external, normalized.packageName, declared));
 			}
 			continue;
@@ -117,7 +117,7 @@ export async function auditPackage(
 			}
 			continue;
 		}
-		if (!typeResolver.resolvesToDeclaration(external.specifier)) {
+		if (!typeResolver.resolvesToDeclaration(external.specifier, external.resolutionMode)) {
 			findings.push(typeFinding(external, normalized.packageName, declared));
 		}
 	}

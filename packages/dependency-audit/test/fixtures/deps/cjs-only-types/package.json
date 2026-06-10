@@ -1,0 +1,12 @@
+{
+	"name": "cjs-only-types",
+	"version": "1.0.0",
+	"exports": {
+		".": {
+			"require": {
+				"types": "./index.d.cts",
+				"default": "./index.cjs"
+			}
+		}
+	}
+}

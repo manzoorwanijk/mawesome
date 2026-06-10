@@ -1,0 +1,17 @@
+{
+	"name": "@fixture/resolution-mode-types",
+	"version": "1.0.0",
+	"type": "module",
+	"types": "./lib/index.d.ts",
+	"exports": {
+		".": {
+			"import": {
+				"types": "./lib/index.d.ts",
+				"default": "./lib/index.js"
+			}
+		}
+	},
+	"dependencies": {
+		"cjs-only-types": "^1.0.0"
+	}
+}
