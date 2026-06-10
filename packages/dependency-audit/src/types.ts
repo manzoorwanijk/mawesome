@@ -189,11 +189,12 @@ export interface RegistryProvider {
 	materialize(name: string, range: string, intoDir: string): Promise<string | undefined>;
 	/**
 	 * Optional capability: does `name` exist on the registry?
-	 * Used only to refine a `missing-types` finding into honest advice — when the probed
-	 * `@types/*` companion is `absent`, the gap is reclassified `types-unavailable`.
+	 * Used to refine findings into honest advice: a `missing-types` whose probed `@types/*`
+	 * companion is `absent` is reclassified `types-unavailable`, and an `undeclared` type
+	 * finding drops its "(or `@types/x`)" alternative when that companion is `absent`.
 	 * Returns `unknown` when the lookup can't run (offline, no network, or a transient
-	 * error), which preserves the conservative `missing-types` message. A provider that
-	 * omits this method disables the refinement entirely (the browser default has no network).
+	 * error), which preserves the conservative messages. A provider that omits this
+	 * method disables both refinements (the browser default has no network).
 	 */
 	packageExists?(name: string): Promise<'exists' | 'absent' | 'unknown'>;
 	/**
