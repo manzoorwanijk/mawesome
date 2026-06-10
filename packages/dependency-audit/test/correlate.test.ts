@@ -21,6 +21,7 @@ const result = (over: Partial<AuditResult> = {}): AuditResult => {
 		ok: true,
 		findings: [],
 		ignored: [],
+		usedIgnoreRules: [],
 		unchecked: [],
 		notices: [],
 		resolvedDeps: [],

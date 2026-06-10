@@ -186,20 +186,31 @@ function globToRegExp(glob: string): RegExp {
 	return new RegExp(`^${out}$`);
 }
 
-/** Splits findings into the visible ones and those suppressed by an ignore rule. */
+/**
+ * Splits findings into the visible ones and those suppressed by an ignore rule.
+ * When `used` is given, every rule that matched a suppressed finding is added to it (all matches, not just the first — overlapping rules each register), so a caller can detect stale rules across a run.
+ */
 export function partitionIgnored(
 	findings: Finding[],
 	rules: IgnoreRule[],
 	context?: IgnoreContext,
+	used?: Set<IgnoreRule>,
 ): { findings: Finding[]; ignored: Finding[] } {
 	const visible: Finding[] = [];
 	const ignored: Finding[] = [];
 	for (const finding of findings) {
-		if (rules.some((rule) => matchesRule(finding, rule, context))) {
-			ignored.push(finding);
-		} else {
-			visible.push(finding);
+		let suppressed = false;
+		for (const rule of rules) {
+			if (matchesRule(finding, rule, context)) {
+				suppressed = true;
+				if (used === undefined) {
+					// No tracker — the first match decides, as before.
+					break;
+				}
+				used.add(rule);
+			}
 		}
+		(suppressed ? ignored : visible).push(finding);
 	}
 	return { findings: visible, ignored };
 }

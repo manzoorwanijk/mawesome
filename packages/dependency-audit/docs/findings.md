@@ -81,7 +81,7 @@ A specifier whose value is not a literal — a dynamic `import(someVariable)`, a
 
 ## Ignoring intentional findings
 
-Some findings are intentional — an optional/plugin import the code guards at run time, or a specifier static analysis cannot prove is fine. Suppress them with ignore rules (CLI `--ignore`, or a [config file](./cli.md#config-file)). Suppressed findings move to `result.ignored`, still print (`— ignored`), and never fail the audit — so suppressions stay auditable.
+Some findings are intentional — an optional/plugin import the code guards at run time, or a specifier static analysis cannot prove is fine. Suppress them with ignore rules (CLI `--ignore`, or a [config file](./cli.md#config-file)). Suppressed findings move to `result.ignored`, still print (`— ignored`), and never fail the audit — so suppressions stay auditable. A rule that matches nothing across a whole run is warned as stale, and `--fail-unused-ignores` makes that a failure (see [Stale ignore rules](./cli.md#stale-ignore-rules)).
 
 An **IgnoreRule** matches a finding when **every** field it sets equals the finding's; an empty rule matches nothing:
 
