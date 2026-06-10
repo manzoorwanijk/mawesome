@@ -13,7 +13,7 @@ concurrency:
 
 jobs:
   verify:
-    name: Verify
+    name: lint/build/test
     runs-on: ubuntu-latest
     steps:
       - name: Harden runner
