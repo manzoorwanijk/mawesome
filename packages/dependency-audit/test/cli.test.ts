@@ -6,7 +6,12 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const cli = join(here, '..', 'src', 'cli.ts');
+/*
+ * Spawn the TS source where Node strips types natively; on a Node line without type stripping (20.x in the CI compat matrix) fall back to the built CLI, which that job builds beforehand.
+ */
+const cli = process.features.typescript
+	? join(here, '..', 'src', 'cli.ts')
+	: join(here, '..', 'dist', 'cli.js');
 const targets = join(here, 'fixtures', 'targets');
 // A self-contained target (no declared deps → no registry access) keeps the CLI hermetic.
 const okTarget = join(targets, 'require-forms');
@@ -21,7 +26,7 @@ const badTarget = join(targets, '__no_such_target__');
  */
 
 /**
- * Runs the CLI as a subprocess (Node strips the TS types), capturing status + stdout + stderr.
+ * Runs the CLI as a subprocess, capturing status + stdout + stderr.
  * `spawnSync` always captures both streams (even on a clean exit), so a test can assert that a successful run emits nothing on stderr — the child's stderr is a pipe, not a TTY, so the progress spinner stays silent.
  * `FORCE_COLOR` / `NO_COLOR` are cleared for the child by default so every output assertion is hermetic regardless of the runner's environment; a test that wants color re-sets them via `env` (a key set to `undefined` stays unset — Node omits undefined env).
  */
