@@ -91,6 +91,8 @@ export async function auditPackage(
 	const normalizeSpecifier = createNormalizer(options.builtins);
 
 	const findings: Finding[] = [];
+	// Findings born from a `/// <reference types … />` directive, tracked by identity — a same-named module import stays refinable.
+	const directiveFindings = new Set<Finding>();
 	const unchecked: UncheckedSpecifier[] = [];
 	const isSelf = (name: string): boolean => manifest.name !== undefined && name === manifest.name;
 
@@ -105,7 +107,9 @@ export async function auditPackage(
 		}
 		if (external.kind === 'type-reference') {
 			if (!typeResolver.resolvesTypeReference(external.specifier, external.resolutionMode)) {
-				findings.push(typeFinding(external, normalized.packageName, declared));
+				const directiveFinding = typeFinding(external, normalized.packageName, declared);
+				directiveFindings.add(directiveFinding);
+				findings.push(directiveFinding);
 			}
 			continue;
 		}
@@ -187,6 +191,12 @@ export async function auditPackage(
 	const suppressed = partitionIgnored(findings, rules, context);
 	await refineMissingTypes(suppressed.findings, provider, declared, resolved, (name) =>
 		typeResolver.resolvesToDeclaration(name),
+	);
+	await refineUndeclaredAdvice(
+		suppressed.findings,
+		provider,
+		normalizeSpecifier,
+		directiveFindings,
 	);
 	const partitioned = partitionIgnored(suppressed.findings, rules, context);
 	return {
@@ -311,6 +321,56 @@ async function refineMissingTypes(
 	}
 }
 
+/**
+ * Refines `undeclared` type-surface suggestions using the provider's optional registry probe.
+ * When no `@types/*` companion exists, the "(or `@types/x` …)" alternative is dropped — pointing at a nonexistent package is noise, and such a package often ships its own types (e.g. a leaked typed dependency).
+ * An `exists`/`unknown` result (or a provider without the capability) keeps the conservative hedged advice; the finding's kind is never changed.
+ */
+async function refineUndeclaredAdvice(
+	findings: Finding[],
+	provider: RegistryProvider,
+	normalizeSpecifier: Normalizer,
+	directiveFindings: ReadonlySet<Finding>,
+): Promise<void> {
+	if (provider.packageExists === undefined) {
+		return;
+	}
+	// Bind to preserve the receiver — a class-backed custom provider may use `this`.
+	const probeTypes = provider.packageExists.bind(provider);
+	/*
+	 * A Node builtin's finding already points at "@types/node" (which exists), and an `@types/*`
+	 * name has no further companion — neither carries an alternative to drop.
+	 * A `/// <reference types="x" />` directive resolves *through* `@types/*` (e.g. `types="node"` → `@types/node`), so its alternative is the fix itself, never noise.
+	 * The exclusion is by finding identity, so a same-named module import is still refined.
+	 */
+	const candidates = findings.filter(
+		(f) =>
+			f.surface === 'types' &&
+			f.kind === 'undeclared' &&
+			!f.packageName.startsWith('@types/') &&
+			!directiveFindings.has(f) &&
+			normalizeSpecifier(f.specifier)?.isBuiltin !== true,
+	);
+	const names = [...new Set(candidates.map((f) => f.packageName))];
+	if (names.length === 0) {
+		return;
+	}
+	const availability = new Map<string, Existence>();
+	await mapLimit(names, TYPES_PROBE_CONCURRENCY, async (name) => {
+		availability.set(name, await probeTypes(typesPackageFor(name)));
+	});
+	for (const candidate of candidates) {
+		if (availability.get(candidate.packageName) !== 'absent') {
+			continue;
+		}
+		// Rebuild through the original suggestion builder so the wording stays in one place.
+		candidate.suggestion =
+			candidate.leakedVia !== undefined && candidate.leakedVia.length > 0
+				? leakSuggestion(candidate.packageName, candidate.leakedVia, false)
+				: declareHint(candidate.packageName, typesPackageFor(candidate.packageName), false);
+	}
+}
+
 function typesUnavailableSuggestion(packageName: string): string {
 	const typesPackage = typesPackageFor(packageName);
 	return `"${packageName}" provides no resolvable types and no "${typesPackage}" exists on the registry — not fixable by declaring a dependency; ship types upstream, or add a local ambient \`declare module "${packageName}"\``;
@@ -390,13 +450,18 @@ function attributeTypeLeaks(
 	}
 }
 
-function leakSuggestion(packageName: string, producers: string[]): string {
+function leakSuggestion(
+	packageName: string,
+	producers: string[],
+	companionMayExist = true,
+): string {
 	const many = producers.length > 1;
 	const via = producers.map((p) => `"${p}"`).join(', ');
-	// Match `declareHint`: a package already in the `@types/*` namespace has no further `@types/*`.
-	const workaround = packageName.startsWith('@types/')
-		? `declare "${packageName}" yourself`
-		: `declare "${packageName}" (or "${typesPackageFor(packageName)}") yourself`;
+	// Match `declareHint`: no `@types/*` alternative for an `@types/*` name or a companion the registry says is absent.
+	const workaround =
+		packageName.startsWith('@types/') || !companionMayExist
+			? `declare "${packageName}" yourself`
+			: `declare "${packageName}" (or "${typesPackageFor(packageName)}" if it ships no types) yourself`;
 	return `"${packageName}" is also exposed by declared ${many ? 'dependencies' : 'dependency'} ${via} — if you don't import it directly, it likely leaks into your types through ${many ? 'their' : 'its'} public API, and the durable fix is in the producer (bundle "${packageName}"'s types or stop exposing it); otherwise ${workaround}`;
 }
 
@@ -505,9 +570,11 @@ function unresolvedSuggestion(
 	}
 }
 
-function declareHint(packageName: string, typesPackage: string): string {
+function declareHint(packageName: string, typesPackage: string, companionMayExist = true): string {
 	return `declare "${packageName}"${
-		packageName.startsWith('@types/') ? '' : ` (or "${typesPackage}" if it ships no types)`
+		packageName.startsWith('@types/') || !companionMayExist
+			? ''
+			: ` (or "${typesPackage}" if it ships no types)`
 	}`;
 }
 

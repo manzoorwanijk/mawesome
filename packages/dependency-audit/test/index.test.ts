@@ -111,7 +111,7 @@ describe('audit (type surface)', () => {
 			const react = result.findings.find((f) => f.packageName === 'react');
 			expect(react?.kind).toBe('types-unavailable');
 			expect(react?.suggestion).toContain('not fixable by declaring a dependency');
-			// The probe only touches `missing-types`; an `undeclared` finding is left alone.
+			// An `undeclared` finding is never reclassified (only its advice is refined).
 			expect(kindFor(result, 'csstype')).toBe('undeclared');
 		});
 
@@ -219,7 +219,7 @@ describe('audit (type surface)', () => {
 			).toBe(true);
 		});
 
-		it('probes only the @types companion of missing-types findings (never an undeclared one)', async () => {
+		it('probes the @types companion of missing-types and undeclared findings alike', async () => {
 			const probed: string[] = [];
 			const provider: RegistryProvider = {
 				materialize: (name, range, intoDir) => fixtureProvider.materialize(name, range, intoDir),
@@ -229,8 +229,64 @@ describe('audit (type surface)', () => {
 				},
 			};
 			await audit(join(targetsRoot, 'missing'), { provider });
-			// `react` is missing-types → its companion is probed; `csstype` is undeclared → never probed.
-			expect(probed).toEqual(['@types/react']);
+			// `react` is missing-types (reclassification probe); `csstype` is undeclared (advice probe).
+			expect(probed.toSorted()).toEqual(['@types/csstype', '@types/react']);
+		});
+
+		it('drops the @types alternative from an undeclared finding when no companion exists', async () => {
+			const result = await audit(join(targetsRoot, 'missing'), { provider: withProbe('absent') });
+			const csstype = result.findings.find((f) => f.packageName === 'csstype');
+			// The kind is untouched; only the dead-end alternative disappears from the advice.
+			expect(csstype?.kind).toBe('undeclared');
+			expect(csstype?.suggestion).toBe('declare "csstype"');
+		});
+
+		it('drops the @types alternative from a leak suggestion when no companion exists', async () => {
+			const result = await audit(join(targetsRoot, 'type-leak'), { provider: withProbe('absent') });
+			const leak = result.findings.find((f) => f.packageName === 'leaked-lib');
+			expect(leak?.suggestion).toContain('declare "leaked-lib" yourself');
+			expect(leak?.suggestion).not.toContain('@types/leaked-lib');
+			// The leak attribution itself is unaffected.
+			expect(leak?.leakedVia).toEqual(['leaky-core']);
+		});
+
+		it('keeps the hedged @types alternative when the companion exists or is unknown', async () => {
+			const suggestionFor = async (verdict: 'exists' | 'unknown') =>
+				(await audit(join(targetsRoot, 'missing'), { provider: withProbe(verdict) })).findings.find(
+					(f) => f.packageName === 'csstype',
+				)?.suggestion;
+			expect(await suggestionFor('exists')).toContain('"@types/csstype" if it ships no types');
+			expect(await suggestionFor('unknown')).toContain('"@types/csstype" if it ships no types');
+		});
+
+		it('leaves the builtin @types/node advice alone even when the probe says absent', async () => {
+			// A builtin's fix is always "@types/node" (which exists); the advice probe must skip it.
+			const result = await audit(join(targetsRoot, 'builtin-missing'), {
+				provider: withProbe('absent'),
+			});
+			const builtin = result.findings.find((f) => f.suggestion.includes('@types/node'));
+			expect(builtin?.kind).toBe('undeclared');
+		});
+
+		it('keeps the @types alternative for a type-reference directive even when the probe says absent', async () => {
+			// `/// <reference types="node" />` resolves *through* `@types/node` — dropping that alternative would point away from the directive's actual fix.
+			const result = await audit(join(targetsRoot, 'typeref'), { provider: withProbe('absent') });
+			const node = result.findings.find((f) => f.packageName === 'node');
+			expect(node?.kind).toBe('undeclared');
+			expect(node?.suggestion).toContain('@types/node');
+		});
+
+		it('still refines a module import of a package that is also referenced by a directive', async () => {
+			/* `dual-ref` is reached both by `/// <reference types="dual-ref" />` and a top-level `import type` — two distinct findings.
+			 * The directive exclusion is by finding identity, so only the directive keeps the `@types/dual-ref` alternative; the import drops it. */
+			const result = await audit(join(targetsRoot, 'typeref-and-import'), {
+				provider: withProbe('absent'),
+			});
+			const suggestions = result.findings
+				.filter((f) => f.packageName === 'dual-ref')
+				.map((f) => f.suggestion);
+			expect(suggestions).toContain('declare "dual-ref"');
+			expect(suggestions.some((s) => s.includes('@types/dual-ref'))).toBe(true);
 		});
 
 		it('does not probe a finding already suppressed (refinement runs only on survivors)', async () => {

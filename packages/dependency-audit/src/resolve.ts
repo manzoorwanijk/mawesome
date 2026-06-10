@@ -72,7 +72,8 @@ export async function materializeDeps(
 
 /**
  * Builds a TypeScript-accurate resolver over an already-materialized `<workDir>`.
- * Resolution runs NodeNext in ESM mode, matching the profile the type surface is scanned under (`import`-condition entry points; see `ACTIVE_CONDITIONS` in surface.ts) — `ts.resolveModuleName` never infers mode from the probe file's extension, so the mode is passed explicitly.
+ * Resolution runs NodeNext in ESM mode by default, matching the profile the type surface is scanned under (`import`-condition entry points; see `ACTIVE_CONDITIONS` in surface.ts) — `ts.resolveModuleName` never infers mode from the probe file's extension, so the mode is passed explicitly.
+ * A per-specifier `resolution-mode` override switches that one lookup to the requested mode.
  * `react` falls back to `@types/react` exactly as a consumer's type-checker would.
  */
 export function createTypeResolver(
