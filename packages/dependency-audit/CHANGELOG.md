@@ -1,5 +1,13 @@
 # @mawesome/dependency-audit
 
+## 0.3.1
+
+### Patch Changes
+
+- [#43](https://github.com/manzoorwanijk/mawesome/pull/43) [`404b9af`](https://github.com/manzoorwanijk/mawesome/commit/404b9af278675aae9b95df7da72a6716b5bb80a5) Thanks [@manzoorwanijk](https://github.com/manzoorwanijk)! - Resolve type declarations in the audit's ESM profile mode — the resolver previously probed in CJS mode, falsely flagging dependencies whose types are only reachable via the `import` condition (e.g. an adjacent `.d.ts`) as missing.
+
+- [#45](https://github.com/manzoorwanijk/mawesome/pull/45) [`87f2339`](https://github.com/manzoorwanijk/mawesome/commit/87f233951f32de629dc12e737531a6a9a3667a3c) Thanks [@manzoorwanijk](https://github.com/manzoorwanijk)! - Undeclared type findings no longer suggest a nonexistent `@types/*` package — when the registry probe reports the companion absent, the advice names only the package itself.
+
 ## 0.3.0
 
 ### Minor Changes
