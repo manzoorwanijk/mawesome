@@ -1,5 +1,15 @@
 # @mawesome/dependency-audit
 
+## 0.4.0
+
+### Minor Changes
+
+- [#48](https://github.com/manzoorwanijk/mawesome/pull/48) [`08feb4a`](https://github.com/manzoorwanijk/mawesome/commit/08feb4aa6b1e713d6989f031da32087e9567826b) Thanks [@manzoorwanijk](https://github.com/manzoorwanijk)! - Widen the supported Node range from `>=24.12.0` to `^20.19.0 || >=22.9.0`.
+
+### Patch Changes
+
+- [#46](https://github.com/manzoorwanijk/mawesome/pull/46) [`9f11561`](https://github.com/manzoorwanijk/mawesome/commit/9f11561bdc95f9f552096fbf63e71f1828fe251a) Thanks [@manzoorwanijk](https://github.com/manzoorwanijk)! - Warn about ignore rules that matched nothing in a run; `--fail-unused-ignores` turns the warning into a failure.
+
 ## 0.3.1
 
 ### Patch Changes
