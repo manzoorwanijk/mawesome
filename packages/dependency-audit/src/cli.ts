@@ -39,7 +39,7 @@ Options:
   --config <path>   Load ignore rules from a JSON config (default:
                     ./dependency-audit.config.json if present).
   --fail-unused-ignores  Fail (exit 1) when an ignore rule matched nothing in
-                    this run. Stale rules are otherwise only warned on stderr.
+                    this run. Stale rules are otherwise only warned about.
   --condition <name>  Activate an extra resolution condition (e.g. browser) for
                     entry discovery and resolution (repeatable).
   --concurrency <n>  Cap how many targets — and how many deps per target —
@@ -177,6 +177,13 @@ async function main(): Promise<number> {
 	// `--collapse-root-cause`: such correlated findings no longer fail the run (fix the producer).
 	const collapse = values['collapse-root-cause'] ?? false;
 
+	/* Stale-ignore detection, judged across the whole run. Under `--fail-unused-ignores` a stale
+	 * rule fails the run, so it is reported as an `error` (red); otherwise a non-fatal `warning`
+	 * (yellow). The lines print at the very end of the run — after the recap and summary in a normal
+	 * run (on stdout), or on stderr under `--json` so the JSON stdout payload stays clean. */
+	const unusedIgnores = unusedIgnoreSources(ignoreSources, outcomes);
+	const failUnusedIgnores = values['fail-unused-ignores'] ?? false;
+
 	if (values.json) {
 		/* A `{ tool, version, results }` envelope so a saved audit artifact records the
 		 * producing version — the resolution behavior evolves, so output is only reproducible
@@ -187,6 +194,9 @@ async function main(): Promise<number> {
 			results: outcomes.map(jsonEntry),
 		};
 		console.log(JSON.stringify(payload, null, 2));
+		for (const line of unusedIgnoreLines(unusedIgnores, failUnusedIgnores, colorErr)) {
+			console.error(line);
+		}
 	} else {
 		for (const outcome of outcomes) {
 			if ('result' in outcome) {
@@ -199,18 +209,10 @@ async function main(): Promise<number> {
 		}
 		printFindingsRecap(outcomes, collapse);
 		printSummary(outcomes, collapse);
-	}
-
-	/* Stale-ignore detection, judged across the whole run. Diagnostics go to stderr so `--json` /
-	 * redirected stdout stays clean. Under `--fail-unused-ignores` a stale rule fails the run, so it
-	 * is reported as an `error` (red); otherwise it is a non-fatal `warning` (yellow). */
-	const unusedIgnores = unusedIgnoreSources(ignoreSources, outcomes);
-	const failUnusedIgnores = values['fail-unused-ignores'] ?? false;
-	const staleLabel = failUnusedIgnores ? colorErr.red('error') : colorErr.yellow('warning');
-	for (const source of unusedIgnores) {
-		console.error(
-			`${staleLabel}: unused ignore rule — ${source.label} matched nothing in this run`,
-		);
+		// On stdout, after the summary, so it lands last instead of floating ahead of buffered stdout.
+		for (const line of unusedIgnoreLines(unusedIgnores, failUnusedIgnores, color)) {
+			console.log(line);
+		}
 	}
 
 	const anyError = outcomes.some((outcome) => 'error' in outcome);
@@ -301,6 +303,15 @@ function unusedIgnoreSources(sources: IgnoreSource[], outcomes: Outcome[]): Igno
 		outcomes.flatMap((outcome) => ('result' in outcome ? outcome.result.usedIgnoreRules : [])),
 	);
 	return sources.filter((source) => source.rules.every((rule) => !used.has(rule)));
+}
+
+/* One line per stale ignore source. `error` (red) when `--fail-unused-ignores` makes it fatal,
+ * `warning` (yellow) otherwise. `c` keys the styling to the destination stream (stdout or stderr). */
+function unusedIgnoreLines(sources: IgnoreSource[], fail: boolean, c: typeof color): string[] {
+	const label = fail ? c.red('error') : c.yellow('warning');
+	return sources.map(
+		(source) => `${label}: unused ignore rule — ${source.label} matched nothing in this run`,
+	);
 }
 
 function printResult(result: AuditResult, collapse: boolean): void {
