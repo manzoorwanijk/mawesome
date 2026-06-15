@@ -125,28 +125,32 @@ describe('cli batch isolation', () => {
 });
 
 describe('cli unused ignore rules', () => {
-	it('warns on stderr when an --ignore value matches nothing', () => {
-		const { status, stderr } = runCli(['--ignore', 'nope', okTarget]);
+	it('warns on stdout, after the summary, when an --ignore value matches nothing', () => {
+		const { status, stdout } = runCli(['--ignore', 'nope', okTarget]);
 		// The res-dep finding still fails the run; the stale flag is a warning, not a failure.
 		expect(status).toBe(1);
-		expect(stderr).toContain(
+		const warning = stdout.indexOf(
 			'warning: unused ignore rule — --ignore nope matched nothing in this run',
 		);
+		const summary = stdout.search(/\d+ package(s)?, /);
+		expect(warning).toBeGreaterThan(0);
+		// The warning lands last — below the summary — so it reads as the run's final word.
+		expect(warning).toBeGreaterThan(summary);
 	});
 
-	it('stays silent on stderr when the ignore is used', () => {
+	it('stays silent when the ignore is used', () => {
 		// Other findings remain (exit 1) — the point is no staleness warning for a rule that matched.
-		const { status, stderr } = runCli(['--ignore', 'res-dep', okTarget]);
+		const { status, stdout } = runCli(['--ignore', 'res-dep', okTarget]);
 		expect(status).toBe(1);
-		expect(stderr).toBe('');
+		expect(stdout).not.toContain('unused ignore rule');
 	});
 
 	it('names a stale config rule by its file and JSON shape', () => {
 		const dir = mkdtempSync(join(tmpdir(), 'da-unused-'));
 		const cfg = join(dir, 'audit.json');
 		writeFileSync(cfg, JSON.stringify({ ignore: [{ package: 'nope' }] }));
-		const { stderr } = runCli(['--config', cfg, okTarget]);
-		expect(stderr).toContain(`${cfg}: {"package":"nope"}`);
+		const { stdout } = runCli(['--config', cfg, okTarget]);
+		expect(stdout).toContain(`${cfg}: {"package":"nope"}`);
 	});
 
 	it('--fail-unused-ignores turns a stale rule into exit 1 on an otherwise clean run', () => {
@@ -157,30 +161,33 @@ describe('cli unused ignore rules', () => {
 		const lax = runCli([...suppressAll, '--ignore', 'nope', okTarget]);
 		expect(lax.status).toBe(0);
 		// Non-fatal by default → a `warning:`.
-		expect(lax.stderr).toContain('warning: unused ignore rule');
+		expect(lax.stdout).toContain('warning: unused ignore rule');
 		const strict = runCli([...suppressAll, '--ignore', 'nope', '--fail-unused-ignores', okTarget]);
 		expect(strict.status).toBe(1);
 		// Fatal under the flag → labelled `error:` to match the exit code.
-		expect(strict.stderr).toContain('error: unused ignore rule');
+		expect(strict.stdout).toContain('error: unused ignore rule');
 	});
 
 	it('keeps --json stdout machine-readable while warning on stderr', () => {
 		const { stdout, stderr } = runCli(['--json', '--ignore', 'nope', okTarget]);
+		// Under --json the warning stays on stderr so the stdout payload parses cleanly.
 		expect(stderr).toContain('unused ignore rule');
+		expect(stdout).not.toContain('unused ignore rule');
 		expect(() => JSON.parse(stdout)).not.toThrow();
 	});
 
 	it('suppresses staleness warnings when any target errored (the match may live there)', () => {
-		const { status, stderr } = runCli(['--ignore', 'nope', okTarget, badTarget]);
+		const { status, stdout, stderr } = runCli(['--ignore', 'nope', okTarget, badTarget]);
 		expect(status).toBe(2);
+		expect(stdout).not.toContain('unused ignore rule');
 		expect(stderr).not.toContain('unused ignore rule');
 	});
 
 	it('still warns when a target is merely skipped (a non-package target cannot have contained the match)', () => {
 		const notPkg = join(here, 'fixtures', 'not-a-package.md');
-		const { status, stderr } = runCli(['--ignore', 'nope', okTarget, notPkg]);
+		const { status, stdout } = runCli(['--ignore', 'nope', okTarget, notPkg]);
 		expect(status).toBe(1);
-		expect(stderr).toContain('unused ignore rule — --ignore nope');
+		expect(stdout).toContain('unused ignore rule — --ignore nope');
 	});
 });
 
