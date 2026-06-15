@@ -1,5 +1,11 @@
 # @mawesome/dependency-audit
 
+## 0.4.3
+
+### Patch Changes
+
+- [#59](https://github.com/manzoorwanijk/mawesome/pull/59) [`47f2ded`](https://github.com/manzoorwanijk/mawesome/commit/47f2dedda6e34c5852dd50d102d0eb4766b2e88b) Thanks [@manzoorwanijk](https://github.com/manzoorwanijk)! - Print the unused-ignore-rule warning at the very end of the report.
+
 ## 0.4.2
 
 ### Patch Changes
