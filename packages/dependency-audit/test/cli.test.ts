@@ -126,7 +126,7 @@ describe('cli batch isolation', () => {
 
 describe('cli unused ignore rules', () => {
 	it('warns on stdout, after the summary, when an --ignore value matches nothing', () => {
-		const { status, stdout } = runCli(['--ignore', 'nope', okTarget]);
+		const { status, stdout, stderr } = runCli(['--ignore', 'nope', okTarget]);
 		// The res-dep finding still fails the run; the stale flag is a warning, not a failure.
 		expect(status).toBe(1);
 		const warning = stdout.indexOf(
@@ -136,6 +136,8 @@ describe('cli unused ignore rules', () => {
 		expect(warning).toBeGreaterThan(0);
 		// The warning lands last — below the summary — so it reads as the run's final word.
 		expect(warning).toBeGreaterThan(summary);
+		// Exactly one stream carries it: no stray stderr duplicate of the stdout line.
+		expect(stderr).not.toContain('unused ignore rule');
 	});
 
 	it('stays silent when the ignore is used', () => {
@@ -172,6 +174,25 @@ describe('cli unused ignore rules', () => {
 		const { stdout, stderr } = runCli(['--json', '--ignore', 'nope', okTarget]);
 		// Under --json the warning stays on stderr so the stdout payload parses cleanly.
 		expect(stderr).toContain('unused ignore rule');
+		expect(stdout).not.toContain('unused ignore rule');
+		expect(() => JSON.parse(stdout)).not.toThrow();
+	});
+
+	it('keeps --json clean while --fail-unused-ignores escalates to error: on stderr (exit 1)', () => {
+		const suppressAll = ['attr-dep', 'cr-esm-dep', 'crr-dep', 'cr-dep', 'res-dep'].flatMap(
+			(value) => ['--ignore', value],
+		);
+		const { status, stdout, stderr } = runCli([
+			'--json',
+			...suppressAll,
+			'--ignore',
+			'nope',
+			'--fail-unused-ignores',
+			okTarget,
+		]);
+		// Only the stale rule fails the run, so it alone drives exit 1.
+		expect(status).toBe(1);
+		expect(stderr).toContain('error: unused ignore rule');
 		expect(stdout).not.toContain('unused ignore rule');
 		expect(() => JSON.parse(stdout)).not.toThrow();
 	});
