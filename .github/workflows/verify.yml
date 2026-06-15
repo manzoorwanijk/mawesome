@@ -35,6 +35,9 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Run verification gate
         run: pnpm verify
+      # Dogfood dependency-audit on our own packages (built by the gate above; non-packages are skipped).
+      - name: Audit released imports
+        run: node packages/dependency-audit/src/cli.ts packages/*
       - name: Audit dependencies
         run: pnpm audit --audit-level=high
 

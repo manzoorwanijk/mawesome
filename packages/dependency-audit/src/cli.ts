@@ -197,6 +197,7 @@ async function main(): Promise<number> {
 				printError(outcome);
 			}
 		}
+		printFindingsRecap(outcomes, collapse);
 		printSummary(outcomes, collapse);
 	}
 
@@ -405,6 +406,38 @@ function errorMessage(value: unknown): string {
 	} catch {
 		return 'unknown error';
 	}
+}
+
+/**
+ * A consolidated list of the failing findings, printed just above the summary so the actual
+ * problems sit at the foot of a long log (e.g. a CI run) instead of buried in the per-target
+ * blocks far up-scroll. Each row names its owning package, so it reads and greps standalone.
+ * Skipped when nothing fails — the summary already says "0 findings". Collapsed findings (under
+ * `--collapse-root-cause`) don't fail the run, so they're omitted here too.
+ */
+function printFindingsRecap(outcomes: Outcome[], collapse: boolean): void {
+	const rows = outcomes.flatMap((outcome) =>
+		'result' in outcome
+			? outcome.result.findings
+					.filter((finding) => !isCollapsed(finding, collapse))
+					.map((finding) => recapRow(outcome.result.packageName ?? outcome.result.target, finding))
+			: [],
+	);
+	if (rows.length === 0) {
+		return;
+	}
+	console.log(`\n${color.bold('Findings:')}`);
+	for (const row of rows) {
+		console.log(row);
+	}
+}
+
+/** A recap row — like {@link findingRow} but prefixed with the owning package so it stands alone. */
+function recapRow(label: string, finding: Finding): string {
+	const surface = finding.surface.padEnd(SURFACE_WIDTH);
+	const kind = color.red(`[${finding.kind}]`.padEnd(KIND_WIDTH));
+	const where = color.dim(`(${finding.firstSeenIn})`);
+	return `  ${color.red('✗')} ${color.bold(label)}  ${surface}  ${kind}  ${finding.specifier}  ${where}`;
 }
 
 function printSummary(outcomes: Outcome[], collapse: boolean): void {

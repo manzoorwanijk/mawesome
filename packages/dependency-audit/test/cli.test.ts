@@ -28,7 +28,7 @@ const badTarget = join(targets, '__no_such_target__');
 /**
  * Runs the CLI as a subprocess, capturing status + stdout + stderr.
  * `spawnSync` always captures both streams (even on a clean exit), so a test can assert that a successful run emits nothing on stderr — the child's stderr is a pipe, not a TTY, so the progress spinner stays silent.
- * `FORCE_COLOR` / `NO_COLOR` are cleared for the child by default so every output assertion is hermetic regardless of the runner's environment; a test that wants color re-sets them via `env` (a key set to `undefined` stays unset — Node omits undefined env).
+ * `FORCE_COLOR` / `NO_COLOR` / `GITHUB_ACTIONS` are cleared for the child by default so every output assertion is hermetic regardless of the runner's environment (the suite itself often runs in GitHub Actions, where color is forced on); a test that wants color re-sets them via `env` (a key set to `undefined` stays unset — Node omits undefined env).
  */
 function runCli(
 	args: string[],
@@ -36,7 +36,13 @@ function runCli(
 ): { status: number; stdout: string; stderr: string } {
 	const result = spawnSync('node', [cli, ...args], {
 		encoding: 'utf8',
-		env: { ...process.env, FORCE_COLOR: undefined, NO_COLOR: undefined, ...env },
+		env: {
+			...process.env,
+			FORCE_COLOR: undefined,
+			NO_COLOR: undefined,
+			GITHUB_ACTIONS: undefined,
+			...env,
+		},
 	});
 	return { status: result.status ?? -1, stdout: result.stdout ?? '', stderr: result.stderr ?? '' };
 }
@@ -199,6 +205,37 @@ describe('cli color', () => {
 
 	it('emits ANSI color when FORCE_COLOR is set', () => {
 		expect(runCli([okTarget], { FORCE_COLOR: '1' }).stdout.includes(ESC)).toBe(true);
+	});
+
+	it('emits ANSI color under GitHub Actions even when piped (its log viewer renders ANSI)', () => {
+		expect(runCli([okTarget], { GITHUB_ACTIONS: 'true' }).stdout.includes(ESC)).toBe(true);
+	});
+
+	it('still honors NO_COLOR under GitHub Actions', () => {
+		const { stdout } = runCli([okTarget], { GITHUB_ACTIONS: 'true', NO_COLOR: '1' });
+		expect(stdout.includes(ESC)).toBe(false);
+	});
+});
+
+describe('cli findings recap', () => {
+	it('lists the failing findings, naming the package, just above the summary', () => {
+		const { stdout } = runCli([okTarget]);
+		const recap = stdout.indexOf('Findings:');
+		const summary = stdout.search(/\d+ package(s)?, /);
+		// The recap appears, and sits below the per-target blocks but above the summary line.
+		expect(recap).toBeGreaterThan(0);
+		expect(summary).toBeGreaterThan(recap);
+		// Each recap row names the owning package so it reads standalone.
+		expect(stdout.slice(recap)).toMatch(
+			/✗ @fixture\/require-forms\s+runtime\s+\[undeclared]\s+res-dep/,
+		);
+	});
+
+	it('omits the recap on a clean run (nothing fails)', () => {
+		const clean = join(targets, 'types-unreachable');
+		const { status, stdout } = runCli([clean]);
+		expect(status).toBe(0);
+		expect(stdout).not.toContain('Findings:');
 	});
 });
 
