@@ -18,6 +18,12 @@ allowBuilds:
 strictDepBuilds: true # fail install if an un-allowlisted dep wants to run a build script
 verifyDepsBeforeRun: error # node_modules must match the lockfile before any `pnpm run`
 
+# Security overrides: force transitive deps onto patched versions flagged by `pnpm audit`.
+# Drop an entry once every dependent's own range has moved past the vulnerable window.
+overrides:
+  esbuild@<0.28.1: '^0.28.1' # GHSA-gv7w-rqvm-qjhr (via astro/vite + vitest)
+  form-data@<4.0.6: '^4.0.6' # GHSA-hmw2-7cc7-3qxx (via @types/pacote)
+
 # --- no hoisting: a workspace may import only what it declares (pairs with no-root-deps) ---
 nodeLinker: isolated
 hoist: false
