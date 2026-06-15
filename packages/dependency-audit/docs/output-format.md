@@ -20,7 +20,7 @@ The report is a sequence of per-target blocks, then a summary line. Each line is
 | `→`    | A remediation suggestion (continuation of the preceding `✗`/`–` line).                                                                                                              |
 | `↳`    | A root-cause note: the finding is caused by another target audited in the run — a continuation under a finding, or (with `--collapse-root-cause`) a muted, non-failing finding row. |
 
-When stdout is a color-capable terminal, severity is also carried by **color** — red for findings/errors, yellow for notices/unchecked, green for clean, and muted (dim) for ignored/skipped/secondary detail. Color is auto-disabled when the output isn't a TTY (e.g. piped to a file or another program) and honors the [`NO_COLOR`](https://no-color.org) and `FORCE_COLOR` environment variables. The symbols above are the source of truth; color is purely a visual aid (and never emitted under `--json`), so parsers should key on the symbols, not the color.
+When stdout is a color-capable terminal, severity is also carried by **color** — red for findings/errors, yellow for notices/unchecked, green for clean, and muted (dim) for ignored/skipped/secondary detail. Color is auto-disabled when the output isn't a TTY (e.g. piped to a file or another program), with one exception: under **GitHub Actions** (`GITHUB_ACTIONS=true`) color is emitted anyway, since its log viewer renders ANSI even though the step's stdout is a pipe. [`NO_COLOR`](https://no-color.org) and `FORCE_COLOR` are honored throughout and override that exception. The symbols above are the source of truth; color is purely a visual aid (and never emitted under `--json`), so parsers should key on the symbols, not the color.
 
 ### Per-target block
 
@@ -50,6 +50,15 @@ When stdout is a color-capable terminal, severity is also carried by **color** �
   ⚠ error  <message>      # could not be audited
 <target>
   ↷ skipped  <reason>     # a non-package path (neutral)
+```
+
+### Findings recap
+
+When the run has at least one failing finding, a consolidated recap is printed just above the summary line, so the actual problems sit at the foot of a long log (e.g. a CI run) instead of buried in the per-target blocks. Each row names its owning package, so it reads standalone; collapsed findings (under `--collapse-root-cause`) are omitted, since they don't fail the run. The recap is omitted entirely on a clean run.
+
+```
+Findings:
+  ✗ <packageName>  <surface>  [<kind>]  <specifier>  (<file>)
 ```
 
 ### Summary line
