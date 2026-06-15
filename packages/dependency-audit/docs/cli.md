@@ -43,7 +43,7 @@ When multiple targets are audited, the **highest** applicable exit code wins: an
 
 ### Stale ignore rules
 
-An ignore rule that matched nothing across the whole run is reported as a stderr warning (`warning: unused ignore rule — … matched nothing in this run`), so a rule outlives the gap it suppressed for no longer than one run. A `--ignore <value>` flag counts as used when **either** of its package/specifier forms matched; staleness is judged run-wide, so a `target`-scoped config rule is not warned just because some targets didn't need it. The warnings are suppressed when any target **errored** (the failed audit might have contained the match), and `--fail-unused-ignores` escalates them to exit `1`. Programmatic consumers get the same signal per target via `AuditResult.usedIgnoreRules`.
+An ignore rule that matched nothing across the whole run is reported on stderr (`unused ignore rule — … matched nothing in this run`), so a rule outlives the gap it suppressed for no longer than one run. It is a non-fatal `warning:` by default; under `--fail-unused-ignores` it both escalates to exit `1` and is labelled `error:` to match. A `--ignore <value>` flag counts as used when **either** of its package/specifier forms matched; staleness is judged run-wide, so a `target`-scoped config rule is not warned just because some targets didn't need it. The reports are suppressed when any target **errored** (the failed audit might have contained the match). Programmatic consumers get the same signal per target via `AuditResult.usedIgnoreRules`.
 
 ## Examples
 

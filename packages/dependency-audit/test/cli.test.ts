@@ -156,10 +156,12 @@ describe('cli unused ignore rules', () => {
 		);
 		const lax = runCli([...suppressAll, '--ignore', 'nope', okTarget]);
 		expect(lax.status).toBe(0);
-		expect(lax.stderr).toContain('unused ignore rule');
+		// Non-fatal by default → a `warning:`.
+		expect(lax.stderr).toContain('warning: unused ignore rule');
 		const strict = runCli([...suppressAll, '--ignore', 'nope', '--fail-unused-ignores', okTarget]);
 		expect(strict.status).toBe(1);
-		expect(strict.stderr).toContain('unused ignore rule');
+		// Fatal under the flag → labelled `error:` to match the exit code.
+		expect(strict.stderr).toContain('error: unused ignore rule');
 	});
 
 	it('keeps --json stdout machine-readable while warning on stderr', () => {
