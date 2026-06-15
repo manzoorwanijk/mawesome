@@ -1,0 +1,35 @@
+# Dependabot keeps dependencies patched between manual bumps.
+# Tuned for this pnpm monorepo: see AGENTS.md for the version/cooldown rules it mirrors.
+version: 2
+
+updates:
+  # GitHub Actions pinned in the CI/release workflows.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      github-actions:
+        patterns: ['*']
+
+  # npm dependencies across every pnpm workspace manifest (root + packages/tools/apps).
+  - package-ecosystem: npm
+    directories:
+      - /
+      - /packages/*
+      - /tools/*
+      - /apps/*
+    schedule:
+      interval: weekly
+    # Mirror the repo's 3-day `minimumReleaseAge`; don't propose a version pnpm would defer at install.
+    cooldown:
+      default-days: 3
+    # syncpack enforces one version per dependency repo-wide, so batch everything into a single
+    # grouped PR — a dep shared across workspaces then bumps in lockstep instead of drifting.
+    groups:
+      all-dependencies:
+        patterns: ['*']
+    ignore:
+      # Pinned to an exact, fast-moving preview build and bumped deliberately (see AGENTS.md).
+      - dependency-name: '@typescript/native-preview'
+    open-pull-requests-limit: 10
