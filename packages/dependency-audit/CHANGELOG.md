@@ -1,5 +1,11 @@
 # @mawesome/dependency-audit
 
+## 0.4.2
+
+### Patch Changes
+
+- [#55](https://github.com/manzoorwanijk/mawesome/pull/55) [`f56e30e`](https://github.com/manzoorwanijk/mawesome/commit/f56e30ec8184366b95236bf28ab4123c59e46bcf) Thanks [@manzoorwanijk](https://github.com/manzoorwanijk)! - Report a stale ignore rule as a red `error:` under `--fail-unused-ignores` (where it fails the run) instead of a plain `warning:`, and color stderr diagnostics to match the rest of the output.
+
 ## 0.4.1
 
 ### Patch Changes
