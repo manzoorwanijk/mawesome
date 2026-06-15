@@ -1,5 +1,11 @@
 # @mawesome/dependency-audit
 
+## 0.4.1
+
+### Patch Changes
+
+- [#50](https://github.com/manzoorwanijk/mawesome/pull/50) [`7445e49`](https://github.com/manzoorwanijk/mawesome/commit/7445e49a61594be98ae32a5821af07716e4442af) Thanks [@manzoorwanijk](https://github.com/manzoorwanijk)! - Emit color under GitHub Actions and recap failing findings above the summary, so CI logs are readable without scrolling.
+
 ## 0.4.0
 
 ### Minor Changes
