@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 import { parseArgs, styleText } from 'node:util';
 import { SkippedTargetError } from './acquire.ts';
 import { audit } from './audit.ts';
-import { color } from './color.ts';
+import { color, colorErr } from './color.ts';
 import { mapLimit } from './concurrency.ts';
 import { correlateRootCauses, isCollapsed, resultFails } from './correlate.ts';
 import { parseIgnoreRules } from './ignore.ts';
@@ -201,11 +201,16 @@ async function main(): Promise<number> {
 		printSummary(outcomes, collapse);
 	}
 
-	/* Stale-ignore detection, judged across the whole run. Warnings go to stderr so `--json` /
-	 * redirected stdout stays clean; `--fail-unused-ignores` additionally fails the run. */
+	/* Stale-ignore detection, judged across the whole run. Diagnostics go to stderr so `--json` /
+	 * redirected stdout stays clean. Under `--fail-unused-ignores` a stale rule fails the run, so it
+	 * is reported as an `error` (red); otherwise it is a non-fatal `warning` (yellow). */
 	const unusedIgnores = unusedIgnoreSources(ignoreSources, outcomes);
+	const failUnusedIgnores = values['fail-unused-ignores'] ?? false;
+	const staleLabel = failUnusedIgnores ? colorErr.red('error') : colorErr.yellow('warning');
 	for (const source of unusedIgnores) {
-		console.error(`warning: unused ignore rule — ${source.label} matched nothing in this run`);
+		console.error(
+			`${staleLabel}: unused ignore rule — ${source.label} matched nothing in this run`,
+		);
 	}
 
 	const anyError = outcomes.some((outcome) => 'error' in outcome);
@@ -216,7 +221,7 @@ async function main(): Promise<number> {
 	const anyCoverageGap =
 		(values['require-types'] ?? false) &&
 		outcomes.some((outcome) => 'result' in outcome && outcome.result.notices.length > 0);
-	const anyUnusedIgnore = (values['fail-unused-ignores'] ?? false) && unusedIgnores.length > 0;
+	const anyUnusedIgnore = failUnusedIgnores && unusedIgnores.length > 0;
 	// An audit that could not run at all is a harder failure (exit 2) than findings (exit 1);
 	// a skip is neutral, so a stray glob match never escalates a findings run into an error run.
 	return anyError ? 2 : anyFinding || anyCoverageGap || anyUnusedIgnore ? 1 : 0;
