@@ -13,6 +13,8 @@ A **target** is one of:
 
 Multiple targets may be passed; each is audited independently and isolated — one target failing to acquire/audit reports as an error for that target and never discards the others.
 
+A target containing a glob (e.g. `./packages/*`) is expanded by the CLI itself, so it behaves the same on Windows — where `cmd.exe` does not expand globs — as in a POSIX shell. A POSIX shell expands the pattern before the CLI sees it; the expanded paths are magic-free and pass straight through. A pattern matching nothing is kept as-is, so it surfaces as a clear "not found" error rather than silently dropping out of the run.
+
 A local path that **exists but is not an auditable package** — a non-tarball file, or a directory without a `package.json` — is **skipped** (a neutral `↷` notice), not treated as an error. This is what keeps a stray glob match (`packages/*` catching a `README.md`) from turning a findings run (exit 1) into an error run (exit 2). A path that does **not** exist, or a spec that fails to resolve, is still a hard error.
 
 ## Options
@@ -99,6 +101,8 @@ The CLI does not know about your repo layout — point it at the **built** packa
 pnpm -r exec dependency-audit .      # one process per package (simple, fully isolated)
 dependency-audit ./packages/*        # one process, bounded-concurrency, isolated per target
 ```
+
+The `./packages/*` form is expanded by the CLI when the shell doesn't (Windows `cmd.exe`), so the same command works everywhere.
 
 Local `@scope/*` dependencies declared as `file:`/`workspace:`/`link:` are resolved by linking the already-built sibling, so you do not need to publish or rebuild siblings first — just build them.
 

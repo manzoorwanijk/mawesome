@@ -20,7 +20,7 @@ jobs:
         uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2
         with:
           egress-policy: audit
-      - name: Check out
+      - name: Checkout
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           persist-credentials: false
@@ -44,18 +44,25 @@ jobs:
   # The full gate needs Node >=24.12 (internal .ts scripts rely on native type stripping), so this job exercises the published package's Node floor separately.
   # It installs and builds on Node 24, then runs dependency-audit's tests and built CLI on each supported Node line.
   node-compat:
-    name: Node ${{ matrix.node }} compat
-    runs-on: ubuntu-latest
+    name: Node ${{ matrix.node }} on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
+        os: [ubuntu-latest]
         node: [20, 24, 26]
+        include:
+          # Windows shells don't expand globs, so exercise the built CLI + tests there on one representative Node line.
+          - os: windows-latest
+            node: 24
     steps:
+      # harden-runner only supports Linux runners — skip it on Windows.
       - name: Harden runner
+        if: runner.os == 'Linux'
         uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2
         with:
           egress-policy: audit
-      - name: Check out
+      - name: Checkout
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           persist-credentials: false
@@ -80,8 +87,13 @@ jobs:
       # Invoke vitest directly: pnpm enforces the root engines (>=24.12) on every `pnpm run`, which would fail on the older matrix lines.
       - name: Run tests on Node ${{ matrix.node }}
         working-directory: packages/dependency-audit
+        # bash on every OS (Git Bash on Windows) so the node_modules/.bin shim resolves uniformly.
+        shell: bash
         run: node_modules/.bin/vitest run
       - name: Smoke-test the built CLI on Node ${{ matrix.node }}
+        # bash on every OS keeps the quoting uniform; a quoted "packages/*" stays literal in bash too,
+        # so this exercises the CLI's own glob expansion (not the shell's) on Windows and Linux alike.
+        shell: bash
         run: |
           node packages/dependency-audit/dist/cli.js --version
-          node packages/dependency-audit/dist/cli.js --no-progress packages/dependency-audit
+          node packages/dependency-audit/dist/cli.js --no-progress "packages/*"

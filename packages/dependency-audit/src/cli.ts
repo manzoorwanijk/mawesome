@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, globSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { parseArgs, styleText } from 'node:util';
 import { SkippedTargetError } from './acquire.ts';
@@ -31,7 +31,9 @@ Usage:
   dependency-audit [options] <target...>
 
 A target is a package directory, a .tgz path, a published spec (name@version,
-name@tag, @scope/name), or an http(s) tarball URL.
+name@tag, @scope/name), or an http(s) tarball URL. A target containing a glob
+(e.g. ./packages/*) is expanded internally, so it works the same on Windows
+(where the shell does not expand globs) as on a POSIX shell.
 
 Options:
   --ignore <value>  Suppress findings whose package OR specifier equals <value>
@@ -107,6 +109,11 @@ async function main(): Promise<number> {
 		return 2;
 	}
 
+	/* Expand glob targets ourselves so `dependency-audit ./packages/*` behaves identically across
+	 * shells — a POSIX shell expands the glob before we see it, but Windows `cmd.exe` hands us the
+	 * literal `*`. A target with no glob magic (a concrete path, a spec, a URL) passes through. */
+	const targets = expandGlobTargets(positionals);
+
 	const ignoreSources = [...loadConfigRules(values.config), ...cliIgnoreRules(values.ignore ?? [])];
 	const ignore = ignoreSources.flatMap((source) => source.rules);
 	const conditions = values.condition ?? [];
@@ -127,7 +134,7 @@ async function main(): Promise<number> {
 	 * It only touches stderr, so `--json` / `> file` stdout stays clean.
 	 * The cleanup handles are exposed module-wide so `finish()` and the background-error handler can keep the line tidy. */
 	const progress = createTtyReporter({
-		total: positionals.length,
+		total: targets.length,
 		enabled: !(values['no-progress'] ?? false),
 	});
 	clearProgress = progress.clear;
@@ -144,31 +151,27 @@ async function main(): Promise<number> {
 	/* Each audit is self-contained (its own temp dirs), so targets run concurrently —
 	 * but bounded, and each isolated, so one target's failure reports as an error for
 	 * that target instead of discarding every other target's result. */
-	const outcomes = await mapLimit(
-		positionals,
-		targetConcurrency,
-		async (target): Promise<Outcome> => {
-			try {
-				return {
-					target,
-					result: await audit(target, {
-						ignore,
-						conditions,
-						progress: progress.reporter,
-						// Only override the per-target materialize cap when `--concurrency` is set,
-						// so the default stays 12 rather than collapsing to the target count.
-						...(concurrency !== undefined ? { materializeConcurrency: concurrency } : {}),
-						...(retries !== undefined ? { retries } : {}),
-					}),
-				};
-			} catch (error) {
-				if (error instanceof SkippedTargetError) {
-					return { target, skipped: error.reason };
-				}
-				return { target, error: errorMessage(error) };
+	const outcomes = await mapLimit(targets, targetConcurrency, async (target): Promise<Outcome> => {
+		try {
+			return {
+				target,
+				result: await audit(target, {
+					ignore,
+					conditions,
+					progress: progress.reporter,
+					// Only override the per-target materialize cap when `--concurrency` is set,
+					// so the default stays 12 rather than collapsing to the target count.
+					...(concurrency !== undefined ? { materializeConcurrency: concurrency } : {}),
+					...(retries !== undefined ? { retries } : {}),
+				}),
+			};
+		} catch (error) {
+			if (error instanceof SkippedTargetError) {
+				return { target, skipped: error.reason };
 			}
-		},
-	);
+			return { target, error: errorMessage(error) };
+		}
+	});
 	// Erase the spinner before any stdout result write so the two streams never interleave.
 	progress.stop();
 
@@ -225,6 +228,29 @@ async function main(): Promise<number> {
 	// An audit that could not run at all is a harder failure (exit 2) than findings (exit 1);
 	// a skip is neutral, so a stray glob match never escalates a findings run into an error run.
 	return anyError ? 2 : anyFinding || anyCoverageGap || anyUnusedIgnore ? 1 : 0;
+}
+
+/** Glob magic that triggers internal expansion — `*`, `?`, `[`, `{`. */
+const GLOB_MAGIC = /[*?[{]/;
+
+/**
+ * Expands any positional that contains glob magic via `node:fs` globSync, so a pattern like
+ * `./packages/*` resolves the same regardless of the invoking shell: a POSIX shell expands it
+ * before we see it (those concrete paths are magic-free and pass straight through), while Windows
+ * `cmd.exe` hands us the literal pattern. Magic-free targets — concrete paths, specs, URLs — are
+ * untouched. A pattern that matches nothing is kept verbatim so it surfaces as a clear
+ * "Target not found" instead of vanishing (and so a registry spec like `lodash@*` still reaches
+ * pacote). Matches are sorted for deterministic output. Like a POSIX shell, this does not
+ * de-duplicate: a repeated target — or overlapping globs — audits each match once per occurrence.
+ */
+function expandGlobTargets(positionals: string[]): string[] {
+	return positionals.flatMap((positional) => {
+		if (!GLOB_MAGIC.test(positional)) {
+			return [positional];
+		}
+		const matches = globSync(positional).toSorted();
+		return matches.length > 0 ? matches : [positional];
+	});
 }
 
 /** The JSON shape per target: the result, `{ target, error }`, or `{ target, skipped }`. */
