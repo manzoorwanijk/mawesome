@@ -58,6 +58,19 @@ describe('expandGlobTargets', () => {
 		expect(expandGlobTargets(['{a/b,c}'])).toEqual(['{a/b,c}']);
 	});
 
+	it.skipIf(process.platform === 'win32')('expands a root-absolute `/*` from `/`, not cwd', () => {
+		// Each match is a single-slash child of `/` — proves the empty-root-segment base resolves to
+		// `/` (not cwd) and the re-prefix doesn't double the slash.
+		const matches = expandGlobTargets(['/*']);
+		expect(matches.length).toBeGreaterThan(0);
+		expect(matches.every((m) => /^\/[^/]/.test(m))).toBe(true);
+	});
+
+	it.runIf(process.platform === 'win32')('folds a Windows `\\` glob to its `/` form', () => {
+		// `dir` is already `\`-spelled on Windows; the fold must expand it like the `/` pattern.
+		expect(expandGlobTargets([`${dir}\\*`])).toEqual(expandGlobTargets([`${base}/*`]));
+	});
+
 	it('does not de-duplicate — overlapping globs each expand in full', () => {
 		expect(expandGlobTargets([`${base}/pkg-*`, `${base}/pkg-*`])).toEqual([
 			`${base}/pkg-a`,
