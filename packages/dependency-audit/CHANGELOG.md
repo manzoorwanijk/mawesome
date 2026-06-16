@@ -1,5 +1,11 @@
 # @mawesome/dependency-audit
 
+## 0.4.4
+
+### Patch Changes
+
+- [#61](https://github.com/manzoorwanijk/mawesome/pull/61) [`719b1ec`](https://github.com/manzoorwanijk/mawesome/commit/719b1ecebf16e294cbd6d24520d76aca91bf66be) Thanks [@manzoorwanijk](https://github.com/manzoorwanijk)! - Expand glob targets (e.g. `./packages/*`) in the CLI itself, so a pattern works on Windows `cmd.exe` the same as in a POSIX shell.
+
 ## 0.4.3
 
 ### Patch Changes
