@@ -7,6 +7,7 @@ import { audit } from './audit.ts';
 import { color, colorErr } from './color.ts';
 import { mapLimit } from './concurrency.ts';
 import { correlateRootCauses, isCollapsed, resultFails } from './correlate.ts';
+import { expandGlobTargets } from './glob-targets.ts';
 import { parseIgnoreRules } from './ignore.ts';
 import { createTtyReporter } from './progress-tty.ts';
 import type { AuditResult, Finding, IgnoreRule } from './types.ts';
@@ -31,7 +32,8 @@ Usage:
   dependency-audit [options] <target...>
 
 A target is a package directory, a .tgz path, a published spec (name@version,
-name@tag, @scope/name), or an http(s) tarball URL.
+name@tag, @scope/name), or an http(s) tarball URL. A glob (e.g. ./packages/*) is
+expanded internally, so it works even on shells that don't expand globs (Windows).
 
 Options:
   --ignore <value>  Suppress findings whose package OR specifier equals <value>
@@ -107,6 +109,9 @@ async function main(): Promise<number> {
 		return 2;
 	}
 
+	// Expand glob targets ourselves, so `./packages/*` works even on shells that don't (Windows).
+	const targets = expandGlobTargets(positionals);
+
 	const ignoreSources = [...loadConfigRules(values.config), ...cliIgnoreRules(values.ignore ?? [])];
 	const ignore = ignoreSources.flatMap((source) => source.rules);
 	const conditions = values.condition ?? [];
@@ -127,7 +132,7 @@ async function main(): Promise<number> {
 	 * It only touches stderr, so `--json` / `> file` stdout stays clean.
 	 * The cleanup handles are exposed module-wide so `finish()` and the background-error handler can keep the line tidy. */
 	const progress = createTtyReporter({
-		total: positionals.length,
+		total: targets.length,
 		enabled: !(values['no-progress'] ?? false),
 	});
 	clearProgress = progress.clear;
@@ -144,31 +149,27 @@ async function main(): Promise<number> {
 	/* Each audit is self-contained (its own temp dirs), so targets run concurrently —
 	 * but bounded, and each isolated, so one target's failure reports as an error for
 	 * that target instead of discarding every other target's result. */
-	const outcomes = await mapLimit(
-		positionals,
-		targetConcurrency,
-		async (target): Promise<Outcome> => {
-			try {
-				return {
-					target,
-					result: await audit(target, {
-						ignore,
-						conditions,
-						progress: progress.reporter,
-						// Only override the per-target materialize cap when `--concurrency` is set,
-						// so the default stays 12 rather than collapsing to the target count.
-						...(concurrency !== undefined ? { materializeConcurrency: concurrency } : {}),
-						...(retries !== undefined ? { retries } : {}),
-					}),
-				};
-			} catch (error) {
-				if (error instanceof SkippedTargetError) {
-					return { target, skipped: error.reason };
-				}
-				return { target, error: errorMessage(error) };
+	const outcomes = await mapLimit(targets, targetConcurrency, async (target): Promise<Outcome> => {
+		try {
+			return {
+				target,
+				result: await audit(target, {
+					ignore,
+					conditions,
+					progress: progress.reporter,
+					// Only override the per-target materialize cap when `--concurrency` is set,
+					// so the default stays 12 rather than collapsing to the target count.
+					...(concurrency !== undefined ? { materializeConcurrency: concurrency } : {}),
+					...(retries !== undefined ? { retries } : {}),
+				}),
+			};
+		} catch (error) {
+			if (error instanceof SkippedTargetError) {
+				return { target, skipped: error.reason };
 			}
-		},
-	);
+			return { target, error: errorMessage(error) };
+		}
+	});
 	// Erase the spinner before any stdout result write so the two streams never interleave.
 	progress.stop();
 

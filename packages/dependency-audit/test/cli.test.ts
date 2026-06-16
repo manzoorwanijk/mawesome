@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -33,9 +33,11 @@ const badTarget = join(targets, '__no_such_target__');
 function runCli(
 	args: string[],
 	env?: NodeJS.ProcessEnv,
+	cwd?: string,
 ): { status: number; stdout: string; stderr: string } {
 	const result = spawnSync('node', [cli, ...args], {
 		encoding: 'utf8',
+		cwd,
 		env: {
 			...process.env,
 			FORCE_COLOR: undefined,
@@ -290,6 +292,39 @@ describe('cli skip (non-package targets)', () => {
 		const { stdout } = runCli(['--json', notPkg]);
 		const parsed = JSON.parse(stdout) as { results: Array<Record<string, unknown>> };
 		expect(parsed.results[0]).toHaveProperty('skipped');
+	});
+});
+
+describe('cli glob expansion', () => {
+	/*
+	 * Each pattern is one argv entry (no shell), run with `cwd` set to a temp dir of two hermetic
+	 * require-forms copies — so it exercises the literal-pattern path a Windows shell hands over.
+	 */
+	function twoPackageDir(): string {
+		const dir = mkdtempSync(join(tmpdir(), 'da-glob-'));
+		cpSync(okTarget, join(dir, 'pkg-a'), { recursive: true });
+		cpSync(okTarget, join(dir, 'pkg-b'), { recursive: true });
+		return dir;
+	}
+
+	it('expands a glob target internally, auditing every match', () => {
+		const { status, stdout } = runCli(['./*'], undefined, twoPackageDir());
+		// Both copies match and are audited in one process; each still produces the res-dep finding.
+		expect(status).toBe(1);
+		expect(stdout).toMatch(/2 packages,/);
+	});
+
+	it('keeps a non-matching glob verbatim so it surfaces as a not-found error', () => {
+		const { status, stdout } = runCli(['./__no_such_glob__*'], undefined, twoPackageDir());
+		// No entry matched, so the literal pattern reaches acquire and errors clearly (exit 2).
+		expect(status).toBe(2);
+		expect(stdout).toMatch(/error/i);
+	});
+
+	it('leaves a magic-free target untouched (still audited)', () => {
+		const { status, stdout } = runCli([okTarget]);
+		expect(stdout).toContain('require-forms');
+		expect(status).toBe(1);
 	});
 });
 

@@ -47,7 +47,11 @@ function seed(fs: WritableFileSystem, deps: Record<string, string>): void {
 	fs.writeFile('/pkg/index.js', 'export const y = 1;\n');
 }
 
-describe('auditPackage progress events', () => {
+/*
+ * These drive the core over the in-memory FS (a POSIX-only browser config — see browser.test.ts).
+ * The real Node FS path is covered by `audit` below and cli.test, so pin these to POSIX.
+ */
+describe.skipIf(process.platform === 'win32')('auditPackage progress events', () => {
 	it('emits materialize then both scans, with the count reaching the total', async () => {
 		const fs = createMemoryFileSystem();
 		seed(fs, { csstype: '^3.0.0' });

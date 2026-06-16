@@ -33,8 +33,8 @@ dependency-audit ./my-lib-1.2.3.tgz
 dependency-audit lodash@4.17.21
 dependency-audit @sindresorhus/is@latest
 
-# Several at once; machine-readable output for CI
-dependency-audit --json ./packages/a ./packages/b
+# Several at once (a glob is expanded by the CLI, so it works on Windows too)
+dependency-audit --json ./packages/*
 ```
 
 Exit codes: `0` clean, `1` findings, `2` error. See the [CLI reference](./docs/cli.md) for every flag (including `--condition`, `--require-types`, and config files).
