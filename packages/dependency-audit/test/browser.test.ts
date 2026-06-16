@@ -82,10 +82,9 @@ function seedTarget(fs: WritableFileSystem): void {
 }
 
 /*
- * The in-memory adapter is the browser path: there `node:path` is aliased to path-browserify
- * (POSIX), so it stays consistent with the POSIX-keyed tree. Driving the same core over the
- * in-memory FS on Windows-Node mixes win32 `node:path` joins with POSIX keys — a config that never
- * ships (the CLI uses the real Node FS, covered by cli.test on Windows). Pin these to POSIX.
+ * The in-memory adapter is the browser path, where `node:path` is POSIX (path-browserify).
+ * On Windows-Node its win32 joins clash with the POSIX-keyed tree — a config that never ships, so
+ * pin these to POSIX. The real Windows surface (the CLI over the Node FS) is covered by cli.test.
  */
 describe.skipIf(process.platform === 'win32')(
 	'auditPackage over an in-memory filesystem (browser-ready)',

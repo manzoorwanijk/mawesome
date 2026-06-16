@@ -48,9 +48,8 @@ function seed(fs: WritableFileSystem, deps: Record<string, string>): void {
 }
 
 /*
- * These drive the core over the in-memory FS (the browser path, where `node:path` is path-browserify
- * / POSIX). On Windows-Node the core's win32 `node:path` joins diverge from the POSIX-keyed tree — a
- * config that never ships (the CLI uses the real Node FS, exercised by `audit` below and cli.test).
+ * These drive the core over the in-memory FS (a POSIX-only browser config — see browser.test.ts).
+ * The real Node FS path is covered by `audit` below and cli.test, so pin these to POSIX.
  */
 describe.skipIf(process.platform === 'win32')('auditPackage progress events', () => {
 	it('emits materialize then both scans, with the count reaching the total', async () => {

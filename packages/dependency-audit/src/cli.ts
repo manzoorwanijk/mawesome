@@ -32,9 +32,8 @@ Usage:
   dependency-audit [options] <target...>
 
 A target is a package directory, a .tgz path, a published spec (name@version,
-name@tag, @scope/name), or an http(s) tarball URL. A target containing a glob
-(e.g. ./packages/*) is expanded internally, so it works the same on Windows
-(where the shell does not expand globs) as on a POSIX shell.
+name@tag, @scope/name), or an http(s) tarball URL. A glob (e.g. ./packages/*) is
+expanded internally, so it works even on shells that don't expand globs (Windows).
 
 Options:
   --ignore <value>  Suppress findings whose package OR specifier equals <value>
@@ -110,9 +109,7 @@ async function main(): Promise<number> {
 		return 2;
 	}
 
-	/* Expand glob targets ourselves so `dependency-audit ./packages/*` behaves identically across
-	 * shells — a POSIX shell expands the glob before we see it, but Windows `cmd.exe` hands us the
-	 * literal `*`. A target with no glob magic (a concrete path, a spec, a URL) passes through. */
+	// Expand glob targets ourselves, so `./packages/*` works even on shells that don't (Windows).
 	const targets = expandGlobTargets(positionals);
 
 	const ignoreSources = [...loadConfigRules(values.config), ...cliIgnoreRules(values.ignore ?? [])];

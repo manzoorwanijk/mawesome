@@ -269,12 +269,8 @@ describe('cli skip (non-package targets)', () => {
 
 describe('cli glob expansion', () => {
 	/*
-	 * The CLI expands a path-shaped glob target itself so a pattern works the same on Windows
-	 * cmd.exe/PowerShell — which never expand a glob — as in a POSIX shell. Each pattern is passed as a
-	 * single argv entry and run with `cwd` set to a fresh temp dir holding two copies of the hermetic
-	 * require-forms fixture, so it exercises the literal-pattern path a Windows shell hands over while
-	 * the match set stays controlled and registry-free. Patterns use `/` (the cross-platform form a
-	 * real `./packages/*` invocation passes).
+	 * Each pattern is one argv entry (no shell), run with `cwd` set to a temp dir of two hermetic
+	 * require-forms copies — so it exercises the literal-pattern path a Windows shell hands over.
 	 */
 	function twoPackageDir(): string {
 		const dir = mkdtempSync(join(tmpdir(), 'da-glob-'));

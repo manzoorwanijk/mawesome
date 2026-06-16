@@ -4,18 +4,9 @@ import { join } from 'node:path';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { expandGlobTargets } from '../src/glob-targets.ts';
 
-/*
- * Hermetic unit coverage for the CLI's internal glob expansion — no subprocess, no registry. A
- * fixture dir holds two package-like dirs (one with a nested file), a stray file, and a dotdir;
- * patterns use the dir's absolute path as the (literal) base so matching never depends on the test
- * runner's cwd.
- */
+// Hermetic coverage for the CLI's internal glob expansion — no subprocess, no registry.
 describe('expandGlobTargets', () => {
-	/*
-	 * `dir` (native separators) seeds the filesystem; `base` is its `/`-spelled form — the expander
-	 * normalizes patterns to `/`, so a matched target reads back with `/` on every OS (a real call
-	 * passes `/` too). Patterns and expectations use `base`.
-	 */
+	// `dir` seeds the filesystem; `base` is its `/`-spelled form (the expander normalizes to `/`).
 	let dir: string;
 	let base: string;
 

@@ -3,13 +3,9 @@ import { globSync, isDynamicPattern } from 'tinyglobby';
 import { looksLikeSpec } from './acquire.ts';
 
 /**
- * Expands path-shaped glob targets ourselves so a pattern like `./packages/*` resolves the same
- * regardless of the invoking shell: a POSIX shell expands it before we see it (those concrete
- * paths are magic-free and pass straight through), while Windows `cmd.exe`/PowerShell hand us the
- * literal pattern. Specs and URLs (`looksLikeSpec`) are never globbed, so `lodash@*` still reaches
- * pacote. A pattern that matches nothing is kept verbatim, surfacing as a clear "Target not found".
- * Like a POSIX shell, this does not de-duplicate: a repeated target — or overlapping globs — audits
- * each match once per occurrence.
+ * Expands path-shaped glob targets, so `./packages/*` works whether or not the shell expanded it
+ * (Windows shells do not). Specs/URLs are never globbed, so `lodash@*` still reaches pacote.
+ * A pattern matching nothing is kept verbatim. Like a shell, this does not de-duplicate.
  */
 export function expandGlobTargets(positionals: string[]): string[] {
 	return positionals.flatMap((positional) =>
@@ -20,19 +16,15 @@ export function expandGlobTargets(positionals: string[]): string[] {
 }
 
 /**
- * Expands one glob to its sorted matches, or keeps it verbatim if none match. tinyglobby does the
- * filesystem matching, but it can't take a pattern that escapes its `cwd` (`..`) or is absolute —
- * so we split the pattern at its first glob segment, hand the literal base (which *may* be `..` or
- * absolute) to tinyglobby as `cwd`, and match only the relative tail under it. Delegating the walk
- * to a maintained matcher keeps symlink/traversal/regex handling out of our hands.
+ * Expands one glob, or keeps it verbatim if nothing matches. tinyglobby can't take a pattern that
+ * escapes its `cwd` (`..`) or is absolute, so split at the first glob segment and hand the literal
+ * base to it as `cwd`, matching only the relative tail.
  */
 function expandGlobTarget(pattern: string): string[] {
-	// On Windows a glob may arrive with `\` separators; tinyglobby patterns are `/`-based, so fold
-	// them. On POSIX `\` is a legal filename char, so it is left intact there.
+	// tinyglobby patterns are `/`-based; fold Windows `\` separators (a legal filename char on POSIX).
 	const normalized = process.platform === 'win32' ? pattern.replaceAll('\\', '/') : pattern;
 	const segments = normalized.split('/');
 	const firstMagic = segments.findIndex((segment) => isDynamicPattern(segment));
-	// `isDynamicPattern(pattern)` was true, so some segment has magic; this guards the type only.
 	if (firstMagic === -1) {
 		return [pattern];
 	}
@@ -40,16 +32,13 @@ function expandGlobTarget(pattern: string): string[] {
 	const tail = segments.slice(firstMagic).join('/');
 	let matches: string[];
 	try {
-		// `onlyFiles: false` so directory targets match (the common case is package dirs);
-		// `expandDirectories: false` keeps `*` non-recursive, like a shell.
+		// Match dirs too (the common target), and keep `*` non-recursive like a shell.
 		matches = globSync(tail, { cwd: resolve(base), onlyFiles: false, expandDirectories: false });
 	} catch {
-		// A malformed pattern or unreadable dir keeps the target verbatim, so it surfaces as a clear
-		// per-target error rather than aborting the whole run.
+		// A bad pattern or unreadable dir is kept verbatim, surfacing as a per-target error.
 		return [pattern];
 	}
-	// tinyglobby returns matches relative to `base`'s cwd (dirs with a trailing slash); re-prefix with
-	// the original (possibly relative) base so a target reads naturally and resolves the same.
+	// tinyglobby returns cwd-relative matches (dirs trailing-slashed); re-prefix with the literal base.
 	return matches.length > 0
 		? matches.toSorted().map((match) => `${base}/${match.replace(/\/+$/, '')}`)
 		: [pattern];
