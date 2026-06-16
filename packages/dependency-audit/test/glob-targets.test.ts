@@ -11,10 +11,17 @@ import { expandGlobTargets } from '../src/glob-targets.ts';
  * runner's cwd.
  */
 describe('expandGlobTargets', () => {
+	/*
+	 * `dir` (native separators) seeds the filesystem; `base` is its `/`-spelled form — the expander
+	 * normalizes patterns to `/`, so a matched target reads back with `/` on every OS (a real call
+	 * passes `/` too). Patterns and expectations use `base`.
+	 */
 	let dir: string;
+	let base: string;
 
 	beforeAll(() => {
 		dir = mkdtempSync(join(tmpdir(), 'da-glob-unit-'));
+		base = dir.replaceAll('\\', '/');
 		mkdirSync(join(dir, 'pkg-a'));
 		mkdirSync(join(dir, 'pkg-b'));
 		mkdirSync(join(dir, '.hidden'));
@@ -23,44 +30,44 @@ describe('expandGlobTargets', () => {
 	});
 
 	it('expands `<base>/*` to every immediate child — files and dirs, dotfiles excluded', () => {
-		expect(expandGlobTargets([`${dir}/*`])).toEqual([
-			`${dir}/pkg-a`,
-			`${dir}/pkg-b`,
-			`${dir}/readme.md`,
+		expect(expandGlobTargets([`${base}/*`])).toEqual([
+			`${base}/pkg-a`,
+			`${base}/pkg-b`,
+			`${base}/readme.md`,
 		]);
 	});
 
 	it('matches a partial-segment glob (`pkg-*`) and a single-char `?`', () => {
-		expect(expandGlobTargets([`${dir}/pkg-*`])).toEqual([`${dir}/pkg-a`, `${dir}/pkg-b`]);
-		expect(expandGlobTargets([`${dir}/pkg-?`])).toEqual([`${dir}/pkg-a`, `${dir}/pkg-b`]);
+		expect(expandGlobTargets([`${base}/pkg-*`])).toEqual([`${base}/pkg-a`, `${base}/pkg-b`]);
+		expect(expandGlobTargets([`${base}/pkg-?`])).toEqual([`${base}/pkg-a`, `${base}/pkg-b`]);
 	});
 
 	it('matches dotfiles only when the segment is itself dot-led', () => {
-		expect(expandGlobTargets([`${dir}/.*`])).toEqual([`${dir}/.hidden`]);
+		expect(expandGlobTargets([`${base}/.*`])).toEqual([`${base}/.hidden`]);
 	});
 
 	it('expands a multi-segment tail (`*/deep.js`)', () => {
-		expect(expandGlobTargets([`${dir}/*/deep.js`])).toEqual([`${dir}/pkg-a/deep.js`]);
+		expect(expandGlobTargets([`${base}/*/deep.js`])).toEqual([`${base}/pkg-a/deep.js`]);
 	});
 
 	it('resolves a `..` in the base (the tail is matched under the resolved dir)', () => {
 		// `<dir>/pkg-a/..` resolves to `<dir>`; the literal base is preserved in the returned target.
-		expect(expandGlobTargets([`${dir}/pkg-a/../pkg-*`])).toEqual([
-			`${dir}/pkg-a/../pkg-a`,
-			`${dir}/pkg-a/../pkg-b`,
+		expect(expandGlobTargets([`${base}/pkg-a/../pkg-*`])).toEqual([
+			`${base}/pkg-a/../pkg-a`,
+			`${base}/pkg-a/../pkg-b`,
 		]);
 	});
 
 	it('keeps a pattern that matches nothing verbatim (surfaces as a clear not-found later)', () => {
-		expect(expandGlobTargets([`${dir}/__none__*`])).toEqual([`${dir}/__none__*`]);
+		expect(expandGlobTargets([`${base}/__none__*`])).toEqual([`${base}/__none__*`]);
 	});
 
 	it('does not de-duplicate — overlapping globs each expand in full', () => {
-		expect(expandGlobTargets([`${dir}/pkg-*`, `${dir}/pkg-*`])).toEqual([
-			`${dir}/pkg-a`,
-			`${dir}/pkg-b`,
-			`${dir}/pkg-a`,
-			`${dir}/pkg-b`,
+		expect(expandGlobTargets([`${base}/pkg-*`, `${base}/pkg-*`])).toEqual([
+			`${base}/pkg-a`,
+			`${base}/pkg-b`,
+			`${base}/pkg-a`,
+			`${base}/pkg-b`,
 		]);
 	});
 
@@ -74,8 +81,8 @@ describe('expandGlobTargets', () => {
 
 	it('leaves magic-free targets, and slash-free bare globs, untouched', () => {
 		// `*`/`pkg-*` without a path separator read as specs (use `./*`), so they are kept verbatim.
-		expect(expandGlobTargets([`${dir}/pkg-a`, './local', '*', 'pkg-*'])).toEqual([
-			`${dir}/pkg-a`,
+		expect(expandGlobTargets([`${base}/pkg-a`, './local', '*', 'pkg-*'])).toEqual([
+			`${base}/pkg-a`,
 			'./local',
 			'*',
 			'pkg-*',
