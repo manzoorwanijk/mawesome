@@ -32,18 +32,8 @@ interface MemoryNode {
 	content?: string;
 }
 
-/*
- * The tree is POSIX-keyed, but the audit core joins paths with the platform's `node:path` — which
- * is win32 (backslashes) when these adapters run on Windows-Node (the test suite). Fold `\` to `/`
- * so a win32-joined lookup still resolves; a browser already passes POSIX paths, so this is a no-op there.
- */
-const toPosix = (path: string): string => path.replace(/\\/g, '/');
-
 // Strip trailing slashes so `/a` and `/a/` are the same key; `/` stays `/`.
-const norm = (path: string): string => {
-	const posix = toPosix(path);
-	return posix === '/' ? '/' : posix.replace(/\/+$/, '');
-};
+const norm = (path: string): string => (path === '/' ? '/' : path.replace(/\/+$/, ''));
 
 /**
  * An in-memory filesystem keyed by absolute POSIX paths — the browser adapter, and the
@@ -73,17 +63,15 @@ export function createMemoryFileSystem(): WritableFileSystem {
 			nodes.set(key, { type: 'file', content });
 		},
 		readFile(path) {
-			// Separators are folded to `/`, but a trailing slash is preserved so a file lookup on a
-			// directory spelling still misses (matches Node).
-			const key = toPosix(path);
-			const node = nodes.get(key);
+			// A trailing slash denotes a directory; a file lookup must miss (matches Node).
+			const node = nodes.get(path);
 			if (node?.type !== 'file' || node.content === undefined) {
 				throw new Error(`ENOENT: no such file: ${path}`);
 			}
 			return node.content;
 		},
 		isFile(path) {
-			return nodes.get(toPosix(path))?.type === 'file';
+			return nodes.get(path)?.type === 'file';
 		},
 		isDirectory(path) {
 			return nodes.get(norm(path))?.type === 'dir';

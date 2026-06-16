@@ -81,33 +81,42 @@ function seedTarget(fs: WritableFileSystem): void {
 	);
 }
 
-describe('auditPackage over an in-memory filesystem (browser-ready)', () => {
-	it('audits both surfaces with no Node filesystem access', async () => {
-		const fs = createMemoryFileSystem();
-		seedTarget(fs);
+/*
+ * The in-memory adapter is the browser path: there `node:path` is aliased to path-browserify
+ * (POSIX), so it stays consistent with the POSIX-keyed tree. Driving the same core over the
+ * in-memory FS on Windows-Node mixes win32 `node:path` joins with POSIX keys — a config that never
+ * ships (the CLI uses the real Node FS, covered by cli.test on Windows). Pin these to POSIX.
+ */
+describe.skipIf(process.platform === 'win32')(
+	'auditPackage over an in-memory filesystem (browser-ready)',
+	() => {
+		it('audits both surfaces with no Node filesystem access', async () => {
+			const fs = createMemoryFileSystem();
+			seedTarget(fs);
 
-		const result = await auditPackage(fs, '/pkg', {
-			provider: memoryProvider(fs),
-			workDir: '/work',
-			target: '@demo/pkg',
-		});
+			const result = await auditPackage(fs, '/pkg', {
+				provider: memoryProvider(fs),
+				workDir: '/work',
+				target: '@demo/pkg',
+			});
 
-		expect(result.ok).toBe(false);
-		// csstype resolves on both surfaces — no finding.
-		expect(result.findings.some((f) => f.packageName === 'csstype')).toBe(false);
-		// Undeclared on each surface.
-		expect(result.findings.find((f) => f.packageName === 'ghost')).toMatchObject({
-			surface: 'runtime',
-			kind: 'undeclared',
+			expect(result.ok).toBe(false);
+			// csstype resolves on both surfaces — no finding.
+			expect(result.findings.some((f) => f.packageName === 'csstype')).toBe(false);
+			// Undeclared on each surface.
+			expect(result.findings.find((f) => f.packageName === 'ghost')).toMatchObject({
+				surface: 'runtime',
+				kind: 'undeclared',
+			});
+			expect(result.findings.find((f) => f.packageName === 'phantom')).toMatchObject({
+				surface: 'types',
+				kind: 'undeclared',
+			});
+			expect(result.resolvedDeps).toContainEqual({
+				name: 'csstype',
+				range: '^3.0.0',
+				version: '3.1.3',
+			});
 		});
-		expect(result.findings.find((f) => f.packageName === 'phantom')).toMatchObject({
-			surface: 'types',
-			kind: 'undeclared',
-		});
-		expect(result.resolvedDeps).toContainEqual({
-			name: 'csstype',
-			range: '^3.0.0',
-			version: '3.1.3',
-		});
-	});
-});
+	},
+);

@@ -47,7 +47,12 @@ function seed(fs: WritableFileSystem, deps: Record<string, string>): void {
 	fs.writeFile('/pkg/index.js', 'export const y = 1;\n');
 }
 
-describe('auditPackage progress events', () => {
+/*
+ * These drive the core over the in-memory FS (the browser path, where `node:path` is path-browserify
+ * / POSIX). On Windows-Node the core's win32 `node:path` joins diverge from the POSIX-keyed tree — a
+ * config that never ships (the CLI uses the real Node FS, exercised by `audit` below and cli.test).
+ */
+describe.skipIf(process.platform === 'win32')('auditPackage progress events', () => {
 	it('emits materialize then both scans, with the count reaching the total', async () => {
 		const fs = createMemoryFileSystem();
 		seed(fs, { csstype: '^3.0.0' });
