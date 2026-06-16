@@ -13,7 +13,7 @@ A **target** is one of:
 
 Multiple targets may be passed; each is audited independently and isolated — one target failing to acquire/audit reports as an error for that target and never discards the others.
 
-A target containing a glob (e.g. `./packages/*`) is expanded by the CLI itself, so it behaves the same on Windows — where `cmd.exe` does not expand globs — as in a POSIX shell. A POSIX shell expands the pattern before the CLI sees it; the expanded paths are magic-free and pass straight through. A pattern matching nothing is kept as-is, so it surfaces as a clear "not found" error rather than silently dropping out of the run.
+A path-shaped glob target (e.g. `./packages/*`, `../../packages/*`) is expanded by the CLI itself, so it behaves the same on Windows — where `cmd.exe`/PowerShell do not expand globs — as in a POSIX shell. The magic (`*`, `?`) must be in the final path segment, which is matched against the base directory's immediate children (non-recursive, like a shell's `*`); the base may use `.`, `..`, or be absolute. A POSIX shell that already expanded the pattern passes magic-free paths straight through, and a pattern matching nothing is kept as-is so it surfaces as a clear "not found" error. A published spec or URL is never treated as a glob, so `lodash@*` still resolves against the registry.
 
 A local path that **exists but is not an auditable package** — a non-tarball file, or a directory without a `package.json` — is **skipped** (a neutral `↷` notice), not treated as an error. This is what keeps a stray glob match (`packages/*` catching a `README.md`) from turning a findings run (exit 1) into an error run (exit 2). A path that does **not** exist, or a spec that fails to resolve, is still a hard error.
 

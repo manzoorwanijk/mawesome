@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { existsSync, globSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { parseArgs, styleText } from 'node:util';
 import { SkippedTargetError } from './acquire.ts';
@@ -7,6 +7,7 @@ import { audit } from './audit.ts';
 import { color, colorErr } from './color.ts';
 import { mapLimit } from './concurrency.ts';
 import { correlateRootCauses, isCollapsed, resultFails } from './correlate.ts';
+import { expandGlobTargets } from './glob-targets.ts';
 import { parseIgnoreRules } from './ignore.ts';
 import { createTtyReporter } from './progress-tty.ts';
 import type { AuditResult, Finding, IgnoreRule } from './types.ts';
@@ -228,29 +229,6 @@ async function main(): Promise<number> {
 	// An audit that could not run at all is a harder failure (exit 2) than findings (exit 1);
 	// a skip is neutral, so a stray glob match never escalates a findings run into an error run.
 	return anyError ? 2 : anyFinding || anyCoverageGap || anyUnusedIgnore ? 1 : 0;
-}
-
-/** Glob magic that triggers internal expansion — `*`, `?`, `[`, `{`. */
-const GLOB_MAGIC = /[*?[{]/;
-
-/**
- * Expands any positional that contains glob magic via `node:fs` globSync, so a pattern like
- * `./packages/*` resolves the same regardless of the invoking shell: a POSIX shell expands it
- * before we see it (those concrete paths are magic-free and pass straight through), while Windows
- * `cmd.exe` hands us the literal pattern. Magic-free targets — concrete paths, specs, URLs — are
- * untouched. A pattern that matches nothing is kept verbatim so it surfaces as a clear
- * "Target not found" instead of vanishing (and so a registry spec like `lodash@*` still reaches
- * pacote). Matches are sorted for deterministic output. Like a POSIX shell, this does not
- * de-duplicate: a repeated target — or overlapping globs — audits each match once per occurrence.
- */
-function expandGlobTargets(positionals: string[]): string[] {
-	return positionals.flatMap((positional) => {
-		if (!GLOB_MAGIC.test(positional)) {
-			return [positional];
-		}
-		const matches = globSync(positional).toSorted();
-		return matches.length > 0 ? matches : [positional];
-	});
 }
 
 /** The JSON shape per target: the result, `{ target, error }`, or `{ target, skipped }`. */

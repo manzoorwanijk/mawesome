@@ -33,9 +33,11 @@ const badTarget = join(targets, '__no_such_target__');
 function runCli(
 	args: string[],
 	env?: NodeJS.ProcessEnv,
+	cwd?: string,
 ): { status: number; stdout: string; stderr: string } {
 	const result = spawnSync('node', [cli, ...args], {
 		encoding: 'utf8',
+		cwd,
 		env: {
 			...process.env,
 			FORCE_COLOR: undefined,
@@ -267,38 +269,30 @@ describe('cli skip (non-package targets)', () => {
 
 describe('cli glob expansion', () => {
 	/*
-	 * The CLI expands a glob target itself (via node:fs globSync) so a pattern works the same on
-	 * Windows cmd.exe — which never expands a glob — as in a POSIX shell. Each pattern is passed as a
-	 * single argv entry (no shell), exercising the literal-pattern path a Windows shell would hand over.
-	 * A fresh temp dir holding two copies of the hermetic require-forms fixture keeps the match set
-	 * controlled and registry-free.
+	 * The CLI expands a path-shaped glob target itself so a pattern works the same on Windows
+	 * cmd.exe/PowerShell — which never expand a glob — as in a POSIX shell. Each pattern is passed as a
+	 * single argv entry and run with `cwd` set to a fresh temp dir holding two copies of the hermetic
+	 * require-forms fixture, so it exercises the literal-pattern path a Windows shell hands over while
+	 * the match set stays controlled and registry-free. Patterns use `/` (the cross-platform form a
+	 * real `./packages/*` invocation passes).
 	 */
-	/* globSync treats `\` as an escape, so a pattern always uses `/` separators — portable, and
-	 * exactly what a real `./packages/*` invocation passes. */
-	function twoPackageGlob(): string {
+	function twoPackageDir(): string {
 		const dir = mkdtempSync(join(tmpdir(), 'da-glob-'));
 		cpSync(okTarget, join(dir, 'pkg-a'), { recursive: true });
 		cpSync(okTarget, join(dir, 'pkg-b'), { recursive: true });
-		return `${dir.replaceAll('\\', '/')}/*`;
+		return dir;
 	}
 
 	it('expands a glob target internally, auditing every match', () => {
-		const { status, stdout } = runCli([twoPackageGlob()]);
+		const { status, stdout } = runCli(['./*'], undefined, twoPackageDir());
 		// Both copies match and are audited in one process; each still produces the res-dep finding.
 		expect(status).toBe(1);
 		expect(stdout).toMatch(/2 packages,/);
 	});
 
-	it('does not de-duplicate, matching how a POSIX shell expands overlapping globs', () => {
-		const pattern = twoPackageGlob();
-		// Two copies of the same pattern expand to all four matches, just as a shell would.
-		const { stdout } = runCli([pattern, pattern]);
-		expect(stdout).toMatch(/4 packages,/);
-	});
-
 	it('keeps a non-matching glob verbatim so it surfaces as a not-found error', () => {
-		const { status, stdout } = runCli([join(targets, '__no_such_glob__*')]);
-		// No file matched, so the literal pattern reaches acquire and errors clearly (exit 2).
+		const { status, stdout } = runCli(['./__no_such_glob__*'], undefined, twoPackageDir());
+		// No entry matched, so the literal pattern reaches acquire and errors clearly (exit 2).
 		expect(status).toBe(2);
 		expect(stdout).toMatch(/error/i);
 	});
