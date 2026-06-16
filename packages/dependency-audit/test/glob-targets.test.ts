@@ -53,6 +53,11 @@ describe('expandGlobTargets', () => {
 		expect(expandGlobTargets([`${base}/__none__*`])).toEqual([`${base}/__none__*`]);
 	});
 
+	it('keeps a brace group spanning `/` verbatim (no base/tail split possible)', () => {
+		// Dynamic as a whole but in no single `/`-segment, so it cannot be split — left untouched.
+		expect(expandGlobTargets(['{a/b,c}'])).toEqual(['{a/b,c}']);
+	});
+
 	it('does not de-duplicate — overlapping globs each expand in full', () => {
 		expect(expandGlobTargets([`${base}/pkg-*`, `${base}/pkg-*`])).toEqual([
 			`${base}/pkg-a`,

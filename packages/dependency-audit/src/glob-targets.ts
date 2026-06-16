@@ -8,11 +8,14 @@ import { looksLikeSpec } from './acquire.ts';
  * A pattern matching nothing is kept verbatim. Like a shell, this does not de-duplicate.
  */
 export function expandGlobTargets(positionals: string[]): string[] {
-	return positionals.flatMap((positional) =>
-		isDynamicPattern(positional) && !looksLikeSpec(positional)
-			? expandGlobTarget(positional)
-			: [positional],
-	);
+	return positionals.flatMap((positional) => {
+		// tinyglobby patterns are `/`-based; fold Windows `\` (a legal filename char on POSIX) before
+		// classifying, so a backslash-spelled glob is recognized rather than mistaken for a spec.
+		const pattern = process.platform === 'win32' ? positional.replaceAll('\\', '/') : positional;
+		return isDynamicPattern(pattern) && !looksLikeSpec(pattern)
+			? expandGlobTarget(pattern)
+			: [positional];
+	});
 }
 
 /**
@@ -21,14 +24,15 @@ export function expandGlobTargets(positionals: string[]): string[] {
  * base to it as `cwd`, matching only the relative tail.
  */
 function expandGlobTarget(pattern: string): string[] {
-	// tinyglobby patterns are `/`-based; fold Windows `\` separators (a legal filename char on POSIX).
-	const normalized = process.platform === 'win32' ? pattern.replaceAll('\\', '/') : pattern;
-	const segments = normalized.split('/');
+	const segments = pattern.split('/');
 	const firstMagic = segments.findIndex((segment) => isDynamicPattern(segment));
+	// A brace group spanning `/` (e.g. `{a/b,c}`) is dynamic as a whole but in no single segment, so
+	// it has no base/tail split — keep it verbatim.
 	if (firstMagic === -1) {
 		return [pattern];
 	}
-	const base = segments.slice(0, firstMagic).join('/') || '.';
+	// An empty leading segment means an absolute pattern, whose base is the root rather than cwd.
+	const base = segments.slice(0, firstMagic).join('/') || (segments[0] === '' ? '/' : '.');
 	const tail = segments.slice(firstMagic).join('/');
 	let matches: string[];
 	try {
@@ -39,7 +43,8 @@ function expandGlobTarget(pattern: string): string[] {
 		return [pattern];
 	}
 	// tinyglobby returns cwd-relative matches (dirs trailing-slashed); re-prefix with the literal base.
+	const prefix = base === '/' ? '/' : `${base}/`;
 	return matches.length > 0
-		? matches.toSorted().map((match) => `${base}/${match.replace(/\/+$/, '')}`)
+		? matches.toSorted().map((match) => `${prefix}${match.replace(/\/+$/, '')}`)
 		: [pattern];
 }
