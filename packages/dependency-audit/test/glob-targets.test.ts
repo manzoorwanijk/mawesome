@@ -6,8 +6,9 @@ import { expandGlobTargets } from '../src/glob-targets.ts';
 
 /*
  * Hermetic unit coverage for the CLI's internal glob expansion — no subprocess, no registry. A
- * fixture dir holds two package-like dirs, a stray file, and a dotdir; patterns use the dir's
- * absolute path as the (literal) base so matching never depends on the test runner's cwd.
+ * fixture dir holds two package-like dirs (one with a nested file), a stray file, and a dotdir;
+ * patterns use the dir's absolute path as the (literal) base so matching never depends on the test
+ * runner's cwd.
  */
 describe('expandGlobTargets', () => {
 	let dir: string;
@@ -18,6 +19,7 @@ describe('expandGlobTargets', () => {
 		mkdirSync(join(dir, 'pkg-b'));
 		mkdirSync(join(dir, '.hidden'));
 		writeFileSync(join(dir, 'readme.md'), '# x');
+		writeFileSync(join(dir, 'pkg-a', 'deep.js'), 'x');
 	});
 
 	it('expands `<base>/*` to every immediate child — files and dirs, dotfiles excluded', () => {
@@ -35,6 +37,18 @@ describe('expandGlobTargets', () => {
 
 	it('matches dotfiles only when the segment is itself dot-led', () => {
 		expect(expandGlobTargets([`${dir}/.*`])).toEqual([`${dir}/.hidden`]);
+	});
+
+	it('expands a multi-segment tail (`*/deep.js`)', () => {
+		expect(expandGlobTargets([`${dir}/*/deep.js`])).toEqual([`${dir}/pkg-a/deep.js`]);
+	});
+
+	it('resolves a `..` in the base (the tail is matched under the resolved dir)', () => {
+		// `<dir>/pkg-a/..` resolves to `<dir>`; the literal base is preserved in the returned target.
+		expect(expandGlobTargets([`${dir}/pkg-a/../pkg-*`])).toEqual([
+			`${dir}/pkg-a/../pkg-a`,
+			`${dir}/pkg-a/../pkg-b`,
+		]);
 	});
 
 	it('keeps a pattern that matches nothing verbatim (surfaces as a clear not-found later)', () => {
@@ -58,15 +72,13 @@ describe('expandGlobTargets', () => {
 		]);
 	});
 
-	it('leaves magic-free targets untouched', () => {
-		expect(expandGlobTargets([`${dir}/pkg-a`, './local', 'pkg-spec'])).toEqual([
+	it('leaves magic-free targets, and slash-free bare globs, untouched', () => {
+		// `*`/`pkg-*` without a path separator read as specs (use `./*`), so they are kept verbatim.
+		expect(expandGlobTargets([`${dir}/pkg-a`, './local', '*', 'pkg-*'])).toEqual([
 			`${dir}/pkg-a`,
 			'./local',
-			'pkg-spec',
+			'*',
+			'pkg-*',
 		]);
-	});
-
-	it('does not expand magic in a non-final segment — kept verbatim', () => {
-		expect(expandGlobTargets([`${dir}/*/nested`])).toEqual([`${dir}/*/nested`]);
 	});
 });

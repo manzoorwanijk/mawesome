@@ -1,68 +1,56 @@
-import { readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { globSync, isDynamicPattern } from 'tinyglobby';
 import { looksLikeSpec } from './acquire.ts';
-
-/** Glob magic that triggers internal expansion — `*` (any run) and `?` (one char). */
-const GLOB_MAGIC = /[*?]/;
 
 /**
  * Expands path-shaped glob targets ourselves so a pattern like `./packages/*` resolves the same
  * regardless of the invoking shell: a POSIX shell expands it before we see it (those concrete
  * paths are magic-free and pass straight through), while Windows `cmd.exe`/PowerShell hand us the
- * literal pattern. The magic must be confined to the final path segment — the leading base (which
- * may use `.`, `..`, or be absolute) is literal — and the segment is matched against the base
- * directory's immediate children, mirroring a shell's non-recursive `*`. Specs and URLs
- * (`looksLikeSpec`) are never globbed, so `lodash@*` still reaches pacote. A pattern that matches
- * nothing is kept verbatim, surfacing as a clear "Target not found". Like a POSIX shell, this does
- * not de-duplicate: a repeated target — or overlapping globs — audits each match once per occurrence.
- *
- * Hand-rolled rather than `node:fs`'s `globSync` because that only exists on Node 22+, below the
- * package's `^20.19` floor; replace this with `globSync` once Node 20 support is dropped.
+ * literal pattern. Specs and URLs (`looksLikeSpec`) are never globbed, so `lodash@*` still reaches
+ * pacote. A pattern that matches nothing is kept verbatim, surfacing as a clear "Target not found".
+ * Like a POSIX shell, this does not de-duplicate: a repeated target — or overlapping globs — audits
+ * each match once per occurrence.
  */
 export function expandGlobTargets(positionals: string[]): string[] {
 	return positionals.flatMap((positional) =>
-		GLOB_MAGIC.test(positional) && !looksLikeSpec(positional)
+		isDynamicPattern(positional) && !looksLikeSpec(positional)
 			? expandGlobTarget(positional)
 			: [positional],
 	);
 }
 
-/** Expands one path-shaped glob to its sorted matches, or keeps it verbatim if none match. */
+/**
+ * Expands one glob to its sorted matches, or keeps it verbatim if none match. tinyglobby does the
+ * filesystem matching, but it can't take a pattern that escapes its `cwd` (`..`) or is absolute —
+ * so we split the pattern at its first glob segment, hand the literal base (which *may* be `..` or
+ * absolute) to tinyglobby as `cwd`, and match only the relative tail under it. Delegating the walk
+ * to a maintained matcher keeps symlink/traversal/regex handling out of our hands.
+ */
 function expandGlobTarget(pattern: string): string[] {
-	const slash = pattern.lastIndexOf('/');
-	const segment = slash === -1 ? pattern : pattern.slice(slash + 1);
-	// `<base>` is the literal lead-in (`packages`, `../../packages`, `/abs`, or `.` for a bare glob).
-	const base = slash === -1 ? '.' : pattern.slice(0, slash) || '/';
-	const prefix = slash === -1 ? './' : `${base === '/' ? '' : base}/`;
-	// Only the final segment may be a glob; magic in the base isn't expanded (kept verbatim).
-	if (GLOB_MAGIC.test(base)) {
+	// On Windows a glob may arrive with `\` separators; tinyglobby patterns are `/`-based, so fold
+	// them. On POSIX `\` is a legal filename char, so it is left intact there.
+	const normalized = process.platform === 'win32' ? pattern.replaceAll('\\', '/') : pattern;
+	const segments = normalized.split('/');
+	const firstMagic = segments.findIndex((segment) => isDynamicPattern(segment));
+	// `isDynamicPattern(pattern)` was true, so some segment has magic; this guards the type only.
+	if (firstMagic === -1) {
 		return [pattern];
 	}
-	const matcher = segmentToRegExp(segment);
-	// A leading dot in a name is only matched when the pattern's segment is itself dot-led (shell rule).
-	const includeDotfiles = segment.startsWith('.');
-	const matches = safeReaddir(resolve(base))
-		.filter((name) => (includeDotfiles || !name.startsWith('.')) && matcher.test(name))
-		.toSorted()
-		.map((name) => `${prefix}${name}`);
-	return matches.length > 0 ? matches : [pattern];
-}
-
-/** Compiles a single path segment's glob (`*` → any run, `?` → one char) to an anchored RegExp. */
-function segmentToRegExp(segment: string): RegExp {
-	let source = '^';
-	for (const char of segment) {
-		source +=
-			char === '*' ? '[^/]*' : char === '?' ? '[^/]' : char.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-	}
-	return new RegExp(`${source}$`);
-}
-
-/** Directory entries, or `[]` if the path is missing or unreadable (a stray base never throws). */
-function safeReaddir(dir: string): string[] {
+	const base = segments.slice(0, firstMagic).join('/') || '.';
+	const tail = segments.slice(firstMagic).join('/');
+	let matches: string[];
 	try {
-		return readdirSync(dir);
+		// `onlyFiles: false` so directory targets match (the common case is package dirs);
+		// `expandDirectories: false` keeps `*` non-recursive, like a shell.
+		matches = globSync(tail, { cwd: resolve(base), onlyFiles: false, expandDirectories: false });
 	} catch {
-		return [];
+		// A malformed pattern or unreadable dir keeps the target verbatim, so it surfaces as a clear
+		// per-target error rather than aborting the whole run.
+		return [pattern];
 	}
+	// tinyglobby returns matches relative to `base`'s cwd (dirs with a trailing slash); re-prefix with
+	// the original (possibly relative) base so a target reads naturally and resolves the same.
+	return matches.length > 0
+		? matches.toSorted().map((match) => `${base}/${match.replace(/\/+$/, '')}`)
+		: [pattern];
 }
