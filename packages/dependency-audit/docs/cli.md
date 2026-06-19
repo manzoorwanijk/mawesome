@@ -13,7 +13,7 @@ A **target** is one of:
 
 Multiple targets may be passed; each is audited independently and isolated — one target failing to acquire/audit reports as an error for that target and never discards the others.
 
-A path-shaped glob (e.g. `./packages/*`, `../../packages/*`) is expanded by the CLI itself, so it behaves the same on Windows — where `cmd.exe`/PowerShell don't expand globs — as in a POSIX shell. The base may use `.`, `..`, or be absolute. A pattern matching nothing is kept as-is, surfacing as a clear "not found" error, and a published spec or URL is never globbed, so `lodash@*` still resolves against the registry.
+A path-shaped glob (e.g. `./packages/*`, `../../packages/*`) is expanded by the CLI itself, so it behaves the same on Windows — where `cmd.exe`/PowerShell don't expand globs — as in a POSIX shell. **Quote the pattern** (`"./packages/*"`) in a script so a POSIX shell doesn't expand it first; then the CLI does the expansion identically on every OS (the result is the same either way, but quoting keeps the command portable). The base may use `.`, `..`, or be absolute. A pattern matching nothing is kept as-is, surfacing as a clear "not found" error, and a published spec or URL is never globbed, so `lodash@*` still resolves against the registry.
 
 A local path that **exists but is not an auditable package** — a non-tarball file, or a directory without a `package.json` — is **skipped** (a neutral `↷` notice), not treated as an error. This is what keeps a stray glob match (`packages/*` catching a `README.md`) from turning a findings run (exit 1) into an error run (exit 2). A path that does **not** exist, or a spec that fails to resolve, is still a hard error.
 
@@ -61,16 +61,16 @@ dependency-audit lodash@4.17.21
 dependency-audit @sindresorhus/is@latest
 
 # A whole monorepo's built packages, machine-readable, for CI
-dependency-audit --json ./packages/*
+dependency-audit --json "./packages/*"
 
 # Audit the browser export condition instead of the default Node profile
 dependency-audit --condition browser ./packages/my-lib
 
 # Treat "types not built / unreachable" as a hard failure
-dependency-audit --require-types ./packages/*
+dependency-audit --require-types "./packages/*"
 
 # Don't let an internal producer's type gap fail every consumer — fix the producer
-dependency-audit --collapse-root-cause ./packages/*
+dependency-audit --collapse-root-cause "./packages/*"
 
 # Suppress a known-intentional optional import
 dependency-audit --ignore optional-plugin --ignore react/jsx-runtime ./packages/my-lib
@@ -99,10 +99,10 @@ The CLI does not know about your repo layout — point it at the **built** packa
 
 ```sh
 pnpm -r exec dependency-audit .      # one process per package (simple, fully isolated)
-dependency-audit ./packages/*        # one process, bounded-concurrency, isolated per target
+dependency-audit "./packages/*"        # one process, bounded-concurrency, isolated per target
 ```
 
-The `./packages/*` form is expanded by the CLI when the shell doesn't (Windows `cmd.exe`), so the same command works everywhere.
+Quote the glob (`"./packages/*"`) so the CLI expands it rather than the shell — the same command then works everywhere, including Windows `cmd.exe`/PowerShell, which don't expand globs.
 
 Local `@scope/*` dependencies declared as `file:`/`workspace:`/`link:` are resolved by linking the already-built sibling, so you do not need to publish or rebuild siblings first — just build them.
 
