@@ -14,7 +14,11 @@ export interface FileSystem {
 	isDirectory(path: string): boolean;
 	/** Immediate child names of a directory (`[]` if missing). */
 	listDir(path: string): string[];
-	/** File paths under `path`, relative to it, recursively. */
+	/**
+	 * Regular-file paths under `path`, relative to it, recursively. Implementations must not follow
+	 * symlinks and must skip `node_modules`: a real package tree links into a shared dependency store
+	 * (pnpm's `.store`, or npm's linked strategy) whose cyclic graph would otherwise be walked in full.
+	 */
 	readdirRecursive(path: string): string[];
 	/** Best-effort real path; returns the input when unknown. */
 	realpath(path: string): string;
@@ -96,8 +100,13 @@ export function createMemoryFileSystem(): WritableFileSystem {
 			const prefix = base === '/' ? '/' : `${base}/`;
 			const out: string[] = [];
 			for (const [key, node] of nodes) {
-				if (node.type === 'file' && key.startsWith(prefix)) {
-					out.push(key.slice(prefix.length));
+				if (node.type !== 'file' || !key.startsWith(prefix)) {
+					continue;
+				}
+				const rel = key.slice(prefix.length);
+				// Skip bundled deps, matching the contract and the Node implementation (no symlinks here).
+				if (!rel.split('/').includes('node_modules')) {
+					out.push(rel);
 				}
 			}
 			return out;
