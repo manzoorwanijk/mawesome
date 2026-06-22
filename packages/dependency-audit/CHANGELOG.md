@@ -1,5 +1,13 @@
 # @mawesome/dependency-audit
 
+## 0.4.5
+
+### Patch Changes
+
+- [#64](https://github.com/manzoorwanijk/mawesome/pull/64) [`655dd79`](https://github.com/manzoorwanijk/mawesome/commit/655dd792b99609a6f365df35d070f1a4b685289d) Thanks [@manzoorwanijk](https://github.com/manzoorwanijk)! - Document quoting glob targets (e.g. `"./packages/*"`) in scripts so the CLI, not the shell, expands them — keeping the command portable across shells, including Windows.
+
+- [#66](https://github.com/manzoorwanijk/mawesome/pull/66) [`383a0d6`](https://github.com/manzoorwanijk/mawesome/commit/383a0d6229bbc8ba3e69a72c689f02504e8e9610) Thanks [@manzoorwanijk](https://github.com/manzoorwanijk)! - Fix an out-of-memory crash when auditing a package whose `node_modules` links into a shared store (e.g. pnpm's or npm with install-strategy=linked).
+
 ## 0.4.4
 
 ### Patch Changes
