@@ -20,6 +20,19 @@ describe('createMemoryFileSystem', () => {
 		expect(fs.listDir('/a')).toEqual(['b']);
 		expect(fs.readdirRecursive('/')).toContain('a/b/file.js');
 	});
+
+	it('excludes node_modules from readdirRecursive, matching the port contract', () => {
+		const fs = createMemoryFileSystem();
+		fs.writeFile('/pkg/index.js', 'x');
+		fs.writeFile('/pkg/node_modules/dep/index.js', 'y');
+		fs.writeFile('/pkg/src/node_modules/nested.js', 'z');
+		// A lookalike segment is a real file, not a bundled dep — it must be kept.
+		fs.writeFile('/pkg/node_modules-foo/keep.js', 'k');
+		expect(fs.readdirRecursive('/pkg').toSorted()).toEqual([
+			'index.js',
+			'node_modules-foo/keep.js',
+		]);
+	});
 });
 
 /*
