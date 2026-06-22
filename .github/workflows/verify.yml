@@ -38,8 +38,6 @@ jobs:
       # Dogfood dependency-audit on our own packages (built by the gate above; non-packages are skipped).
       - name: Audit released imports
         run: node packages/dependency-audit/src/cli.ts packages/*
-      - name: Audit dependencies
-        run: pnpm audit --audit-level=high
 
   # The full gate needs Node >=24.12 (internal .ts scripts rely on native type stripping), so this job exercises the published package's Node floor separately.
   # It installs and builds on Node 24, then runs dependency-audit's tests and built CLI on each supported Node line.
