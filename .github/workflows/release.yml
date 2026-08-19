@@ -66,11 +66,12 @@ jobs:
         with:
           client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
-      # Credentials persist here (the App token) so changesets can push the Version PR branch.
+      # No persisted credentials: changesets/action v2 pushes commits and tags via the
+      # GitHub API using the `github-token` input, not the git CLI.
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          token: ${{ steps.app-token.outputs.token }}
+          persist-credentials: false
       - name: Set up pnpm
         uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
       # Node 24 bundles npm >= 11.5.1, which OIDC trusted publishing requires.
@@ -83,11 +84,11 @@ jobs:
       - name: Build packages
         run: pnpm build:packages # dist must exist for `changeset publish` (apps don't publish)
       - name: Create Version PR or publish
-        uses: changesets/action@198f833dd7d863100ea6e28967bc9a9fdefadb0a # v2.1.0
+        uses: changesets/action@8488615a623b1b9c987934bb89eae8af6a946ac1 # v2.1.1
         with:
-          title: Prep release
-          version: pnpm run version
-          publish: pnpm run release
-        env:
           # App token so the opened Version PR triggers CI; npm publish stays OIDC (id-token).
-          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+          # v2 configures auth only via this input; the GITHUB_TOKEN env var is not an alternative.
+          github-token: ${{ steps.app-token.outputs.token }}
+          pr-title: Prep release
+          version-script: pnpm run version
+          publish-script: pnpm run release
