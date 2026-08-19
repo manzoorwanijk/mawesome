@@ -87,7 +87,7 @@ jobs:
         uses: changesets/action@8488615a623b1b9c987934bb89eae8af6a946ac1 # v2.1.1
         with:
           # App token so the opened Version PR triggers CI; npm publish stays OIDC (id-token).
-          # v2 reads only this input, never the GITHUB_TOKEN environment variable.
+          # v2 configures auth only via this input; the GITHUB_TOKEN env var is not an alternative.
           github-token: ${{ steps.app-token.outputs.token }}
           pr-title: Prep release
           version-script: pnpm run version
