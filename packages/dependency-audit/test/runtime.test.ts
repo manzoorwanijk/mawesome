@@ -103,6 +103,28 @@ describe('audit (runtime surface)', () => {
 		});
 	});
 
+	it('collects static imports from a `.js` ESM bundle in a package without `"type": "module"`', async () => {
+		const result = await run('runtime-esm-js');
+		expect(result.findings.find((f) => f.packageName === 'leftpad')).toBeUndefined();
+		// The file is ESM, so a local `require` identifier is not a CJS call.
+		expect(result.findings.find((f) => f.packageName === 'local-require')).toBeUndefined();
+		for (const name of ['missingdep', 'reexported-missing']) {
+			expect(result.findings.find((f) => f.packageName === name)).toMatchObject({
+				surface: 'runtime',
+				kind: 'undeclared',
+			});
+		}
+	});
+
+	it('keeps collecting require() from a typeless `.js` CJS file that also uses dynamic import()', async () => {
+		const result = await run('runtime-cjs-js');
+		expect(result.findings.find((f) => f.packageName === 'leftpad')).toBeUndefined();
+		expect(result.findings.find((f) => f.packageName === 'missingdep')).toMatchObject({
+			surface: 'runtime',
+			kind: 'undeclared',
+		});
+	});
+
 	it('extracts require.resolve, createRequire(...)(), and import-attributes specifiers', async () => {
 		const result = await run('require-forms');
 		const undeclared = (pkg: string) =>
