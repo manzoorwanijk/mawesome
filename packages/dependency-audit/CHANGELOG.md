@@ -1,5 +1,11 @@
 # @mawesome/dependency-audit
 
+## 0.4.6
+
+### Patch Changes
+
+- [#74](https://github.com/manzoorwanijk/mawesome/pull/74) [`e8f1fb9`](https://github.com/manzoorwanijk/mawesome/commit/e8f1fb972449c6124db091ed1de1252d7956da04) Thanks [@manzoorwanijk](https://github.com/manzoorwanijk)! - Static imports in `.js` ESM bundles are now scanned even when the package has no `"type": "module"`, so their undeclared runtime dependencies are reported.
+
 ## 0.4.5
 
 ### Patch Changes
