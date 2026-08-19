@@ -1,0 +1,10 @@
+{
+	"name": "@fixture/runtime-esm-js",
+	"version": "1.0.0",
+	"exports": {
+		".": "./build/index.js"
+	},
+	"dependencies": {
+		"leftpad": "^1.0.0"
+	}
+}
