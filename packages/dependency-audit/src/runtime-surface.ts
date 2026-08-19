@@ -232,11 +232,12 @@ function isEsmFile(file: string, rootIsModule: boolean): boolean {
 /**
  * Extracts module specifiers from a JS file via the TS AST, tagged by call form.
  * Static `import`/`export … from` is collected in any context: it is a syntax error in CJS, so its presence is unambiguous evidence of ESM (e.g. an esbuild ESM bundle written as `.js` in a typeless package).
- * `require(...)` is only collected in CJS context, so a local identifier named `require` in an ESM file does not manufacture a false specifier.
+ * Such a file is then treated as ESM throughout, so `require(...)` is only collected in genuine CJS context and a local identifier named `require` does not manufacture a false specifier.
  */
 function specifiersInJs(fs: FileSystem, file: string, isEsm: boolean): RawSpecifier[] {
 	const text = fs.readFile(file);
 	const sf = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
+	const treatAsEsm = isEsm || ts.isExternalModule(sf);
 	const out: RawSpecifier[] = [];
 
 	const visit = (node: ts.Node): void => {
@@ -257,7 +258,7 @@ function specifiersInJs(fs: FileSystem, file: string, isEsm: boolean): RawSpecif
 				dynamic: false,
 			});
 		} else if (ts.isCallExpression(node)) {
-			collectCall(node, isEsm, out);
+			collectCall(node, treatAsEsm, out);
 		}
 		ts.forEachChild(node, visit);
 	};

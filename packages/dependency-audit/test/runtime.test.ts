@@ -103,9 +103,11 @@ describe('audit (runtime surface)', () => {
 		});
 	});
 
-	it('collects static imports from a `.js` ESM bundle in a package without `type: module`', async () => {
+	it('collects static imports from a `.js` ESM bundle in a package without `"type": "module"`', async () => {
 		const result = await run('runtime-esm-js');
 		expect(result.findings.find((f) => f.packageName === 'leftpad')).toBeUndefined();
+		// The file is ESM, so a local `require` identifier is not a CJS call.
+		expect(result.findings.find((f) => f.packageName === 'local-require')).toBeUndefined();
 		for (const name of ['missingdep', 'reexported-missing']) {
 			expect(result.findings.find((f) => f.packageName === name)).toMatchObject({
 				surface: 'runtime',
