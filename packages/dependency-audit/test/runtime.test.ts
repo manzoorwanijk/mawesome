@@ -116,6 +116,15 @@ describe('audit (runtime surface)', () => {
 		}
 	});
 
+	it('keeps collecting require() from a typeless `.js` CJS file that also uses dynamic import()', async () => {
+		const result = await run('runtime-cjs-js');
+		expect(result.findings.find((f) => f.packageName === 'leftpad')).toBeUndefined();
+		expect(result.findings.find((f) => f.packageName === 'missingdep')).toMatchObject({
+			surface: 'runtime',
+			kind: 'undeclared',
+		});
+	});
+
 	it('extracts require.resolve, createRequire(...)(), and import-attributes specifiers', async () => {
 		const result = await run('require-forms');
 		const undeclared = (pkg: string) =>
