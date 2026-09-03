@@ -102,15 +102,15 @@ describe('move-baseline', () => {
 		});
 	});
 
-	it('reports a baseline already at the target and still sweeps', async () => {
+	it('reports a baseline already at the target and still refreshes', async () => {
 		const { client } = harness({}, (gh) => {
 			gh.tag('pr-baseline', sha(5));
 			gh.commit(sha(11), [sha(4)]);
 			gh.pull({ number: 1, headSha: sha(11) });
 		});
-		const result = await client.moveBaseline({ force: true, sweep: true });
+		const result = await client.moveBaseline({ force: true, refreshPrStatuses: true });
 		expect(result.moves[0]).toMatchObject({ moved: false, note: 'already at the target' });
-		expect(result.sweep).toMatchObject({ written: 1 });
+		expect(result.refresh).toMatchObject({ written: 1 });
 	});
 
 	it('refuses a target that does not descend from the current baseline', async () => {
@@ -249,24 +249,26 @@ describe('move-baseline', () => {
 		await expect(client.moveBaseline({ force: true })).rejects.toThrow(/moved twice/);
 	});
 
-	it('runs the sweep against the intended baselines in a dry run', async () => {
+	it('runs the refresh against the intended baselines in a dry run', async () => {
 		const { client, github } = harness({ dryRun: true }, (gh) => {
 			gh.commit(sha(11), [sha(4)]);
 			gh.pull({ number: 1, headSha: sha(11) });
 		});
-		const result = await client.moveBaseline({ force: true, sweep: true });
+		const result = await client.moveBaseline({ force: true, refreshPrStatuses: true });
 		expect(result.moves[0]).toMatchObject({ moved: true, to: sha(5) });
 		expect(github.tags.has('pr-baseline')).toBe(false);
-		expect(result.sweep?.baselines[0]?.sha).toBe(sha(5));
-		expect(result.sweep?.entries[0]?.verdict?.kind).toBe('fail');
+		expect(result.refresh?.baselines[0]?.sha).toBe(sha(5));
+		expect(result.refresh?.entries[0]?.verdict?.kind).toBe('fail');
 		expect(github.requests(/\/statuses\//, 'POST')).toHaveLength(0);
 	});
 
-	it('resolves the creator before moving when a sweep follows', async () => {
+	it('resolves the creator before moving when a refresh follows', async () => {
 		const { client, github } = harness({ tokenIsWorkflowToken: false }, (gh) => {
 			gh.user = null;
 		});
-		await expect(client.moveBaseline({ force: true, sweep: true })).rejects.toThrow(/--creator/);
+		await expect(client.moveBaseline({ force: true, refreshPrStatuses: true })).rejects.toThrow(
+			/--creator/,
+		);
 		expect(github.tags.has('pr-baseline')).toBe(false);
 	});
 });
@@ -341,7 +343,7 @@ describe('move-baseline validation order', () => {
 });
 
 describe('move-baseline after a successful move', () => {
-	it('re-reads the tags so a writer that advanced them afterwards is not undone by the sweep', async () => {
+	it('re-reads the tags so a writer that advanced them afterwards is not undone by the refresh', async () => {
 		const { client, github } = harness({}, (gh) => {
 			gh.tag('pr-baseline', sha(3));
 			gh.commit(sha(11), [sha(5)]);
@@ -358,10 +360,10 @@ describe('move-baseline after a successful move', () => {
 			}
 			return response;
 		};
-		const result = await client.moveBaseline({ force: true, sweep: true });
+		const result = await client.moveBaseline({ force: true, refreshPrStatuses: true });
 		expect(result.moves[0]).toMatchObject({ moved: true, to: sha(5) });
 		expect(result.baselines[0]?.sha).toBe(sha(6));
-		expect(result.sweep?.entries[0]?.verdict?.kind).toBe('fail');
+		expect(result.refresh?.entries[0]?.verdict?.kind).toBe('fail');
 		expect(github.latestStatus(sha(11), 'PR baseline')?.state).toBe('failure');
 	});
 });
@@ -413,5 +415,24 @@ describe('move-baseline with two labels', () => {
 			['two', true, 'label'],
 		]);
 		expect(github.requests(/graphql/)).toHaveLength(2);
+	});
+});
+
+describe('move-baseline races, round 7', () => {
+	it('uses the base head it read as the default target even when the base advances meanwhile', async () => {
+		const { client, github } = harness({}, (gh) => gh.tag('pr-baseline', sha(3)));
+		let reads = 0;
+		const original = github.fetch;
+		github.fetch = async (input, init) => {
+			const response = await original(input, init);
+			const url = String(input instanceof Request ? input.url : input);
+			if (url.endsWith('/commits/main') && ++reads === 1) {
+				github.commit(sha(6), [sha(5)]);
+				github.branch('main', sha(6));
+			}
+			return response;
+		};
+		const result = await client.moveBaseline({ force: true });
+		expect(result.moves[0]).toMatchObject({ moved: true, to: sha(5) });
 	});
 });

@@ -16,6 +16,7 @@ export interface PullInfo {
 	number: number;
 	state: 'open' | 'closed';
 	merged: boolean;
+	draft: boolean;
 	headSha: string;
 	baseRef: string;
 }
@@ -197,6 +198,7 @@ export async function getPull(
 			number: pull.data.number,
 			state: pull.data.state,
 			merged: pull.data.merged,
+			draft: pull.data.draft ?? false,
 			headSha: pull.data.head.sha,
 			baseRef: pull.data.base.ref,
 		};

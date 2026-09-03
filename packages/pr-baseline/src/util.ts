@@ -14,3 +14,10 @@ export function shortSha(sha: string): string {
 export class BaselineError extends Error {
 	override name = 'BaselineError';
 }
+
+/** Every baseline as `{ tag, sha }`, absent tags included, for adapters that verify them against their own view. */
+export function tagSnapshot(
+	baselines: ReadonlyArray<{ tag: string; sha: string | null }>,
+): Array<{ tag: string; sha: string | null }> {
+	return baselines.map((baseline) => ({ tag: baseline.tag, sha: baseline.sha }));
+}

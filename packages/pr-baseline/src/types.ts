@@ -51,6 +51,21 @@ export type AncestryMode = 'auto' | 'git' | 'api';
 
 export type OtherBases = 'skip' | 'pass';
 
+/** What a sweep is about to ask, so an adapter can fetch in batches and verify the tags first. */
+export interface PrepareInput {
+	/** Commits the run will ask about, such as the base head. */
+	shas: string[];
+	/** Open PRs whose heads the run will evaluate. */
+	pulls: number[];
+	/** Every baseline tag with the SHA the API reported, null when absent; an adapter with its own view must agree. */
+	tags: Array<{ tag: string; sha: string | null }>;
+}
+
+export interface PrepareResult {
+	/** Each PR's head as the adapter sees it now; null when the PR's ref is gone. Empty for adapters that cannot tell. */
+	heads: Map<number, string | null>;
+}
+
 /** Answers ancestry and changed-file questions for commits of one repository. */
 export interface Ancestry {
 	/** The adapter's name, reported in results. */
@@ -62,6 +77,8 @@ export interface Ancestry {
 	 * Returns null when the answer is indeterminate, as with the compare API's 300-file cap.
 	 */
 	changedFiles(from: string, to: string): Promise<string[] | null>;
+	/** Optional batch step every command runs before its first ancestry question; adapters without one are asked commit by commit. */
+	prepare?(input: PrepareInput): Promise<PrepareResult>;
 }
 
 /** Reads and writes the tool's status for commits of one repository. */
@@ -93,6 +110,8 @@ export interface ClientOptions {
 	apiUrl?: string;
 	/** Defaults to `GITHUB_GRAPHQL_URL`, then the GraphQL endpoint matching `apiUrl`. */
 	graphqlUrl?: string;
+	/** The git server the token may be sent to; defaults to `GITHUB_SERVER_URL`, then the host behind `apiUrl`. */
+	serverUrl?: string;
 	/** Base branch; defaults to the repository's default branch. */
 	base?: string;
 	/** Baselines; defaults to one unscoped baseline with the default tag and label. */
@@ -176,6 +195,8 @@ export interface SweepResult {
 	skipped: number;
 	closed: number;
 	deferred: number;
+	/** PRs that left the base branch or became drafts while the sweep was preparing. */
+	outOfScope: number;
 	failed: number;
 	incomplete: boolean;
 	reason?: SweepStopReason;

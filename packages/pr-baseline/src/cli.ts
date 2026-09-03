@@ -7,12 +7,12 @@ import { isGitHubError, RETRY_HINT } from './github/errors.ts';
 import type {
 	AncestryMode,
 	Baseline,
-	CheckResult,
+	RefreshPrStatusResult,
 	ClientOptions,
 	MoveBaselineResult,
 	OtherBases,
 	ReportResult,
-	SweepResult,
+	RefreshPrStatusesResult,
 } from './types.ts';
 import { BaselineError, shortSha } from './util.ts';
 
@@ -24,8 +24,9 @@ Usage:
   pr-baseline <command> [options]
 
 Commands:
-  check [<sha-or-ref>]   Evaluate one commit (default: HEAD of the local repository).
-  sweep                  Bring every open PR's status in line with the baselines.
+  refresh-pr-status [<sha-or-ref>]
+                         Evaluate one commit (default: HEAD of the local repository).
+  refresh-pr-statuses    Bring every open PR's status in line with the baselines.
   move-baseline          Move baselines forward when a label, marker or --force says so.
   report                 Print every baseline, its commit and how many open PRs it binds.
 
@@ -34,6 +35,7 @@ Repository (flags win over env):
   --token <token>        GITHUB_TOKEN
   --api-url <url>        GITHUB_API_URL (default https://api.github.com)
   --graphql-url <url>    GITHUB_GRAPHQL_URL (default: the GraphQL endpoint beside --api-url)
+  --server-url <url>     GITHUB_SERVER_URL (default: the host behind --api-url); the only git host the token is sent to
   --base <branch>        Base branch (default: the repository's default branch)
 
 Baselines (either the JSON list or the shorthand):
@@ -60,14 +62,16 @@ Behavior:
   --dry-run              Log writes instead of making them
   --json                 Print the result as JSON on stdout
 
-check:      --pr <n>  Evaluate the PR's head; --report / --no-report  Write the status
+refresh-pr-status:
+            --pr <n>  Evaluate the PR's head; --report / --no-report  Write the status
             (reporting defaults on for --pr and off for any commit given directly).
-move-baseline: --force  Move by intent alone, seeding absent tags; --to <sha>  Target commit;
-            --baseline <tag>  Only this baseline; --sweep  Sweep afterwards.
+move-baseline:
+            --force  Move by intent alone, seeding absent tags; --to <sha>  Target commit;
+            --baseline <tag>  Only this baseline; --refresh-pr-statuses  Refresh every open PR's status afterwards.
 
 Exit codes: 0 pass or complete, 1 fail or incomplete, 2 error.`;
 
-const COMMANDS = new Set(['check', 'sweep', 'move-baseline', 'report']);
+const COMMANDS = new Set(['refresh-pr-status', 'refresh-pr-statuses', 'move-baseline', 'report']);
 
 async function main(argv: string[]): Promise<number> {
 	let parsed: ReturnType<typeof parse>;
@@ -92,12 +96,16 @@ async function main(argv: string[]): Promise<number> {
 		console.error(USAGE);
 		return 2;
 	}
-	if (positionals.length > (command === 'check' ? 2 : 1)) {
-		console.error(`Unexpected argument "${positionals[command === 'check' ? 2 : 1]}".`);
+	if (positionals.length > (command === 'refresh-pr-status' ? 2 : 1)) {
+		console.error(`Unexpected argument "${positionals[command === 'refresh-pr-status' ? 2 : 1]}".`);
 		return 2;
 	}
-	if (command === 'check' && positionals[1] !== undefined && values.pr !== undefined) {
-		console.error('check accepts either a commit or --pr, not both.');
+	if (command === 'refresh-pr-status' && positionals[1] !== undefined && values.pr !== undefined) {
+		console.error('refresh-pr-status accepts either a commit or --pr, not both.');
+		return 2;
+	}
+	if (values.offline && command !== 'refresh-pr-status') {
+		console.error('--offline applies to refresh-pr-status only.');
 		return 2;
 	}
 	const misplaced = misplacedOptions(command, values);
@@ -111,29 +119,29 @@ async function main(argv: string[]): Promise<number> {
 		const client = createClient(clientOptions(values));
 		const json = values.json ?? false;
 		switch (command) {
-			case 'check': {
-				const result = await client.check({
+			case 'refresh-pr-status': {
+				const result = await client.refreshPrStatus({
 					...(positionals[1] === undefined ? {} : { sha: positionals[1] }),
 					...(pr === undefined ? {} : { pr }),
 					...(values.report === undefined ? {} : { report: values.report }),
 				});
-				emit(json, result, describeCheck(result));
+				emit(json, result, describeRefreshPrStatus(result));
 				return result.verdict.kind === 'fail' ? 1 : 0;
 			}
-			case 'sweep': {
-				const result = await client.sweep();
-				emit(json, result, describeSweep(result));
+			case 'refresh-pr-statuses': {
+				const result = await client.refreshPrStatuses();
+				emit(json, result, describeRefreshPrStatuses(result));
 				return result.incomplete ? 1 : 0;
 			}
 			case 'move-baseline': {
 				const result = await client.moveBaseline({
 					force: values.force ?? false,
-					sweep: values.sweep ?? false,
+					refreshPrStatuses: values['refresh-pr-statuses'] ?? false,
 					...(values.to === undefined ? {} : { to: values.to }),
 					...(values.baseline === undefined ? {} : { baseline: values.baseline }),
 				});
 				emit(json, result, describeMove(result));
-				return result.sweep?.incomplete ? 1 : 0;
+				return result.refresh?.incomplete ? 1 : 0;
 			}
 			case 'report': {
 				const result = await client.report();
@@ -158,6 +166,7 @@ function parse(argv: string[]) {
 			token: { type: 'string' },
 			'api-url': { type: 'string' },
 			'graphql-url': { type: 'string' },
+			'server-url': { type: 'string' },
 			base: { type: 'string' },
 			baselines: { type: 'string' },
 			tag: { type: 'string' },
@@ -182,7 +191,7 @@ function parse(argv: string[]) {
 			report: { type: 'boolean' },
 			force: { type: 'boolean' },
 			to: { type: 'string' },
-			sweep: { type: 'boolean' },
+			'refresh-pr-statuses': { type: 'boolean' },
 			version: { type: 'boolean', short: 'v' },
 			help: { type: 'boolean', short: 'h' },
 		},
@@ -193,9 +202,9 @@ type Values = ReturnType<typeof parse>['values'];
 
 /** Command-specific options, so a flag meant for another command is an error rather than silently ignored. */
 const COMMAND_OPTIONS: Record<string, readonly (keyof Values)[]> = {
-	check: ['pr', 'report'],
-	sweep: [],
-	'move-baseline': ['force', 'to', 'baseline', 'sweep'],
+	'refresh-pr-status': ['pr', 'report'],
+	'refresh-pr-statuses': [],
+	'move-baseline': ['force', 'to', 'baseline', 'refresh-pr-statuses'],
 	report: [],
 };
 
@@ -217,6 +226,7 @@ function clientOptions(values: Values): ClientOptions {
 	assign(options, 'token', values.token);
 	assign(options, 'apiUrl', values['api-url']);
 	assign(options, 'graphqlUrl', values['graphql-url']);
+	assign(options, 'serverUrl', values['server-url']);
 	assign(options, 'base', values.base);
 	assign(options, 'context', values.context);
 	assign(options, 'targetUrl', values['target-url']);
@@ -286,14 +296,14 @@ function emit(json: boolean, result: unknown, text: string): void {
 	console.log(json ? JSON.stringify(result, null, 2) : text);
 }
 
-function describeCheck(result: CheckResult): string {
+function describeRefreshPrStatus(result: RefreshPrStatusResult): string {
 	const { verdict } = result;
 	const action = result.written ? 'written' : result.skipped ? 'already current' : 'not written';
 	return `${shortSha(result.sha)} against ${result.base}: ${verdict.kind} (${verdict.status.description}); status ${action}.`;
 }
 
-function describeSweep(result: SweepResult): string {
-	const line = `Sweep of ${result.openPulls} open PRs against ${result.base}: ${result.written} written, ${result.skipped} skipped, ${result.closed} closed, ${result.deferred} deferred, ${result.failed} failed.`;
+function describeRefreshPrStatuses(result: RefreshPrStatusesResult): string {
+	const line = `Refreshed statuses of ${result.openPulls} open PRs against ${result.base}: ${result.written} written, ${result.skipped} skipped, ${result.closed} closed, ${result.deferred} deferred, ${result.outOfScope} out of scope, ${result.failed} failed.`;
 	return result.incomplete ? `${line} Incomplete (${result.reason}). ${RETRY_HINT}` : line;
 }
 
@@ -304,8 +314,8 @@ function describeMove(result: MoveBaselineResult): string {
 			? `${move.tag}: ${from} -> ${shortSha(move.to)} (${move.reason})`
 			: `${move.tag}: unchanged at ${from} (${move.note})`;
 	});
-	if (result.sweep) {
-		lines.push(describeSweep(result.sweep));
+	if (result.refresh) {
+		lines.push(describeRefreshPrStatuses(result.refresh));
 	}
 	return lines.join('\n');
 }
@@ -317,9 +327,12 @@ function describeReport(result: ReportResult): string {
 		const onBase = baseline.onBase === null ? '' : baseline.onBase ? ', on base' : ', NOT on base';
 		lines.push(`${baseline.tag}: ${where}${onBase}; binds ${baseline.bound} open PRs.`);
 	}
+	if (result.stale !== undefined && result.current !== undefined) {
+		lines.push(`${result.current} PRs current, ${result.stale} stale.`);
+	}
 	if (result.offBase.length > 0) {
 		lines.push(
-			`Baseline ${result.offBase.join(', ')} is not on ${result.base}; fix the tag before sweeping.`,
+			`Baseline ${result.offBase.join(', ')} is not on ${result.base}; fix the tag before refreshing.`,
 		);
 	}
 	return lines.join('\n');

@@ -7,6 +7,7 @@ import {
 	graphqlUrlFor,
 	parseBaselines,
 	resolveConfig,
+	serverUrlFor,
 	shorthandBaselines,
 	validateBaselines,
 } from '../../src/config.ts';
@@ -137,5 +138,15 @@ describe('graphqlUrl normalization', () => {
 			resolveConfig({ repo: 'a/b', env: {}, graphqlUrl: 'https://ghe.test/api/graphql/' })
 				.graphqlUrl,
 		).toBe('https://ghe.test/api/graphql');
+	});
+});
+
+describe('serverUrlFor', () => {
+	it('derives the git server from the REST root', () => {
+		expect(serverUrlFor('https://api.github.com')).toBe('https://github.com');
+		expect(serverUrlFor('https://ghe.test/api/v3')).toBe('https://ghe.test');
+		expect(
+			resolveConfig({ repo: 'a/b', env: { GITHUB_SERVER_URL: 'https://ghe.test/' } }).serverUrl,
+		).toBe('https://ghe.test');
 	});
 });

@@ -34,6 +34,7 @@ export interface ResolvedConfig {
 	token: string | undefined;
 	apiUrl: string;
 	graphqlUrl: string;
+	serverUrl: string;
 	base: string | undefined;
 	baselines: Baseline[];
 	context: string;
@@ -75,6 +76,9 @@ export function resolveConfig(options: ClientOptions): ResolvedConfig {
 	if (!OTHER_BASES.has(otherBases)) {
 		throw new ConfigError(`Invalid other-bases value "${otherBases}": expected skip or pass.`);
 	}
+	if ((options.offline ?? false) && ancestry === 'api') {
+		throw new ConfigError('--offline needs git ancestry; drop --ancestry api.');
+	}
 	const baselines =
 		options.baselines === undefined ? shorthandBaselines({}) : validateBaselines(options.baselines);
 	const context = nonEmpty(options.context) ?? DEFAULT_CONTEXT;
@@ -83,6 +87,11 @@ export function resolveConfig(options: ClientOptions): ResolvedConfig {
 		repo,
 		token: nonEmpty(options.token) ?? nonEmpty(env['GITHUB_TOKEN']),
 		apiUrl,
+		serverUrl: (
+			nonEmpty(options.serverUrl) ??
+			nonEmpty(env['GITHUB_SERVER_URL']) ??
+			serverUrlFor(apiUrl)
+		).replace(/\/+$/, ''),
 		graphqlUrl: (
 			nonEmpty(options.graphqlUrl) ??
 			nonEmpty(env['GITHUB_GRAPHQL_URL']) ??
@@ -212,6 +221,18 @@ function compactTemplates(
 		}
 	}
 	return result;
+}
+
+/** The git server behind a REST root: `api.github.com` is `github.com`, a GHES `/api/v3` root is its host. */
+export function serverUrlFor(apiUrl: string): string {
+	if (apiUrl === DEFAULT_API_URL) {
+		return 'https://github.com';
+	}
+	try {
+		return new URL(apiUrl).origin;
+	} catch {
+		return apiUrl.replace(/\/api\/v3$/, '');
+	}
 }
 
 /** GitHub.com and GHES serve GraphQL beside the REST root, not under it: `/api/v3` pairs with `/api/graphql`. */

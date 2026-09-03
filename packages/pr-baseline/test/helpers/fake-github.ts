@@ -77,6 +77,8 @@ export class FakeGitHub {
 	readonly overrides: Override[] = [];
 	user: string | null;
 	creator: string;
+	/** Mirrors ref writes made through the API into a real remote, when a test pairs the fake with one. */
+	onTagWrite: ((name: string, sha: string) => void) | undefined;
 	rateLimitRemaining: number;
 	readonly restPrefix: string;
 	readonly graphqlPath: string;
@@ -282,6 +284,7 @@ export class FakeGitHub {
 				return this.respond(422, { message: 'Reference already exists' });
 			}
 			this.tag(name, target);
+			this.onTagWrite?.(name, target);
 			return this.respond(201, { ref, object: { type: 'commit', sha: target } });
 		}
 		if ((match = rest.match(/^\/git\/refs\/tags\/(.+)$/)) && method === 'PATCH') {
@@ -295,6 +298,7 @@ export class FakeGitHub {
 				return this.respond(422, { message: 'Update is not a fast forward' });
 			}
 			this.tag(name, target);
+			this.onTagWrite?.(name, target);
 			return this.respond(200, { object: { type: 'commit', sha: target } });
 		}
 		if ((match = rest.match(/^\/commits\/(.+)$/)) && method === 'GET') {
@@ -336,6 +340,7 @@ export class FakeGitHub {
 						number: pull.number,
 						state: pull.state,
 						merged: pull.merged,
+						draft: pull.isDraft,
 						head: { sha: pull.headSha },
 						base: { ref: pull.baseRef },
 					});
