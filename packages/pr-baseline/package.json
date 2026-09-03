@@ -1,0 +1,74 @@
+{
+	"name": "@mawesome/pr-baseline",
+	"version": "0.0.0",
+	"description": "Keep open pull requests current with a movable baseline on the base branch, reported through commit statuses",
+	"keywords": [
+		"baseline",
+		"ci",
+		"commit-status",
+		"github",
+		"github-actions",
+		"pull-request"
+	],
+	"homepage": "https://github.com/manzoorwanijk/mawesome/tree/main/packages/pr-baseline#readme",
+	"bugs": "https://github.com/manzoorwanijk/mawesome/issues",
+	"license": "MIT",
+	"author": "Manzoor Ahmad Wani",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/manzoorwanijk/mawesome.git",
+		"directory": "packages/pr-baseline"
+	},
+	"bin": {
+		"pr-baseline": "./dist/cli.js"
+	},
+	"files": [
+		"dist"
+	],
+	"type": "module",
+	"sideEffects": false,
+	"main": "./dist/index.cjs",
+	"module": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"exports": {
+		".": {
+			"import": {
+				"types": "./dist/index.d.ts",
+				"default": "./dist/index.js"
+			},
+			"require": {
+				"types": "./dist/index.d.cts",
+				"default": "./dist/index.cjs"
+			}
+		},
+		"./package.json": "./package.json"
+	},
+	"publishConfig": {
+		"access": "public",
+		"provenance": true
+	},
+	"scripts": {
+		"build": "tsdown",
+		"dev": "tsdown --watch",
+		"typecheck": "tsgo",
+		"test": "vitest run",
+		"check:exports": "attw --pack . && publint --strict"
+	},
+	"dependencies": {
+		"@octokit/core": "^7.0.8",
+		"@octokit/plugin-retry": "^8.1.1",
+		"ignore": "^7.0.8"
+	},
+	"devDependencies": {
+		"@arethetypeswrong/cli": "^0.18.3",
+		"@mawesome/tsconfig": "workspace:*",
+		"@types/node": "^24.13.2",
+		"@typescript/native-preview": "7.0.0-dev.20260527.2",
+		"publint": "^0.3.21",
+		"tsdown": "^0.22.2",
+		"vitest": "^4.1.7"
+	},
+	"engines": {
+		"node": ">=24.12.0"
+	}
+}
