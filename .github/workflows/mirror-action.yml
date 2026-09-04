@@ -1,0 +1,168 @@
+name: Mirror action
+
+# Publishes the pr-baseline action to its mirror repository once the package is on npm.
+# The trigger is the changesets tag, which the release workflow pushes with the App token after `npm publish`;
+# a dispatch with a version reconciles a release whose mirror run was lost, and recreating a missing tag by hand does the same.
+on:
+  push:
+    tags: ['@mawesome/pr-baseline@*']
+  workflow_dispatch:
+    inputs:
+      version:
+        type: string
+        required: true
+        description: Version of @mawesome/pr-baseline to mirror, without a v (its changesets tag must exist)
+
+# Releases never interleave; queued runs wait (up to GitHub's cap of 100 pending runs) instead of being dropped.
+concurrency:
+  group: mirror-action
+  cancel-in-progress: false
+  queue: max
+
+permissions: {}
+
+env:
+  MIRROR_OWNER: manzoorwanijk
+  MIRROR_REPO: pr-baseline-action
+
+jobs:
+  mirror:
+    name: Publish the action mirror
+    runs-on: ubuntu-latest
+    # Restrict this environment to the tag pattern @mawesome/pr-baseline@* and the main branch in the repo settings,
+    # and protect that tag pattern with a ruleset that only the release App can bypass: the run executes the tagged commit.
+    environment: action-mirror
+    permissions:
+      contents: read
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2
+        with:
+          egress-policy: audit
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # The tag names the version; its commit must carry that package version and be on main, and is what this job builds.
+      - name: Resolve the release
+        id: release
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = 'push' ]; then
+            version="${GITHUB_REF_NAME#@mawesome/pr-baseline@}"
+          else
+            version="$INPUT_VERSION"
+          fi
+          if ! printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "Not a release version: $version" >&2
+            exit 1
+          fi
+          tag="refs/tags/@mawesome/pr-baseline@$version"
+          listing="$(git ls-remote --exit-code origin "$tag" "$tag^{}")"
+          sha="$(printf '%s\n' "$listing" | awk -v ref="$tag^{}" '$2 == ref { print $1 }')"
+          if [ -z "$sha" ]; then
+            sha="$(printf '%s\n' "$listing" | awk -v ref="$tag" '$2 == ref { print $1 }')"
+          fi
+          test -n "$sha"
+          git fetch --quiet --filter=tree:0 origin "$sha" refs/heads/main
+          git merge-base --is-ancestor "$sha" FETCH_HEAD
+          git checkout --quiet "$sha"
+          manifest="$(node -p 'JSON.parse(require("fs").readFileSync("packages/pr-baseline/package.json", "utf8")).version')"
+          test "$manifest" = "$version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      # The same App as the release, installed on the mirror as well; the token is scoped to that one repository.
+      - name: Mint a GitHub App token for the mirror
+        id: mirror-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          owner: ${{ env.MIRROR_OWNER }}
+          repositories: ${{ env.MIRROR_REPO }}
+          permission-contents: write
+      # The App's bot user, so the mirror commits are attributed to it like any App-made commit.
+      - name: Resolve the App's bot identity
+        id: bot
+        env:
+          GH_TOKEN: ${{ steps.mirror-token.outputs.token }}
+          SLUG: ${{ steps.mirror-token.outputs.app-slug }}
+        run: |
+          id="$(gh api "users/${SLUG}[bot]" --jq .id)"
+          echo "name=${SLUG}[bot]" >> "$GITHUB_OUTPUT"
+          echo "email=${id}+${SLUG}[bot]@users.noreply.github.com" >> "$GITHUB_OUTPUT"
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          package-manager-cache: false # never restore a cache into a run that publishes
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build the action bundle
+        run: pnpm --filter @mawesome/pr-baseline build:action
+      # The deploy action copies from a workspace path; release.json records what this mirror commit was built from.
+      - name: Stage the mirror contents
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+          SHA: ${{ steps.release.outputs.sha }}
+        run: |
+          rm -rf mirror-stage && mkdir mirror-stage
+          cp -R packages/pr-baseline/action/. mirror-stage/
+          printf '{\n  "version": "%s",\n  "upstream": "%s"\n}\n' "$VERSION" "$SHA" > mirror-stage/release.json
+      - name: Prepare the mirror
+        id: prepare
+        env:
+          MIRROR_TOKEN: ${{ steps.mirror-token.outputs.token }}
+          VERSION: ${{ steps.release.outputs.version }}
+          SHA: ${{ steps.release.outputs.sha }}
+        run: >-
+          node tools/repo/scripts/tag-action-mirror.ts prepare
+          --mirror "https://github.com/$MIRROR_OWNER/$MIRROR_REPO.git"
+          --version "$VERSION"
+          --upstream "$SHA"
+          --stage mirror-stage
+      - name: Deploy to the release branch
+        if: steps.prepare.outputs.deploy == 'true'
+        uses: manzoorwanijk/action-deploy-to-repo@90d51a70f8acb6d2363316f99a4fe597126e022d # v3.0.0
+        with:
+          src_dir: mirror-stage
+          target_owner: ${{ env.MIRROR_OWNER }}
+          target_repo: ${{ env.MIRROR_REPO }}
+          target_dir: .
+          target_branch: ${{ steps.prepare.outputs.target_branch }}
+          access_token: ${{ steps.mirror-token.outputs.token }}
+          git_user_name: ${{ steps.bot.outputs.name }}
+          git_user_email: ${{ steps.bot.outputs.email }}
+          cleanup_command: find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+          commit_msg: |
+            Release v${{ steps.release.outputs.version }}
+
+            Upstream-Ref: ${{ steps.release.outputs.sha }}
+      - name: Promote the release
+        if: steps.prepare.outputs.deploy == 'true'
+        env:
+          MIRROR_TOKEN: ${{ steps.mirror-token.outputs.token }}
+          VERSION: ${{ steps.release.outputs.version }}
+          SHA: ${{ steps.release.outputs.sha }}
+        run: >-
+          node tools/repo/scripts/tag-action-mirror.ts promote
+          --mirror "https://github.com/$MIRROR_OWNER/$MIRROR_REPO.git"
+          --version "$VERSION"
+          --upstream "$SHA"
+          --stage mirror-stage
+      # The deploy action leaves a clone with the token in its remote URL; it goes with the branch.
+      - name: Remove the release branch and the deploy clone
+        if: always() && steps.prepare.outcome != 'skipped'
+        env:
+          MIRROR_TOKEN: ${{ steps.mirror-token.outputs.token }}
+          VERSION: ${{ steps.release.outputs.version }}
+          SHA: ${{ steps.release.outputs.sha }}
+        run: |
+          rm -rf -- "__${MIRROR_REPO}__clone__"
+          node tools/repo/scripts/tag-action-mirror.ts cleanup \
+            --mirror "https://github.com/$MIRROR_OWNER/$MIRROR_REPO.git" \
+            --version "$VERSION" \
+            --upstream "$SHA"
