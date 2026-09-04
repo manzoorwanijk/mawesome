@@ -1,0 +1,125 @@
+name: PR baseline
+# Dogfoods the pr-baseline action from this workspace; a consumer copies packages/pr-baseline/action/workflow-template.yml instead.
+# The refresh-pr-status job checks out the base branch, never the PR head, so PR code does not run under pull_request_target.
+on:
+  # The refresh-pr-status job runs the base branch's code only; the trigger is what lets fork PRs receive a status.
+  pull_request_target: # zizmor: ignore[dangerous-triggers]
+    types: [opened, synchronize, reopened, ready_for_review, edited, closed]
+  merge_group:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '17 * * * *'
+  workflow_dispatch:
+    inputs:
+      mode:
+        type: choice
+        default: auto
+        options: [auto, move-baseline, refresh-pr-statuses]
+        description: auto recovers like the schedule; move-baseline forces a move and then refreshes; refresh-pr-statuses only refreshes open PR statuses
+      baseline:
+        type: string
+        default: ''
+        description: Tag of one baseline to move; blank moves all
+permissions: {}
+env:
+  PR_BASELINES: '[{"tag":"pr-baseline","label":"Require PR update","markers":["pnpm-lock.yaml","pnpm-workspace.yaml",".github/workflows/verify.yml"]}]'
+jobs:
+  refresh-pr-status:
+    name: Refresh the PR status against the baseline
+    if: >-
+      !github.event.repository.fork &&
+      (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && github.event.action != 'closed'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      statuses: write
+    concurrency:
+      group: pr-baseline-status-${{ github.event.pull_request.number || github.event.merge_group.head_sha }}
+      cancel-in-progress: false
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2
+        with:
+          egress-policy: audit
+      # Always main: a merge_group event would otherwise check out the queued PRs' code.
+      - name: Checkout the base branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build the action
+        run: pnpm --filter @mawesome/pr-baseline build:action
+      - name: Refresh the PR head's status
+        # The workspace path, not `$/`: dist/ is built in this job and is not committed.
+        uses: ./packages/pr-baseline/action # zizmor: ignore[self-repository]
+        with:
+          base: main
+          baselines: ${{ env.PR_BASELINES }}
+  refresh-pr-statuses:
+    name: Move baselines and refresh PR statuses
+    if: >-
+      !github.event.repository.fork && (
+        (github.event_name == 'pull_request_target' && github.event.action == 'closed' && github.event.pull_request.merged) ||
+        (github.event_name == 'push' && github.ref_name == 'main') ||
+        github.event_name == 'schedule' ||
+        github.event_name == 'workflow_dispatch'
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: write
+      statuses: write
+      pull-requests: read
+    concurrency:
+      group: pr-baseline-refresh
+      cancel-in-progress: false
+      queue: max
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2
+        with:
+          egress-policy: audit
+      - name: Checkout main with full history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          fetch-depth: 0
+          filter: tree:0
+          persist-credentials: false
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build the action
+        run: pnpm --filter @mawesome/pr-baseline build:action
+      - name: Move baselines and refresh PR statuses
+        id: pr-baseline
+        uses: ./packages/pr-baseline/action # zizmor: ignore[self-repository]
+        with:
+          base: main
+          baselines: ${{ env.PR_BASELINES }}
+          mode: ${{ inputs.mode || 'auto' }}
+          force: ${{ inputs.mode == 'move-baseline' }}
+          baseline: ${{ inputs.baseline || '' }}
+      - name: Upload the refresh results
+        if: ${{ always() && steps.pr-baseline.outputs.results-file != '' }}
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        with:
+          name: pr-baseline-refresh
+          path: ${{ steps.pr-baseline.outputs.results-file }}
