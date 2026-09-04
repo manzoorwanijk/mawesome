@@ -94,3 +94,55 @@ jobs:
         run: |
           node packages/dependency-audit/dist/cli.js --version
           node packages/dependency-audit/dist/cli.js --no-progress "packages/*"
+
+  # The pr-baseline action: the bundle builds, its README is generated from action.yml, and the consumer
+  # workflow template passes actionlint and zizmor as a consumer would copy it.
+  pr-baseline-action:
+    name: pr-baseline action
+    runs-on: ubuntu-latest
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2
+        with:
+          egress-policy: audit
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build the action bundle
+        run: pnpm --filter @mawesome/pr-baseline build:action
+      - name: Check the generated action README
+        run: node packages/pr-baseline/scripts/generate-action-readme.ts --check
+      # Runs the bundle the way the runner would, without a token: it must load, reject the mode and fail.
+      - name: Smoke-test the bundle
+        env:
+          INPUT_MODE: dance
+        run: |
+          set +e
+          output="$(node packages/pr-baseline/action/dist/index.js)"
+          code=$?
+          set -e
+          printf '%s\n' "$output"
+          test "$code" -eq 1
+          grep -q 'Unknown mode "dance"' <<<"$output"
+      - name: Install actionlint and zizmor
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/lint"
+          gh release download v1.7.12 --repo rhysd/actionlint --pattern '*linux_amd64.tar.gz' -D "$RUNNER_TEMP/lint"
+          tar -xzf "$RUNNER_TEMP"/lint/actionlint_*linux_amd64.tar.gz -C "$RUNNER_TEMP/lint" actionlint
+          gh release download v1.30.0 --repo zizmorcore/zizmor --pattern '*x86_64-unknown-linux-gnu.tar.gz' -D "$RUNNER_TEMP/lint"
+          tar -xzf "$RUNNER_TEMP"/lint/zizmor-*x86_64-unknown-linux-gnu.tar.gz -C "$RUNNER_TEMP/lint" zizmor
+          echo "$RUNNER_TEMP/lint" >> "$GITHUB_PATH"
+      - name: Lint the consumer workflow template
+        run: node packages/pr-baseline/scripts/lint-workflow-template.ts

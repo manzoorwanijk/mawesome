@@ -48,11 +48,14 @@
 		"provenance": true
 	},
 	"scripts": {
-		"build": "tsdown",
+		"build": "tsdown && tsdown -c tsdown.action.config.ts",
 		"dev": "tsdown --watch",
 		"typecheck": "tsgo",
 		"test": "vitest run",
-		"check:exports": "attw --pack . && publint --strict"
+		"check:exports": "attw --pack . && publint --strict",
+		"build:action": "tsdown -c tsdown.action.config.ts",
+		"readme:action": "node scripts/generate-action-readme.ts",
+		"lint:workflow": "node scripts/lint-workflow-template.ts"
 	},
 	"dependencies": {
 		"@octokit/core": "^7.0.8",
@@ -60,11 +63,13 @@
 		"ignore": "^7.0.8"
 	},
 	"devDependencies": {
+		"@actions/core": "^3.0.1",
 		"@arethetypeswrong/cli": "^0.18.3",
 		"@mawesome/tsconfig": "workspace:*",
 		"@types/node": "^24.13.2",
 		"@typescript/native-preview": "7.0.0-dev.20260527.2",
 		"publint": "^0.3.21",
+		"rollup-plugin-license": "^3.7.1",
 		"tsdown": "^0.22.2",
 		"vitest": "^4.1.7"
 	},

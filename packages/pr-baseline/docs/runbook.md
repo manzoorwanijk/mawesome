@@ -3,27 +3,27 @@
 ## Rollout
 
 1. **Create the label** each baseline uses (`Require PR update` by default) so maintainers can mark a PR whose merge should move the baseline.
-2. **Run the sweep unseeded.** With no tag, every open PR receives a pass. This proves the token, the creator and the permissions before anything can block.
-3. **Seed the baseline** at the commit that every open PR must contain: `pr-baseline move-baseline --force --sweep`, or `--to <sha>` for an older commit. The sweep stamps stale PRs with a failure.
+2. **Run the refresh unseeded.** With no tag, every open PR receives a pass. This proves the token, the creator and the permissions before anything can block.
+3. **Seed the baseline** at the commit that every open PR must contain: `pr-baseline move-baseline --force --refresh-pr-statuses`, or `--to <sha>` for an older commit. The refresh stamps stale PRs with a failure.
 4. **Let it converge.** A large repository may need more than one run because of the write budget; each run reports what is left. `pr-baseline report` shows the baseline and how many PRs it binds.
 5. **Require the status context** in the base branch's ruleset with the source matching the token, and protect the tag, as described in [permissions](./permissions.md).
 
 ## Everyday operations
 
-- **Move on demand:** `pr-baseline move-baseline --force --sweep` (a workflow dispatch with `move-baseline: true` in the action).
-- **Retry an incomplete sweep:** run `sweep` again, or dispatch the workflow. Every status already written is current and skipped, so retries are cheap.
+- **Move on demand:** `pr-baseline move-baseline --force --refresh-pr-statuses` (a workflow dispatch with mode `move-baseline` in the action).
+- **Retry an incomplete refresh:** run `refresh-pr-statuses` again, or dispatch the workflow. Every status already written is current and skipped, so retries are cheap.
 - **Check what is stale:** `pr-baseline report`. With the git adapter it also counts stale and current PRs.
 - **Move one baseline of several:** `--baseline <tag>`.
 
 ## Rollback
 
-- **A move that should not have happened:** delete the tag, then seed it again at the right commit with `--force --to <sha> --sweep`. The tool never rewinds a tag itself. Until the sweep runs, PRs keep the statuses from the wrong move.
+- **A move that should not have happened:** delete the tag, then seed it again at the right commit with `--force --to <sha> --refresh-pr-statuses`. The tool never rewinds a tag itself. Until the refresh runs, PRs keep the statuses from the wrong move.
 - **Stop blocking without removing anything:** make the status context optional in the ruleset. Statuses keep being written and can be required again later.
 - **Retire the tool:** remove the context from the ruleset, delete the workflow, delete the tag. Old statuses stay on their commits and stop mattering.
 
 ## What "Expected" means
 
-A required status context that no run has written yet shows as "Expected" and blocks the PR. This happens when the context is required on a branch the tool does not serve, when the sweep never reached a PR, or when the check job did not run for an event. Require the context only in the base branch's ruleset, and dispatch a sweep to stamp whatever is missing.
+A required status context that no run has written yet shows as "Expected" and blocks the PR. This happens when the context is required on a branch the tool does not serve, when the refresh never reached a PR, or when the `refresh-pr-status` job did not run for an event. Require the context only in the base branch's ruleset, and dispatch a refresh to stamp whatever is missing.
 
 ## Silent schedule loss
 

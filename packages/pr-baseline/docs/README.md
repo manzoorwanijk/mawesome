@@ -12,8 +12,8 @@ Reference documentation for `@mawesome/pr-baseline`, a tool that keeps open pull
 - [Edge cases](./edge-cases.md): forks, other base branches, stacked PRs, races, absent tags.
 - [Runbook](./runbook.md): rollout order, retries, rollback and what "Expected" means.
 - [For PR authors](./for-pr-authors.md): the one paragraph a blocked author needs.
-- [GitHub Action](./action.md): inputs, outputs and the consumer workflow (lands with the action).
+- [GitHub Action](./action.md): how events map to commands, the consumer workflow and the release to the mirror.
 
 ## One-paragraph summary
 
-A lightweight tag on the base branch marks the last commit every open PR must contain. `check` evaluates one commit and writes a `success` or `failure` status; `sweep` does the same for every open PR against the base branch, writing only what changed; `move-baseline` advances the tag when a labeled PR merged, a marker path changed on the base branch, or an operator forces it, and can sweep afterwards; `report` shows where everything stands. A missing tag means nothing is required yet, so adoption is safe, and the tag never moves backwards through the tool.
+A lightweight tag on the base branch marks the last commit every open PR must contain. `refresh-pr-status` evaluates one commit and writes a `success` or `failure` status; `refresh-pr-statuses` does the same for every open PR against the base branch, writing only what changed; `move-baseline` advances the tag when a labeled PR merged, a marker path changed on the base branch, or an operator forces it, and can refresh afterwards; `report` shows where everything stands. A missing tag means nothing is required yet, so adoption is safe, and the tag never moves backwards through the tool.

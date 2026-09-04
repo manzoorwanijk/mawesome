@@ -51,7 +51,7 @@ export type AncestryMode = 'auto' | 'git' | 'api';
 
 export type OtherBases = 'skip' | 'pass';
 
-/** What a sweep is about to ask, so an adapter can fetch in batches and verify the tags first. */
+/** What a command is about to ask, so an adapter can fetch in batches and verify the tags first. */
 export interface PrepareInput {
 	/** Commits the run will ask about, such as the base head. */
 	shas: string[];
@@ -146,16 +146,18 @@ export interface ClientOptions {
 	env?: Record<string, string | undefined>;
 }
 
-export interface CheckOptions {
+export interface RefreshPrStatusOptions {
 	/** Commit SHA or ref to evaluate; defaults to `HEAD` of the local repository. */
 	sha?: string;
 	/** Evaluate a pull request's head instead of `sha`. */
 	pr?: number;
+	/** The branch `sha` targets when known without a PR, as a merge queue's `base_ref`; applies the other-bases rule. */
+	baseRef?: string;
 	/** Write the status; defaults on for `pr` and off for a commit given directly. */
 	report?: boolean;
 }
 
-export interface CheckResult {
+export interface RefreshPrStatusResult {
 	sha: string;
 	base: string;
 	verdict: Verdict;
@@ -169,7 +171,7 @@ export interface CheckResult {
 	ancestry: 'git' | 'api';
 }
 
-export type SweepOutcome =
+export type RefreshOutcome =
 	| 'written'
 	| 'skipped'
 	| 'closed'
@@ -177,17 +179,22 @@ export type SweepOutcome =
 	| 'failed'
 	| 'out-of-scope';
 
-export interface SweepEntry {
+export interface RefreshEntry {
 	number: number;
 	sha: string;
-	outcome: SweepOutcome;
+	outcome: RefreshOutcome;
 	verdict?: Verdict;
 	error?: string;
 }
 
-export type SweepStopReason = 'rate-limit' | 'write-cap' | 'primary-budget' | 'deferred' | 'failed';
+export type RefreshStopReason =
+	| 'rate-limit'
+	| 'write-cap'
+	| 'primary-budget'
+	| 'deferred'
+	| 'failed';
 
-export interface SweepResult {
+export interface RefreshPrStatusesResult {
 	base: string;
 	baselines: ResolvedBaseline[];
 	openPulls: number;
@@ -195,12 +202,12 @@ export interface SweepResult {
 	skipped: number;
 	closed: number;
 	deferred: number;
-	/** PRs that left the base branch or became drafts while the sweep was preparing. */
+	/** PRs that left the base branch or became drafts while the refresh was preparing. */
 	outOfScope: number;
 	failed: number;
 	incomplete: boolean;
-	reason?: SweepStopReason;
-	entries: SweepEntry[];
+	reason?: RefreshStopReason;
+	entries: RefreshEntry[];
 	ancestry: 'git' | 'api';
 	dryRun: boolean;
 }
@@ -212,8 +219,8 @@ export interface MoveBaselineOptions {
 	to?: string;
 	/** Restrict to one baseline by tag. */
 	baseline?: string;
-	/** Run a sweep afterwards, also when nothing moved. */
-	sweep?: boolean;
+	/** Refresh every open PR's status afterwards, also when nothing moved. */
+	refreshPrStatuses?: boolean;
 }
 
 export type MoveReason = 'forced' | 'label' | 'markers';
@@ -234,7 +241,7 @@ export interface MoveBaselineResult {
 	/** Every configured baseline with its SHA after the moves. */
 	baselines: ResolvedBaseline[];
 	moves: MoveEntry[];
-	sweep?: SweepResult;
+	refresh?: RefreshPrStatusesResult;
 	dryRun: boolean;
 }
 

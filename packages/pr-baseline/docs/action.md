@@ -1,14 +1,43 @@
 # GitHub Action
 
-The action ships in a later phase of this package. It will be one root action with a `mode` input (`auto|check|sweep|move-baseline|report`), inputs mirroring the [CLI](./cli.md), outputs for every result field, and a copyable consumer workflow with two jobs: a `check` job on pull request and merge queue events, and a `sweep` job on base pushes, labeled merges, a schedule and a workflow dispatch.
+The action is one root action, `manzoorwanijk/pr-baseline-action`, with a `mode` input. Its source is the [`action/`](../action/) directory of this package, which is the complete mirror repository: the mirror adds only the bundled `dist/`. The action's own [README](../action/README.md) carries the generated inputs and outputs tables and the consumer workflow; this page explains how the pieces fit.
 
-Until then, run the CLI from a workflow:
+## Modes
 
-```yaml
-- run: npx @mawesome/pr-baseline sweep --creator 'github-actions[bot]'
-  env:
-    GITHUB_REPOSITORY: ${{ github.repository }}
-    GITHUB_TOKEN: ${{ github.token }}
-```
+`mode` is `auto` (default), `check`, `sweep`, `move-baseline` or `report`. In `auto` the event decides:
 
-`--creator` is required with `GITHUB_TOKEN` from the CLI because an installation token cannot answer `GET /user`; the action resolves it automatically. See [permissions](./permissions.md) for the job permissions each command needs.
+| Event                                                  | Mode                                                                                                                                                                                                                 |
+| ------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pull_request_target`, any type except `closed`        | `check` on the payload head SHA, reporting on. The supported write path for fork PRs.                                                                                                                                |
+| `pull_request_target` type `closed`, `merged == true`  | `move-baseline --sweep`, the immediate path for a labeled merge.                                                                                                                                                     |
+| `pull_request_target` type `closed`, `merged == false` | No-op with a notice.                                                                                                                                                                                                 |
+| `pull_request`                                         | `check`; with the workflow token the status is written only for a same-repository PR not triggered by Dependabot, since the token is read-only otherwise. Any other token writes. A payload without a PR is a no-op. |
+| `merge_group`                                          | `check` on `merge_group.head_sha` when `merge_group.base_ref` is the base branch; otherwise the `other-bases` rule applies, so a queue for another branch is skipped by default.                                     |
+| `push` to the base branch                              | `move-baseline --sweep` for path markers and merges made without a `pull_request_target` run. The base defaults to the payload's default branch; a push to any other ref is a no-op.                                 |
+| `schedule`                                             | `move-baseline --sweep`, non-forced, so a missed move is recovered and stale PRs converge.                                                                                                                           |
+| `workflow_dispatch`                                    | The same non-forced `move-baseline --sweep` as `schedule`. The template's `mode` choice input passes `move-baseline` with `force` or `sweep` explicitly, so the action never reads dispatch inputs.                  |
+
+## Inputs and outputs
+
+Inputs mirror the [CLI](./cli.md), except that `baselines` is inline JSON only: `token`, `mode`, `sha`, `base`, `baselines`, the shorthand `tag`, `label`, `markers` (multiline), `baseline`, `status-context`, the three `description-*` texts, `target-url`, `other-bases`, `creator`, `ancestry`, `max-writes-per-run`, `max-writes-per-minute`, `dry-run`, `force`, `sweep-after-move`. The API, GraphQL and server URLs come from the runner's environment, so GitHub Enterprise Server needs no extra input.
+
+A hidden `github-token-probe` input, defaulting to `${{ github.token }}` like `token`, lets the action prove whether `token` is the workflow's own token: when the two are equal the status creator is `github-actions[bot]` without any request; an App token never matches and must come with `creator`.
+
+Outputs are plain strings: `state`, `description`, `base`, `baselines` (JSON), `missing` (JSON, `check` only), `written`, `skipped`, `closed`, `deferred`, `failed`, `incomplete`, `summary` (JSON, per-PR results capped at 200 entries) and `results-file` (a runner-local JSON file with the uncapped sweep results). Every run, including a skip or an error, sets every output and writes a step summary; `state` is then `skipped` or `error`. The `summary` output of a sweep drops per-PR entries until it fits half of GitHub's 1 MB per-output cap and says how many it omitted. An incomplete sweep, an off-base baseline in `report`, a configuration error and a permission error fail the step; a failing `check` verdict does not, since the commit status is the gate.
+
+## Consumer workflow
+
+The [workflow template](../action/workflow-template.yml) is the copyable consumer workflow: a `check` job for PR and merge-queue events and a `sweep` job for base pushes, labeled merges, the schedule and dispatches. `BASE` is a literal in the marked places because the `env` context is unavailable in a job-level `if`. The baseline list is defined once in the workflow-level `env` and read by both steps. Both jobs carry a `!github.event.repository.fork` guard, the check job never checks out code, and the sweep job checks out a treeless full-history clone with `persist-credentials: false`; the action authenticates its own fetches. Job names must not resemble the status context; require the context, not the job.
+
+## Building and testing
+
+`pnpm build:action` bundles `action/src/main.ts` into `action/dist/index.js` (ESM, node24, every dependency bundled, third-party licenses in `licenses.txt`); `action/dist` is committed only in the mirror. `pnpm readme:action` regenerates the README tables from `action.yml`, and `--check` fails CI when they drift. The action tests run the entry in-process with `INPUT_*` variables and event payload fixtures against the fake API, one per row of the mode table, plus the creator migration fixture; a second suite builds the bundle and runs `action/dist/index.js` in a subprocess against the fake API served over HTTP for the main rows, so a bundling regression cannot pass on source alone.
+
+## Support matrix
+
+| Platform                 | Support                                                                                                                                                                                     |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GitHub.com               | Primary target.                                                                                                                                                                             |
+| GitHub Enterprise Cloud  | Same as GitHub.com; higher rate limits for enterprise-owned repositories.                                                                                                                   |
+| GitHub Enterprise Server | Through the runner's `GITHUB_API_URL`, `GITHUB_GRAPHQL_URL` and `GITHUB_SERVER_URL`; reach the action through GitHub Connect or a local mirror. `concurrency.queue` is not available there. |
+| Runner                   | `node24` runtime; git 2.45 or newer for git ancestry, otherwise the API adapter is used with a warning.                                                                                     |

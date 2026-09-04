@@ -1,0 +1,84 @@
+name: PR baseline
+# Replace every BASE below with your base branch (for example main). The env context is unavailable
+# in a job-level `if`, so the branch name is a literal in the marked places.
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review, edited, closed]
+  merge_group:
+  push:
+    branches: [BASE]
+  schedule:
+    - cron: '17 * * * *'
+  workflow_dispatch:
+    inputs:
+      mode:
+        type: choice
+        default: auto
+        options: [auto, move-baseline, refresh-pr-statuses]
+        description: auto recovers like the schedule; move-baseline forces a move and then refreshes; refresh-pr-statuses only refreshes open PR statuses
+      baseline:
+        type: string
+        default: ''
+        description: Tag of one baseline to move; blank moves all
+permissions: {}
+env:
+  # One source of truth for both jobs. Omit to use the single default baseline.
+  PR_BASELINES: '[{"tag":"pr-baseline","label":"Require PR update","markers":[".nvmrc"]}]'
+jobs:
+  refresh-pr-status:
+    name: Refresh the PR status against the baseline
+    if: >-
+      !github.event.repository.fork &&
+      (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && github.event.action != 'closed'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      statuses: write
+    concurrency:
+      group: pr-baseline-status-${{ github.event.pull_request.number || github.event.merge_group.head_sha }}
+      cancel-in-progress: false
+    steps:
+      - uses: manzoorwanijk/pr-baseline-action@<sha> # vX.Y.Z
+        with:
+          base: BASE
+          baselines: ${{ env.PR_BASELINES }}
+  refresh-pr-statuses:
+    name: Move baselines and refresh PR statuses
+    if: >-
+      !github.event.repository.fork && (
+        (github.event_name == 'pull_request_target' && github.event.action == 'closed' && github.event.pull_request.merged) ||
+        (github.event_name == 'push' && github.ref_name == 'BASE') ||
+        github.event_name == 'schedule' ||
+        github.event_name == 'workflow_dispatch'
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: write
+      statuses: write
+      pull-requests: read
+    concurrency:
+      group: pr-baseline-refresh
+      cancel-in-progress: false
+      queue: max # Delete this line on GitHub Enterprise Server; one pending run is enough there.
+    steps:
+      - uses: actions/checkout@<sha> # vN
+        with:
+          ref: BASE
+          fetch-depth: 0
+          filter: tree:0
+          persist-credentials: false
+      - id: pr-baseline
+        uses: manzoorwanijk/pr-baseline-action@<sha> # vX.Y.Z
+        with:
+          base: BASE
+          baselines: ${{ env.PR_BASELINES }}
+          mode: ${{ inputs.mode || 'auto' }}
+          force: ${{ inputs.mode == 'move-baseline' }}
+          baseline: ${{ inputs.baseline || '' }}
+      - if: ${{ always() && steps.pr-baseline.outputs.results-file != '' }}
+        uses: actions/upload-artifact@<sha> # vN
+        with:
+          name: pr-baseline-refresh
+          path: ${{ steps.pr-baseline.outputs.results-file }}

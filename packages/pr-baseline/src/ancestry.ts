@@ -35,9 +35,13 @@ export async function selectAncestry(
 			serverUrl: config.serverUrl,
 			...(config.token === undefined ? {} : { token: config.token }),
 		});
+		// Scheme-agnostic first, so a clone of another repository is named as such before any transport talk.
+		const servesPath =
+			repo !== null && (await remoteServes(repo, config.repo, config.serverUrl, { offline: true }));
 		const serves =
+			servesPath &&
 			repo !== null &&
-			(await remoteServes(repo, config.repo, config.serverUrl, { offline: config.offline }));
+			(config.offline || (await remoteServes(repo, config.repo, config.serverUrl)));
 		// A shallow clone can hold both commits of a question and still answer it wrong, so it is never used.
 		const shallow = repo !== null && serves && (await isShallow(repo));
 		// Grafts rewrite ancestry locally and cannot be switched off like replacement objects.
@@ -48,7 +52,11 @@ export async function selectAncestry(
 		// Online, git may only talk https (the token's channel) or a local path; ssh runs programs, http is plaintext.
 		const transport = repo?.url === null || repo === null ? null : transportOf(repo.url);
 		const plainOnline =
-			!config.offline && transport !== null && transport !== 'https' && transport !== 'file';
+			servesPath &&
+			!config.offline &&
+			transport !== null &&
+			transport !== 'https' &&
+			transport !== 'file';
 		// Presence probes rely on `GIT_NO_LAZY_FETCH`; without it a partial clone fetches one commit at a time.
 		const oldGit =
 			repo !== null &&
@@ -82,33 +90,35 @@ export async function selectAncestry(
 			throw new ConfigError(
 				repo === null
 					? `No git repository at ${config.gitDir ?? process.cwd()}; git ancestry needs a clone of ${config.repo}.`
-					: shallow
-						? `The clone at ${repo.dir} is shallow; git ancestry needs full history (actions/checkout with fetch-depth: 0 and filter: tree:0).`
-						: grafted
-							? `The clone at ${repo.dir} has an info/grafts file, which rewrites ancestry; remove it.`
-							: strayPromisor
-								? `The clone at ${repo.dir} has a promisor remote other than "${repo.remote}"; remove it.`
-								: plainOnline
-									? `The clone at ${repo.dir} fetches over ${transport}; online git ancestry needs an https remote (offline checks still work).`
-									: oldGit
-										? `Git ancestry needs git ${MIN_OFFLINE_GIT} or newer, which can forbid a partial clone's lazy fetches.`
-										: `The repository at ${repo.dir} does not have ${config.repo} as its "${repo.remote}" remote.`,
+					: !servesPath
+						? `The repository at ${repo.dir} does not have ${config.repo} as its "${repo.remote}" remote.`
+						: shallow
+							? `The clone at ${repo.dir} is shallow; git ancestry needs full history (actions/checkout with fetch-depth: 0 and filter: tree:0).`
+							: grafted
+								? `The clone at ${repo.dir} has an info/grafts file, which rewrites ancestry; remove it.`
+								: strayPromisor
+									? `The clone at ${repo.dir} has a promisor remote other than "${repo.remote}"; remove it.`
+									: plainOnline
+										? `The clone at ${repo.dir} fetches over ${transport}; online git ancestry needs an https remote (refresh-pr-status --offline still works).`
+										: oldGit
+											? `Git ancestry needs git ${MIN_OFFLINE_GIT} or newer, which can forbid a partial clone's lazy fetches.`
+											: `The repository at ${repo.dir} does not have ${config.repo} as its "${repo.remote}" remote.`,
 			);
 		}
 		// No repository at all is the ordinary API case; a repository that cannot be used deserves a warning.
 		if (repo !== null) {
 			logger.warn(
-				shallow
-					? `The clone at ${repo.dir} is shallow; falling back to API ancestry.`
-					: grafted
-						? `The clone at ${repo.dir} has an info/grafts file; falling back to API ancestry.`
-						: strayPromisor
-							? `The clone at ${repo.dir} has a promisor remote other than "${repo.remote}"; falling back to API ancestry.`
-							: plainOnline
-								? `The clone at ${repo.dir} fetches over ${transport}; falling back to API ancestry.`
-								: oldGit
-									? `Git is older than ${MIN_OFFLINE_GIT}; falling back to API ancestry.`
-									: `The repository at ${repo.dir} does not serve ${config.repo} from "${repo.remote}"; falling back to API ancestry.`,
+				!servesPath
+					? `The repository at ${repo.dir} does not serve ${config.repo} from "${repo.remote}"; falling back to API ancestry.`
+					: shallow
+						? `The clone at ${repo.dir} is shallow; falling back to API ancestry.`
+						: grafted
+							? `The clone at ${repo.dir} has an info/grafts file; falling back to API ancestry.`
+							: strayPromisor
+								? `The clone at ${repo.dir} has a promisor remote other than "${repo.remote}"; falling back to API ancestry.`
+								: plainOnline
+									? `The clone at ${repo.dir} fetches over ${transport}; falling back to API ancestry.`
+									: `Git is older than ${MIN_OFFLINE_GIT}; falling back to API ancestry.`,
 			);
 		} else if (config.gitDir !== undefined) {
 			logger.warn(`No git repository at ${config.gitDir}; falling back to API ancestry.`);

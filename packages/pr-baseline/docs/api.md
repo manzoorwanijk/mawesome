@@ -12,9 +12,9 @@ const client = createClient({
 	creator: 'github-actions[bot]',
 });
 
-await client.check({ pr: 42 });
-await client.sweep();
-await client.moveBaseline({ force: true, sweep: true });
+await client.refreshPrStatus({ pr: 42 });
+await client.refreshPrStatuses();
+await client.moveBaseline({ force: true, refreshPrStatuses: true });
 await client.report();
 ```
 
@@ -34,16 +34,16 @@ Resolves the configuration (flags over `env` over defaults) and throws `ConfigEr
 | `retryBaseMs`          | Base delay for retrying transient server errors (three attempts, quadratic backoff); default 1000.                                          |
 | `env`                  | Environment to read fallbacks from; defaults to `process.env`.                                                                              |
 | `tokenIsWorkflowToken` | Set by the action when `token` is provably the workflow's own token, which resolves the creator to `github-actions[bot]` without a request. |
-| `includeDrafts`        | Whether draft PRs are swept; default `true`. Not exposed by the CLI.                                                                        |
+| `includeDrafts`        | Whether draft PRs are refreshed; default `true`. Not exposed by the CLI.                                                                    |
 
 ## Commands
 
-- `check(options?: CheckOptions): Promise<CheckResult>` with `sha`, `pr` and `report`.
-- `sweep(): Promise<SweepResult>`.
-- `moveBaseline(options?: MoveBaselineOptions): Promise<MoveBaselineResult>` with `force`, `to`, `baseline` and `sweep`.
+- `refreshPrStatus(options?: RefreshPrStatusOptions): Promise<RefreshPrStatusResult>` with `sha`, `pr`, `baseRef` (the branch a bare commit targets, so the `otherBases` rule applies) and `report`.
+- `refreshPrStatuses(): Promise<RefreshPrStatusesResult>`.
+- `moveBaseline(options?: MoveBaselineOptions): Promise<MoveBaselineResult>` with `force`, `to`, `baseline` and `refreshPrStatuses`.
 - `report(): Promise<ReportResult>`.
 
-Each result carries the base branch and the resolved baselines (`{ tag, sha }` with `sha: null` for an absent tag; after `moveBaseline`, the SHAs after the moves). `CheckResult.verdict` holds the verdict, `SweepResult.entries` lists every PR the sweep reached with its outcome (`written`, `skipped`, `closed`, `deferred`, `out-of-scope`, `failed`, with matching counters including `outOfScope`; a sweep stopped by a budget or a rate limit lists only the PRs before the stop), `MoveBaselineResult.moves` says what moved and why, and `ReportResult.offBase` names baselines that left the base branch.
+Each result carries the base branch and the resolved baselines (`{ tag, sha }` with `sha: null` for an absent tag; after `moveBaseline`, the SHAs after the moves). `RefreshPrStatusResult.verdict` holds the verdict, `RefreshPrStatusesResult.entries` lists every PR the refresh reached with its outcome (`written`, `skipped`, `closed`, `deferred`, `out-of-scope`, `failed`, with matching counters including `outOfScope`; a refresh stopped by a budget or a rate limit lists only the PRs before the stop), `MoveBaselineResult.moves` says what moved and why, and `ReportResult.offBase` names baselines that left the base branch.
 
 ## Ports
 
@@ -63,9 +63,9 @@ interface Reporter {
 }
 ```
 
-`PrepareInput` carries the commits the run will ask about, the open PR numbers and every baseline tag with the SHA the API reported (null when absent); `PrepareResult.heads` maps each PR to the head the adapter fetched, null when its ref is gone. Every command calls it before its first ancestry question (`check` and `move-baseline` with an empty `pulls` list, `check` offline with an empty `tags` list, `move-baseline` once more with the labeled merge candidates it found); the built-in git adapter uses it to fetch in batches and to refuse when a tag on the remote disagrees with the API.
+`PrepareInput` carries the commits the run will ask about, the open PR numbers and every baseline tag with the SHA the API reported (null when absent); `PrepareResult.heads` maps each PR to the head the adapter fetched, null when its ref is gone. Every command calls it before its first ancestry question (`refresh-pr-status` and `move-baseline` with an empty `pulls` list, `refresh-pr-status` offline with an empty `tags` list, `move-baseline` once more with the labeled merge candidates it found); the built-in git adapter uses it to fetch in batches and to refuse when a tag on the remote disagrees with the API.
 
-A custom reporter can post a comment, create a check run or forward to a hosted service. `check` and `sweep` compare `current()` against the intended status by state, description, target URL and creator, so a reporter that stores no creator should return the configured one. The built-in status reporter is the one exception: the sweep reads its current statuses from the PR listing (one GraphQL page per 100 PRs, two with the git adapter) instead of calling `current()` per PR.
+A custom reporter can post a comment, create a check run or forward to a hosted service. `refresh-pr-status` and `refresh-pr-statuses` compare `current()` against the intended status by state, description, target URL and creator, so a reporter that stores no creator should return the configured one. The built-in status reporter is the one exception: the refresh reads its current statuses from the PR listing (one GraphQL page per 100 PRs, two with the git adapter) instead of calling `current()` per PR.
 
 ## Errors
 

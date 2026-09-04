@@ -5,7 +5,13 @@ import { revParse } from '../git/repo.ts';
 import { getPull } from '../github/pulls.ts';
 import { resolveCommit } from '../github/refs.ts';
 import type { Runtime } from '../runtime.ts';
-import type { Ancestry, CheckOptions, CheckResult, ResolvedBaseline, Verdict } from '../types.ts';
+import type {
+	Ancestry,
+	RefreshPrStatusOptions,
+	RefreshPrStatusResult,
+	ResolvedBaseline,
+	Verdict,
+} from '../types.ts';
 import { writeWithRetries } from '../reporter/write.ts';
 import { isFullSha, tagSnapshot } from '../util.ts';
 import {
@@ -15,7 +21,7 @@ import {
 	type VerdictContext,
 } from '../verdict.ts';
 
-/** Snapshot reads before posting; the refs almost never move twice within one check. */
+/** Snapshot reads before posting; the refs almost never move twice within one status update. */
 const SNAPSHOT_ROUNDS = 3;
 
 interface Target {
@@ -27,7 +33,10 @@ interface Target {
 }
 
 /** Evaluates one commit and, when reporting, brings its status up to date. */
-export async function runCheck(runtime: Runtime, options: CheckOptions): Promise<CheckResult> {
+export async function runRefreshPrStatus(
+	runtime: Runtime,
+	options: RefreshPrStatusOptions,
+): Promise<RefreshPrStatusResult> {
 	const { config, logger } = runtime;
 	if (options.pr !== undefined && options.sha !== undefined) {
 		throw new ConfigError('refresh-pr-status accepts either a commit or --pr, not both.');
@@ -44,7 +53,7 @@ export async function runCheck(runtime: Runtime, options: CheckOptions): Promise
 		descriptions: config.descriptions,
 		targetUrl: config.targetUrl,
 	};
-	const result = (verdict: Verdict, baselines: ResolvedBaseline[]): CheckResult => ({
+	const result = (verdict: Verdict, baselines: ResolvedBaseline[]): RefreshPrStatusResult => ({
 		sha: target.sha,
 		base,
 		verdict,
@@ -113,7 +122,7 @@ export async function runCheck(runtime: Runtime, options: CheckOptions): Promise
 		verdict = await evaluate(baselines, baseHead);
 		if (round === SNAPSHOT_ROUNDS) {
 			logger.warn(
-				'The baselines kept moving during this check; the next sweep converges the result.',
+				'The baselines kept moving during this status update; the next refresh converges the result.',
 			);
 		}
 	}
@@ -151,8 +160,8 @@ async function write(
 	runtime: Runtime,
 	sha: string,
 	verdict: Verdict,
-	result: CheckResult,
-): Promise<CheckResult> {
+	result: RefreshPrStatusResult,
+): Promise<RefreshPrStatusResult> {
 	const creator = await runtime.creator();
 	const reporter = await runtime.reporter();
 	const current = await reporter.current(sha);
@@ -176,7 +185,7 @@ async function localRef(runtime: Runtime, ref: string): Promise<string | null> {
 		: revParse(repo, ref);
 }
 
-async function resolveTarget(runtime: Runtime, options: CheckOptions): Promise<Target> {
+async function resolveTarget(runtime: Runtime, options: RefreshPrStatusOptions): Promise<Target> {
 	const { api, config } = runtime;
 	if (options.pr !== undefined) {
 		const pull = await getPull(api, config.repo, options.pr);
@@ -187,14 +196,14 @@ async function resolveTarget(runtime: Runtime, options: CheckOptions): Promise<T
 	}
 	if (options.sha !== undefined) {
 		if (isFullSha(options.sha)) {
-			return { sha: options.sha.toLowerCase(), baseRef: undefined, fromEvent: false };
+			return { sha: options.sha.toLowerCase(), baseRef: options.baseRef, fromEvent: false };
 		}
 		const local = await localRef(runtime, options.sha);
 		if (local === null && config.offline) {
 			throw new ConfigError(`Offline: "${options.sha}" does not resolve in the clone.`);
 		}
 		const sha = local ?? (await resolveCommit(api, config.repo, options.sha));
-		return { sha, baseRef: undefined, fromEvent: false };
+		return { sha, baseRef: options.baseRef, fromEvent: false };
 	}
 	const head = await localRef(runtime, 'HEAD');
 	if (head === null) {
@@ -202,5 +211,5 @@ async function resolveTarget(runtime: Runtime, options: CheckOptions): Promise<T
 			'refresh-pr-status needs a commit: pass a SHA or ref, --pr, or run inside a git repository.',
 		);
 	}
-	return { sha: head, baseRef: undefined, fromEvent: false };
+	return { sha: head, baseRef: options.baseRef, fromEvent: false };
 }
