@@ -50,20 +50,25 @@ function splitLeadingH1(markdown: string, file: string): { title: string; body: 
 }
 
 /**
- * Rewrite relative `.md` links, preserving any `#anchor`/`?query` suffix and link title:
- * - `./x.md[#a]`      → `/<tool>/x/[#a]`   (`./README.md` → `/<tool>/`)
- * - `../<path>.md[#a]` → the package source on GitHub (the root README isn't a site page)
+ * Rewrite relative links, preserving any `#anchor`/`?query` suffix and link title:
+ * - `./x.md[#a]` → `/<tool>/x/[#a]` (`./README.md` → `/<tool>/`)
+ * - every other relative target → the package source on GitHub, since only the docs become pages
  */
 export function rewriteLinks(markdown: string, toolSlug: string, blobBase: string): string {
 	return markdown.replace(
-		/\]\((\.\.?\/[^)\s]+?\.md)((?:[?#][^)\s]*)?)(\s+(?:"[^"]*"|'[^']*'))?\)/g,
+		/\]\((\.\.?\/[^)\s]+?)((?:[?#][^)\s]*)?)(\s+(?:"[^"]*"|'[^']*'))?\)/g,
 		(_match, path: string, suffix = '', title = '') => {
+			const sibling = path.startsWith('./') ? path.slice(2) : null;
 			let target: string;
-			if (path.startsWith('./')) {
-				const name = path.slice(2).replace(/\.md$/, '');
+			if (sibling?.endsWith('.md')) {
+				const name = sibling.replace(/\.md$/, '');
 				target = name === 'README' ? `/${toolSlug}/` : `/${toolSlug}/${name}/`;
 			} else {
-				target = `${blobBase}/${path.replace(/^\.\.\//, '')}`;
+				/* A sibling of the doc lives under `docs/`, a `../` path under the package root.
+				 * GitHub serves a directory from `/tree/`, a file from `/blob/`. */
+				const source = sibling === null ? path.replace(/^\.\.\//, '') : `docs/${sibling}`;
+				const base = path.endsWith('/') ? blobBase.replace('/blob/', '/tree/') : blobBase;
+				target = `${base}/${source}`;
 			}
 			return `](${target}${suffix}${title})`;
 		},
