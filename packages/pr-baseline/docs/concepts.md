@@ -8,9 +8,17 @@ A **baseline** is a git ref on the base branch that marks the last commit every 
 - a merged pull request carrying the baseline's **label**,
 - a push to the base branch touching one of the baseline's **markers** (gitignore-style path patterns).
 
-The namespace is deliberate. A moving tag breaks every developer's next `git pull`, because git refuses to update a tag it already has ("would clobber existing tag") and clones follow tags automatically. Nothing fetches `refs/baselines/*` unless asked to, so a move is invisible to clones. The price is that the ref has no page in the GitHub UI: `pr-baseline report` and `git ls-remote origin 'refs/baselines/*'` show it, and the failing status names the baselines a PR lacks.
+The namespace is deliberate; see [why not a tag](#why-not-a-tag-or-a-branch) below.
 
 The tool never rewinds a baseline: it checks that the target descends from the current commit before every move, and a rewind is an operator action (delete the ref, seed it again). GitHub itself enforces a fast-forward only for branches, so the move re-reads the ref afterwards and reports what another writer may have done meanwhile; see [edge cases](./edge-cases.md) for the concurrency rules.
+
+## Why not a tag, or a branch
+
+A tag is the obvious ref for "this commit", and it is the wrong one for a ref that moves. Clones follow tags automatically, and git refuses to update a tag it already has: once the baseline has moved, every developer's next `git pull` or `git fetch` fails with `! [rejected] pr-baseline -> pr-baseline (would clobber existing tag)`, and keeps failing until they run `git fetch --tags --force` or delete the tag by hand. Editors and tools that fetch in the background hit the same wall, so one move a week turns into a repository-wide interruption. On the server side a tag also fires `push` events and lands in every "tags" listing, and its moves show up as noise in release tooling.
+
+A branch is worse in different ways: a `refs/heads/` ref triggers workflows on every move, shows a "Compare & pull request" prompt to whoever pushed it, and is the first thing branch-cleanup tooling and "delete merged branches" habits remove.
+
+`refs/baselines/<name>` has none of that. Nothing fetches the namespace unless asked to, so a move is invisible to clones and costs developers nothing; it starts no workflow, and no cleanup tool knows it exists. The price is that the ref has no page in the GitHub UI: `pr-baseline report` and `git ls-remote origin 'refs/baselines/*'` show it, the failing status names the baselines a PR lacks. The [permissions](./permissions.md) page covers the other consequence, that no ruleset can guard the namespace.
 
 ## Verdicts
 

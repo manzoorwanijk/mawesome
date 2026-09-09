@@ -6,7 +6,7 @@ A repository-wide change lands on `main` (a toolchain bump, a lint rule, a CI fi
 
 The baseline moves forward only by intent: a workflow dispatch, a merged PR carrying a label, or a push touching marker paths. When it moves, a **refresh** re-evaluates every open PR and writes only the statuses that changed.
 
-📚 Full documentation lives in [`docs/`](./docs/): [CLI](./docs/cli.md), [GitHub Action](./docs/action.md), [API](./docs/api.md), [permissions](./docs/permissions.md), [rate limits](./docs/rate-limits.md), [edge cases](./docs/edge-cases.md), [runbook](./docs/runbook.md).
+📚 Full documentation lives in [`docs/`](./docs/): [why the baseline is not a tag](./docs/concepts.md#why-not-a-tag-or-a-branch), [CLI](./docs/cli.md), [GitHub Action](./docs/action.md), [API](./docs/api.md), [permissions](./docs/permissions.md), [rate limits](./docs/rate-limits.md), [edge cases](./docs/edge-cases.md), [runbook](./docs/runbook.md).
 
 ## Install
 

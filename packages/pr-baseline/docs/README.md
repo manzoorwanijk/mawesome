@@ -4,7 +4,7 @@ Reference documentation for `@mawesome/pr-baseline`, a tool that keeps open pull
 
 ## Contents
 
-- [Concepts](./concepts.md): the baseline, verdicts, scope, and how a baseline moves.
+- [Concepts](./concepts.md): the baseline, why it is not a tag, verdicts, scope, and how a baseline moves.
 - [CLI reference](./cli.md): every command, flag and exit code.
 - [Programmatic API](./api.md): `createClient`, the `Ancestry` and `Reporter` ports, result types.
 - [Permissions](./permissions.md): what each token type needs and how to set up the rulesets.
