@@ -112,6 +112,8 @@ type ConfigEntry = [key: string, value: string];
  */
 const HARDENING: ConfigEntry[] = [
 	['core.hooksPath', '/dev/null'],
+	// A signed push would run a signing program with the token in its environment.
+	['push.gpgSign', 'false'],
 	['credential.helper', ''],
 	['fetch.recurseSubmodules', 'false'],
 	['maintenance.auto', 'false'],

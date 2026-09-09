@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { openRepo } from '../../src/git/repo.ts';
+import { openRepo, type GitRepo } from '../../src/git/repo.ts';
 import { createApiClient } from '../../src/github/api.ts';
 import { createClient, type Client, type ClientOptions } from '../../src/index.ts';
 import { createLeaseRefWriter } from '../../src/ref-writer.ts';
@@ -1105,7 +1105,7 @@ describe('git ancestry review round 24', () => {
 
 describe('move-baseline through a clone', () => {
 	/** The lease writer over the treeless clone, talking to the fake API the way a run does. */
-	async function writer() {
+	async function writer(wrap: (repo: GitRepo) => GitRepo = (repo) => repo) {
 		const repo = await openRepo(world.fixture.cloneDir, { token: 'test-token' });
 		if (repo === null) {
 			throw new Error('no clone');
@@ -1122,15 +1122,20 @@ describe('move-baseline through a clone', () => {
 			retryBaseMs: 0,
 			logger,
 		});
-		return createLeaseRefWriter(repo, api, world.github.repo, logger);
+		return createLeaseRefWriter(wrap(repo), { api, repo: world.github.repo });
 	}
 
 	it('moves with a lease push and never touches the refs API', async () => {
 		const [, c2, c3, c4] = world.c;
 		const head = openPull(1, c2 as string, { 'x.txt': 'x' });
 		const result = await client().moveBaseline({ force: true, refreshPrStatuses: true });
-		expect(result).toMatchObject({ writer: 'git' });
-		expect(result.moves[0]).toMatchObject({ moved: true, from: c3, to: c4, reason: 'forced' });
+		expect(result.moves[0]).toMatchObject({
+			moved: true,
+			from: c3,
+			to: c4,
+			reason: 'forced',
+			via: 'git',
+		});
 		expect(world.fixture.remoteRef('refs/baselines/pr-baseline')?.sha).toBe(c4);
 		expect(world.github.requests(/\/git\/refs/, 'PATCH')).toHaveLength(0);
 		expect(world.github.requests(/\/git\/refs$/, 'POST')).toHaveLength(0);
@@ -1160,7 +1165,10 @@ describe('move-baseline through a clone', () => {
 			actual: c3,
 		});
 		expect(world.fixture.remoteRef('refs/baselines/pr-baseline')?.sha).toBe(c3);
-		expect(await lease.move('pr-baseline', c3 as string, c4 as string)).toEqual({ ok: true });
+		expect(await lease.move('pr-baseline', c3 as string, c4 as string)).toEqual({
+			ok: true,
+			via: 'git',
+		});
 		expect(world.fixture.remoteRef('refs/baselines/pr-baseline')?.sha).toBe(c4);
 	});
 
@@ -1177,7 +1185,7 @@ describe('move-baseline through a clone', () => {
 	});
 
 	it.skipIf(process.platform === 'win32')(
-		'falls back to the refs API when the push fails with the ref unmoved',
+		'falls back to the refs API when every lease push fails with the ref unmoved',
 		async () => {
 			const [, , c3, c4] = world.c;
 			const { chmodSync } = await import('node:fs');
@@ -1188,9 +1196,13 @@ describe('move-baseline through a clone', () => {
 			world.github.onRefWrite = undefined;
 			world.github.baseline('pr-baseline', c3 as string);
 			try {
-				const result = await client().moveBaseline({ force: true });
-				expect(result.moves[0]).toMatchObject({ moved: true, from: c3, to: c4 });
-				expect(world.warnings.join('\n')).toContain('moving through the API instead');
+				const result = await client({ serverUrl: world.fixture.serverUrl }).moveBaseline({
+					force: true,
+				});
+				expect(result.moves[0]).toMatchObject({ moved: true, from: c3, to: c4, via: 'api' });
+				expect(world.warnings.filter((line) => line.includes('trying the next way'))).toHaveLength(
+					2,
+				);
 				expect(world.github.requests(/\/git\/refs\/baselines\/pr-baseline/, 'PATCH')).toHaveLength(
 					1,
 				);
@@ -1199,4 +1211,62 @@ describe('move-baseline through a clone', () => {
 			}
 		},
 	);
+
+	it('loses the lease to a push that lands between ls-remote and its own push, and reports the winner', async () => {
+		const [, c2, c3, c4] = world.c;
+		let pushes = 0;
+		const lease = await writer((repo) => ({
+			...repo,
+			async git(args, extraEnv) {
+				// Another writer moves the ref right after this run confirmed the lease and before it pushes.
+				if (args[0] === 'push' && pushes++ === 0) {
+					world.fixture.baseline('pr-baseline', c2 as string);
+				}
+				return repo.git(args, extraEnv);
+			},
+		}));
+		expect(await lease.move('pr-baseline', c3 as string, c4 as string)).toEqual({
+			ok: false,
+			actual: c2,
+		});
+		expect(world.fixture.remoteRef('refs/baselines/pr-baseline')?.sha).toBe(c2);
+		expect(pushes).toBe(1);
+	});
+
+	it('never signs a push, whatever the clone asks for', async () => {
+		const [, , c3, c4] = world.c;
+		world.fixture.git(world.fixture.cloneDir, ['config', 'push.gpgSign', 'true']);
+		world.fixture.git(world.fixture.cloneDir, [
+			'config',
+			'gpg.program',
+			`${world.fixture.root}/no-such-gpg`,
+		]);
+		const result = await client().moveBaseline({ force: true });
+		expect(result.moves[0]).toMatchObject({ moved: true, from: c3, to: c4, via: 'git' });
+		expect(world.warnings.join('\n')).not.toContain('trying the next way');
+	});
+
+	it('lease-pushes from a temporary repository when the run has no usable clone', async () => {
+		const [, c2, c3, c4] = world.c;
+		const head = openPull(1, c2 as string, { 'x.txt': 'x' });
+		world.fixture.shallowClone();
+		const result = await client({ serverUrl: world.fixture.serverUrl }).moveBaseline({
+			force: true,
+			refreshPrStatuses: true,
+		});
+		expect(result.moves[0]).toMatchObject({ moved: true, from: c3, to: c4, via: 'git' });
+		expect(result.refresh).toMatchObject({ ancestry: 'api', written: 1 });
+		expect(world.fixture.remoteRef('refs/baselines/pr-baseline')?.sha).toBe(c4);
+		expect(world.github.requests(/\/git\/refs/, 'PATCH')).toHaveLength(0);
+		expect(world.github.latestStatus(head, 'PR baseline')?.state).toBe('failure');
+	});
+
+	it('keeps the writes on the refs API with --ancestry api', async () => {
+		const [, , c3, c4] = world.c;
+		world.github.refSource = undefined;
+		world.github.baseline('pr-baseline', c3 as string);
+		const result = await client({ ancestry: 'api' }).moveBaseline({ force: true });
+		expect(result.moves[0]).toMatchObject({ moved: true, from: c3, to: c4, via: 'api' });
+		expect(world.github.requests(/\/git\/refs\/baselines\/pr-baseline/, 'PATCH')).toHaveLength(1);
+	});
 });

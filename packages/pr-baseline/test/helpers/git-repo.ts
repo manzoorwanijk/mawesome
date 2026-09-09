@@ -23,6 +23,8 @@ export class GitFixture {
 	readonly root: string;
 	readonly workDir: string;
 	readonly remoteDir: string;
+	/** The "server" the ephemeral writer derives the remote URL from: `<serverUrl>/acme/widgets` is the bare remote. */
+	readonly serverUrl: string;
 	readonly cloneDir: string;
 	readonly remoteUrl: string;
 
@@ -32,6 +34,7 @@ export class GitFixture {
 		this.remoteDir = join(this.root, 'remote', 'acme', 'widgets');
 		this.cloneDir = join(this.root, 'clone');
 		this.remoteUrl = pathToFileURL(this.remoteDir).href;
+		this.serverUrl = pathToFileURL(join(this.root, 'remote')).href;
 		mkdirSync(this.remoteDir, { recursive: true });
 		this.git(this.remoteDir, ['init', '--quiet', '--bare', '--initial-branch=main']);
 		this.git(this.remoteDir, ['config', 'uploadpack.allowFilter', 'true']);

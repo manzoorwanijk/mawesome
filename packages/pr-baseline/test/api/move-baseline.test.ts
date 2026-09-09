@@ -309,9 +309,29 @@ describe('move-baseline races and paging', () => {
 			return response;
 		};
 		const result = await client.moveBaseline({ force: true });
-		expect(result.moves[0]).toMatchObject({ moved: true, from: sha(4), to: sha(5) });
+		expect(result.moves[0]).toMatchObject({ moved: true, from: sha(4), to: sha(5), via: 'api' });
 		expect(result.baselines[0]?.sha).toBe(sha(5));
-		expect(result.writer).toBe('api');
+	});
+
+	it('cannot see a forward move that lands just before its own write, which is why git leases come first', async () => {
+		const { client, github, warnings } = harness({}, (gh) => {
+			gh.baseline('pr-baseline', sha(3));
+			gh.commit(sha(6), [sha(5)]);
+		});
+		const original = github.fetch;
+		github.fetch = async (input, init) => {
+			if (
+				(init?.method ?? '').toUpperCase() === 'PATCH' &&
+				github.baselineAt('pr-baseline') === sha(3)
+			) {
+				github.baseline('pr-baseline', sha(6));
+			}
+			return original(input, init);
+		};
+		const result = await client.moveBaseline({ force: true });
+		expect(result.moves[0]).toMatchObject({ moved: true, from: sha(3), to: sha(5), via: 'api' });
+		expect(github.baselineAt('pr-baseline')).toBe(sha(5));
+		expect(warnings.join('\n')).not.toContain('trying the next way');
 	});
 });
 

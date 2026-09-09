@@ -40,6 +40,8 @@ export function harness(
 		now: () => clock.now,
 		retryBaseMs: 0,
 		tokenIsWorkflowToken: true,
+		// No clone and no git here: the fake API is the whole world, refs included.
+		ancestry: 'api',
 		env: {},
 		...options,
 	});

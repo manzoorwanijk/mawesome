@@ -2,7 +2,7 @@ import { ConfigError } from '../config.ts';
 import { listLabeledMergeCommits } from '../github/pulls.ts';
 import { resolveCommit } from '../github/refs.ts';
 import { createMatcher } from '../paths.ts';
-import { createApiRefWriter, createLeaseRefWriter } from '../ref-writer.ts';
+import { selectRefWriter, type RefWriter } from '../ref-writer.ts';
 import type { Runtime } from '../runtime.ts';
 import type {
 	Ancestry,
@@ -29,12 +29,21 @@ export async function runMoveBaseline(
 		);
 	}
 	const ancestry = await runtime.ancestry();
-	const repo = await runtime.repo();
-	// A clone makes the move a lease push, atomic on the server; the API alone re-reads after each write.
-	const writer =
-		repo === null
-			? createApiRefWriter(api, config.repo)
-			: createLeaseRefWriter(repo, api, config.repo, logger);
+	/* The writer is chosen at the first write, after preparation may have switched the adapter to the API.
+	 * `--ancestry api` means no git at all, so it also keeps the writes on the refs API. */
+	let writer: Promise<RefWriter> | undefined;
+	const refWriter = (): Promise<RefWriter> => {
+		writer ??= (async () =>
+			selectRefWriter(ancestry.name === 'git' ? await runtime.repo() : null, {
+				api,
+				repo: config.repo,
+				serverUrl: config.serverUrl,
+				token: config.token,
+				logger,
+				allowGit: config.ancestry !== 'api',
+			}))();
+		return writer;
+	};
 	if (
 		options.baseline !== undefined &&
 		options.baseline !== '' &&
@@ -75,12 +84,16 @@ export async function runMoveBaseline(
 	}
 
 	const moves: MoveEntry[] = [];
-	for (const baseline of selected) {
-		const move = await moveOne(baseline, target, labeled, force);
-		moves.push(move);
-		// `from` already reflects a re-read after a lost race, so it is the truth when nothing moved.
-		baseline.sha = move.moved ? move.to : move.from;
-		logger.info(describe(move));
+	try {
+		for (const baseline of selected) {
+			const move = await moveOne(baseline, target, labeled, force);
+			moves.push(move);
+			// `from` already reflects a re-read after a lost race, so it is the truth when nothing moved.
+			baseline.sha = move.moved ? move.to : move.from;
+			logger.info(describe(move));
+		}
+	} finally {
+		await (await writer)?.close?.();
 	}
 
 	/*
@@ -94,7 +107,6 @@ export async function runMoveBaseline(
 		baselines: authoritative,
 		moves,
 		dryRun: config.dryRun,
-		writer: writer.name,
 	};
 	if (options.refreshPrStatuses) {
 		// A dry-run refresh evaluates statuses against the intended positions while the adapter still verifies the real, unmoved refs.
@@ -144,9 +156,16 @@ export async function runMoveBaseline(
 			if (config.dryRun) {
 				return { name: baseline.name, from: current, to, moved: true, reason: decision.reason };
 			}
-			const outcome = await writer.move(baseline.name, current, to);
+			const outcome = await (await refWriter()).move(baseline.name, current, to);
 			if (outcome.ok) {
-				return { name: baseline.name, from: current, to, moved: true, reason: decision.reason };
+				return {
+					name: baseline.name,
+					from: current,
+					to,
+					moved: true,
+					reason: decision.reason,
+					via: outcome.via,
+				};
 			}
 			const latest = outcome.actual;
 			if (attempt > 1) {

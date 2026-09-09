@@ -90,7 +90,7 @@ describe('gitBaseEnv', () => {
 			{
 				GITHUB_TOKEN: 'secret',
 				INPUT_TOKEN: 'secret',
-				GIT_CONFIG_COUNT: '9',
+				GIT_CONFIG_COUNT: '10',
 				PATH: '/bin',
 				LANG: 'de_DE',
 			},
@@ -105,13 +105,15 @@ describe('gitBaseEnv', () => {
 			GIT_NO_REPLACE_OBJECTS: '1',
 			GIT_NO_LAZY_FETCH: '1',
 			GIT_TERMINAL_PROMPT: '0',
-			GIT_CONFIG_COUNT: '7',
+			GIT_CONFIG_COUNT: '8',
 			GIT_CONFIG_KEY_0: 'core.hooksPath',
 			GIT_CONFIG_VALUE_0: '/dev/null',
-			GIT_CONFIG_KEY_1: 'credential.helper',
-			GIT_CONFIG_VALUE_1: '',
-			GIT_CONFIG_KEY_6: 'http.https://github.com/.extraheader',
-			GIT_CONFIG_VALUE_6: 'AUTHORIZATION: basic x',
+			GIT_CONFIG_KEY_1: 'push.gpgSign',
+			GIT_CONFIG_VALUE_1: 'false',
+			GIT_CONFIG_KEY_2: 'credential.helper',
+			GIT_CONFIG_VALUE_2: '',
+			GIT_CONFIG_KEY_7: 'http.https://github.com/.extraheader',
+			GIT_CONFIG_VALUE_7: 'AUTHORIZATION: basic x',
 		});
 	});
 

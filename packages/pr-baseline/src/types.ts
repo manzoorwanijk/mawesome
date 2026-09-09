@@ -231,6 +231,8 @@ export interface MoveEntry {
 	to: string;
 	moved: boolean;
 	reason?: MoveReason;
+	/** How a moved ref was written: a lease push through git, or the refs API. Absent in a dry run. */
+	via?: 'git' | 'api';
 	/** Set when the baseline was left alone; human readable. */
 	note?: string;
 }
@@ -243,8 +245,6 @@ export interface MoveBaselineResult {
 	moves: MoveEntry[];
 	refresh?: RefreshPrStatusesResult;
 	dryRun: boolean;
-	/** How the refs were written: a lease push from the clone, or the refs API with a re-read after each write. */
-	writer: 'git' | 'api';
 }
 
 export interface ReportBaseline extends ResolvedBaseline {
