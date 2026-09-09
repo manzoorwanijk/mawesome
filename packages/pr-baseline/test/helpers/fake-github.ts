@@ -388,7 +388,9 @@ export class FakeGitHub {
 			const status = this.latestStatus(target, context);
 			return {
 				data: {
-					repository: { object: this.commits.has(target) ? { status: statusNode(status) } : null },
+					repository: {
+						object: this.commits.has(target) ? { status: statusNode(status, query) } : null,
+					},
 				},
 			};
 		}
@@ -419,7 +421,9 @@ export class FakeGitHub {
 							mergeCommit: pull.mergeCommit === null ? null : { oid: pull.mergeCommit },
 							commits: {
 								nodes: [
-									{ commit: { status: statusNode(this.latestStatus(pull.headSha, context)) } },
+									{
+										commit: { status: statusNode(this.latestStatus(pull.headSha, context), query) },
+									},
 								],
 							},
 						})),
@@ -430,16 +434,23 @@ export class FakeGitHub {
 	}
 }
 
-function statusNode(status: FakeStatus | null): unknown {
+function statusNode(status: FakeStatus | null, query: string): unknown {
 	if (status === null) {
 		return null;
 	}
+	// GitHub's GraphQL names a bot without its `[bot]` suffix and types it `Bot`; REST keeps the suffix.
+	const bot = status.creator.endsWith('[bot]');
+	const login = bot ? status.creator.slice(0, -'[bot]'.length) : status.creator;
+	// Like GitHub, the typename is present only when the query selects it.
+	const creator = query.includes('__typename')
+		? { login, __typename: bot ? 'Bot' : 'User' }
+		: { login };
 	return {
 		context: {
 			state: status.state.toUpperCase(),
 			description: status.description,
 			targetUrl: status.targetUrl,
-			creator: { login: status.creator },
+			creator,
 		},
 	};
 }

@@ -6,7 +6,7 @@
 2. **Run the refresh unseeded.** With no tag, every open PR receives a pass. This proves the token, the creator and the permissions before anything can block.
 3. **Seed the baseline** at the commit that every open PR must contain: `pr-baseline move-baseline --force --refresh-pr-statuses`, or `--to <sha>` for an older commit. The refresh stamps stale PRs with a failure.
 4. **Let it converge.** A large repository may need more than one run because of the write budget; each run reports what is left. `pr-baseline report` shows the baseline and how many PRs it binds.
-5. **Require the status context** in the base branch's ruleset with the source matching the token, and protect the tag, as described in [permissions](./permissions.md).
+5. **Require the status context** in the base branch's ruleset with the source matching the token, and protect the tag when the token can bypass the ruleset (an App or a PAT, never `GITHUB_TOKEN`), as described in [permissions](./permissions.md).
 
 ## Everyday operations
 

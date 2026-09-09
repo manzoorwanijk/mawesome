@@ -47,6 +47,26 @@ describe('cli', () => {
 		expect(stderr).toContain('GITHUB_REPOSITORY');
 	});
 
+	it('names the flag when a write cap is not a positive integer', () => {
+		for (const [flag, value] of [
+			['--max-writes-per-run', '0'],
+			['--max-writes-per-minute', 'x'],
+			['--max-writes-per-run', '9'.repeat(23)],
+		] as const) {
+			const { status, stderr } = run([
+				'refresh-pr-statuses',
+				'--repo',
+				'a/b',
+				'--token',
+				'x',
+				flag,
+				value,
+			]);
+			expect(status).toBe(2);
+			expect(stderr).toContain(`${flag} expects a positive integer, got "${value}".`);
+		}
+	});
+
 	it('validates baselines before any request', () => {
 		const { status, stderr } = run([
 			'refresh-pr-statuses',

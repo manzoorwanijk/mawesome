@@ -181,6 +181,19 @@ describe('refresh-pr-statuses', () => {
 		expect(github.requests(/\/statuses\//, 'POST')).toHaveLength(0);
 	});
 
+	it('recognises its own statuses under an App bot creator, which GraphQL names without the [bot] suffix', async () => {
+		const { client, github } = harness({ creator: 'my-app[bot]' }, (gh) => {
+			populate(gh);
+			gh.creator = 'my-app[bot]';
+			gh.status(sha(11), { state: 'success', description: PASS, creator: 'my-app[bot]' });
+		});
+		const result = await client.refreshPrStatuses();
+		expect(result.entries.find((entry) => entry.number === 1)?.outcome).toBe('skipped');
+		expect(
+			github.calls.filter((call) => call.method === 'POST' && call.path.includes(sha(11))),
+		).toHaveLength(0);
+	});
+
 	it('fails before evaluating anything when the creator cannot be resolved', async () => {
 		const { client, github } = harness({ tokenIsWorkflowToken: false }, (gh) => {
 			populate(gh);

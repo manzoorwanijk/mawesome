@@ -57,8 +57,8 @@ Behavior:
   --ancestry auto|git|api  Ancestry source (default auto)
   --git-dir <path>       Local repository for git ancestry and ref resolution
   --offline              Trust the local clone's tags without a token
-  --max-writes-per-run <n>      Default 450
-  --max-writes-per-minute <n>   Default 60
+  --max-writes-per-run <n>      Positive integer, default 450
+  --max-writes-per-minute <n>   Positive integer, default 60
   --dry-run              Log writes instead of making them
   --json                 Print the result as JSON on stdout
 
@@ -115,7 +115,7 @@ async function main(argv: string[]): Promise<number> {
 	}
 
 	try {
-		const pr = optionalInteger(values.pr, '--pr');
+		const pr = optionalPositiveInteger(values.pr, '--pr');
 		const client = createClient(clientOptions(values));
 		const json = values.json ?? false;
 		switch (command) {
@@ -239,12 +239,12 @@ function clientOptions(values: Values): ClientOptions {
 	assign(
 		options,
 		'maxWritesPerRun',
-		optionalInteger(values['max-writes-per-run'], '--max-writes-per-run'),
+		optionalPositiveInteger(values['max-writes-per-run'], '--max-writes-per-run'),
 	);
 	assign(
 		options,
 		'maxWritesPerMinute',
-		optionalInteger(values['max-writes-per-minute'], '--max-writes-per-minute'),
+		optionalPositiveInteger(values['max-writes-per-minute'], '--max-writes-per-minute'),
 	);
 	const descriptions: NonNullable<ClientOptions['descriptions']> = {};
 	assign(descriptions, 'pass', values['description-pass']);
@@ -281,15 +281,17 @@ function assign<T extends object, K extends keyof T>(
 	}
 }
 
-function optionalInteger(value: string | undefined, flag: string): number | undefined {
-	return value === undefined ? undefined : integer(value, flag);
+function optionalPositiveInteger(value: string | undefined, flag: string): number | undefined {
+	return value === undefined ? undefined : positiveInteger(value, flag);
 }
 
-function integer(value: string, flag: string): number {
-	if (!/^\d+$/.test(value)) {
-		throw new ConfigError(`${flag} expects a non-negative integer, got "${value}".`);
+/** PR numbers and both caps are positive by contract; checking here names the flag rather than the library option. */
+function positiveInteger(value: string, flag: string): number {
+	const parsed = /^\d+$/.test(value) ? Number(value) : Number.NaN;
+	if (!Number.isSafeInteger(parsed) || parsed < 1) {
+		throw new ConfigError(`${flag} expects a positive integer, got "${value}".`);
 	}
-	return Number(value);
+	return parsed;
 }
 
 function emit(json: boolean, result: unknown, text: string): void {

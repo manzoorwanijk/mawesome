@@ -261,7 +261,7 @@ function positiveInt(value: number | undefined, name: string, fallback: number):
 	if (value === undefined) {
 		return fallback;
 	}
-	if (!Number.isInteger(value) || value < 1) {
+	if (!Number.isSafeInteger(value) || value < 1) {
 		throw new ConfigError(`${name} must be a positive integer.`);
 	}
 	return value;

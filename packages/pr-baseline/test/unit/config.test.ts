@@ -58,6 +58,12 @@ describe('resolveConfig', () => {
 			ConfigError,
 		);
 		expect(() => resolveConfig({ repo: 'a/b', env: {}, maxWritesPerRun: 0 })).toThrow(ConfigError);
+		expect(() => resolveConfig({ repo: 'a/b', env: {}, maxWritesPerRun: 2 ** 53 })).toThrow(
+			ConfigError,
+		);
+		expect(() => resolveConfig({ repo: 'a/b', env: {}, maxWritesPerMinute: 1e23 })).toThrow(
+			ConfigError,
+		);
 		expect(() => resolveConfig({ repo: 'a/b', env: {}, maxWritesPerMinute: 1.5 })).toThrow(
 			ConfigError,
 		);
