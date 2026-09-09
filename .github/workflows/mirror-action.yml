@@ -127,43 +127,49 @@ jobs:
           --version "$VERSION"
           --upstream "$SHA"
           --stage mirror-stage
-      # One commit on top of the recorded main carrying exactly the staged tree, attributed to the App's bot user.
+      # One commit on the release branch carrying exactly the staged tree, attributed to the App's bot user.
+      # Promote verifies that commit before anything moves, so this step is only asked to produce it.
       - name: Deploy to the release branch
+        id: deploy
         if: steps.prepare.outputs.deploy == 'true'
-        env:
-          MIRROR_TOKEN: ${{ steps.mirror-token.outputs.token }}
-          VERSION: ${{ steps.release.outputs.version }}
-          SHA: ${{ steps.release.outputs.sha }}
-          BOT_NAME: ${{ steps.bot.outputs.name }}
-          BOT_EMAIL: ${{ steps.bot.outputs.email }}
-        run: >-
-          node tools/repo/scripts/tag-action-mirror.ts deploy
-          --mirror "https://github.com/$MIRROR_OWNER/$MIRROR_REPO.git"
-          --version "$VERSION"
-          --upstream "$SHA"
-          --stage mirror-stage
-          --author-name "$BOT_NAME"
-          --author-email "$BOT_EMAIL"
+        uses: manzoorwanijk/action-deploy-to-repo@22747a56cddfd415412e752b76b1dd0d1f33778b # v4.0.0
+        with:
+          src_dir: mirror-stage
+          target_repo: ${{ env.MIRROR_OWNER }}/${{ env.MIRROR_REPO }}
+          target_dir: .
+          target_branch: ${{ steps.prepare.outputs.target_branch }}
+          access_token: ${{ steps.mirror-token.outputs.token }}
+          git_user_name: ${{ steps.bot.outputs.name }}
+          git_user_email: ${{ steps.bot.outputs.email }}
+          cleanup_command: find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+          commit_msg: |
+            Release v${{ steps.release.outputs.version }}
+
+            Upstream-Ref: ${{ steps.release.outputs.sha }}
       - name: Promote the release
         if: steps.prepare.outputs.deploy == 'true'
         env:
           MIRROR_TOKEN: ${{ steps.mirror-token.outputs.token }}
           VERSION: ${{ steps.release.outputs.version }}
           SHA: ${{ steps.release.outputs.sha }}
+          DEPLOYED: ${{ steps.deploy.outputs.commit_sha }}
         run: >-
           node tools/repo/scripts/tag-action-mirror.ts promote
           --mirror "https://github.com/$MIRROR_OWNER/$MIRROR_REPO.git"
           --version "$VERSION"
           --upstream "$SHA"
           --stage mirror-stage
+          --deployed "$DEPLOYED"
       - name: Remove the release branch
         if: always() && steps.prepare.outcome != 'skipped'
         env:
           MIRROR_TOKEN: ${{ steps.mirror-token.outputs.token }}
           VERSION: ${{ steps.release.outputs.version }}
           SHA: ${{ steps.release.outputs.sha }}
+          DEPLOYED: ${{ steps.deploy.outputs.commit_sha }}
         run: >-
           node tools/repo/scripts/tag-action-mirror.ts cleanup
           --mirror "https://github.com/$MIRROR_OWNER/$MIRROR_REPO.git"
           --version "$VERSION"
           --upstream "$SHA"
+          --deployed "$DEPLOYED"

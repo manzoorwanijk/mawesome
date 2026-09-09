@@ -63,17 +63,28 @@ describe('mirror workflow', () => {
 	});
 
 	it('stages, prepares, deploys, promotes and always cleans up with the same stage path', () => {
-		expect(text.match(/--stage mirror-stage/g)).toHaveLength(3);
+		expect(text.match(/--stage mirror-stage/g)).toHaveLength(2);
+		expect(text).toContain('src_dir: mirror-stage');
 		expect(text.match(/if: steps\.prepare\.outputs\.deploy == 'true'/g)).toHaveLength(2);
 		expect(text).toMatch(/always\(\) && steps\.prepare\.outcome != 'skipped'/);
-		expect(text).not.toContain('uses: manzoorwanijk/action-deploy-to-repo');
 	});
 
-	it('deploys through the script with the App bot identity and no third-party clone', () => {
-		expect(text).toContain('tag-action-mirror.ts deploy');
-		expect(text).toContain('--author-name "$BOT_NAME"');
-		expect(text).toContain('--author-email "$BOT_EMAIL"');
-		expect(text).toContain('BOT_EMAIL: ${{ steps.bot.outputs.email }}');
-		expect(text).not.toContain('__clone__');
+	it('deploys through the pinned action into the branch prepare created, with the App bot identity', () => {
+		expect(text).toMatch(/uses: manzoorwanijk\/action-deploy-to-repo@[0-9a-f]{40} # v[\d.]+/);
+		expect(text).toContain('target_repo: ${{ env.MIRROR_OWNER }}/${{ env.MIRROR_REPO }}');
+		expect(text).toContain('target_branch: ${{ steps.prepare.outputs.target_branch }}');
+		expect(text).toContain('git_user_name: ${{ steps.bot.outputs.name }}');
+		expect(text).toContain('git_user_email: ${{ steps.bot.outputs.email }}');
+		expect(text).toContain(
+			'cleanup_command: find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +',
+		);
+		expect(text).toMatch(
+			/commit_msg: \|\n\s+Release v\$\{\{ steps\.release\.outputs\.version \}\}\n\n\s+Upstream-Ref: \$\{\{ steps\.release\.outputs\.sha \}\}/,
+		);
+	});
+
+	it('binds promote and cleanup to the commit the action reported', () => {
+		expect(text.match(/--deployed "\$DEPLOYED"/g)).toHaveLength(2);
+		expect(text.match(/DEPLOYED: \$\{\{ steps\.deploy\.outputs\.commit_sha \}\}/g)).toHaveLength(2);
 	});
 });

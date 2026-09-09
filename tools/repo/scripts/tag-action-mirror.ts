@@ -1,6 +1,6 @@
 /**
  * Publishes a release of the pr-baseline action to its mirror repository in guarded steps.
- * `prepare` records main and creates the release branch, `deploy` commits the staged tree on it, `promote` verifies that commit and moves the refs, `cleanup` drops the branch.
+ * `prepare` records main and creates the release branch, the deploy action commits the staged tree on it, `promote` verifies that commit and moves the refs, `cleanup` drops the branch.
  */
 import { execFileSync } from 'node:child_process';
 import {
@@ -31,8 +31,8 @@ export interface Options {
 	state: string;
 	/** Scratch directory for a local repository. */
 	work?: string | undefined;
-	/** Author and committer of the deployed commit; git's defaults when absent. */
-	author?: { name: string; email: string } | undefined;
+	/** The commit the deploy step reported pushing; the branch must still hold it. */
+	deployed?: string | undefined;
 	/** Test hooks run before the branch creation and around the atomic promotion, to inject failures and races. */
 	hooks?: { beforeCreate?(): void; beforePush?(): void; afterPush?(): void } | undefined;
 }
@@ -44,8 +44,6 @@ export interface State {
 	branchCreated: boolean;
 	/** Where this run created the branch. */
 	branchSha?: string;
-	/** The commit the deploy step is about to push, recorded first so a crash between push and save is recoverable. */
-	pendingSha?: string;
 	/** The commit the deploy step left on the branch, recorded before it is verified. */
 	deployedSha?: string;
 	releaseSha?: string;
@@ -384,7 +382,14 @@ export function promote(options: Options): State {
 		throw new MirrorError(`${state.branch} moved since this run deployed; fix it by hand.`);
 	}
 	if (state.deployedSha === undefined) {
-		// Deployed outside this script: recorded so cleanup may delete it once the checks below fail.
+		/* The deploy step runs outside this script, so the branch must still hold the commit it reported.
+		 * It is recorded before the checks below, so cleanup may delete it when one of them fails. */
+		if (options.deployed === undefined) {
+			throw new MirrorError('--deployed is required: pass the commit the deploy step reported.');
+		}
+		if (head !== options.deployed) {
+			throw new MirrorError(`${state.branch} does not hold the commit the deploy step reported.`);
+		}
 		state.deployedSha = head;
 		saveState(options, state);
 	}
@@ -509,78 +514,6 @@ function isSupersedingRelease(
 	return mirror.commitOf(newerTag, mirror.refs(newerTag)) === current;
 }
 
-/** Commits the staged tree on the release branch as one commit on top of the recorded main, with a lease on the branch this run created. */
-export function deploy(options: Options): State {
-	const state = loadState(options);
-	if (state.path !== 'publish') {
-		return state;
-	}
-	if (options.stage === undefined) {
-		throw new MirrorError('--stage is required to deploy.');
-	}
-	if (!existsSync(options.stage) || !lstatSync(options.stage).isDirectory()) {
-		throw new MirrorError(`Stage directory ${options.stage} does not exist or is a link.`);
-	}
-	if (!state.branchCreated || state.branchSha === undefined) {
-		throw new MirrorError(`${state.branch} was not created by this run; nothing to deploy onto.`);
-	}
-	const mirror = new Mirror(options);
-	if (state.deployedSha !== undefined || state.pendingSha !== undefined) {
-		// A rerun of the deploy step: the commit is already on the branch, never landed, or the branch was taken over.
-		const current = mirror.commitOf(state.branch, mirror.refs(state.branch));
-		const settled = (state.deployedSha ?? state.pendingSha) as string;
-		if (current === settled) {
-			state.deployedSha = settled;
-			delete state.pendingSha;
-			saveState(options, state);
-			output('deployed_sha', settled);
-			return state;
-		}
-		if (state.deployedSha !== undefined || current !== state.branchSha) {
-			throw new MirrorError(
-				`${state.branch} no longer holds this run's deployed commit; fix it by hand.`,
-			);
-		}
-		// The pending push never landed, so the deploy is redone from the recorded main.
-	}
-	mirror.fetch(state.mainSha);
-	const tree = mirror.stagedTree(options.stage);
-	const identity: Record<string, string> =
-		options.author === undefined
-			? {}
-			: {
-					GIT_AUTHOR_NAME: options.author.name,
-					GIT_AUTHOR_EMAIL: options.author.email,
-					GIT_COMMITTER_NAME: options.author.name,
-					GIT_COMMITTER_EMAIL: options.author.email,
-				};
-	const commit = mirror
-		.git(
-			[
-				'commit-tree',
-				tree,
-				'-p',
-				state.mainSha,
-				'-m',
-				releaseMessage(options.version, options.upstream),
-			],
-			identity,
-		)
-		.trim();
-	state.pendingSha = commit;
-	saveState(options, state);
-	// The lease keeps this run from overwriting a branch another run or a hand took over meanwhile.
-	mirror.push(
-		[`${commit}:${state.branch}`],
-		[`--force-with-lease=${state.branch}:${state.branchSha}`],
-	);
-	state.deployedSha = commit;
-	delete state.pendingSha;
-	saveState(options, state);
-	output('deployed_sha', commit);
-	return state;
-}
-
 /** Deletes the temporary branch, only when this run created it and it points at a commit this run recorded. */
 export function cleanup(options: Options): void {
 	let state: State;
@@ -597,7 +530,7 @@ export function cleanup(options: Options): void {
 	if (current === undefined) {
 		return;
 	}
-	if (![state.branchSha, state.pendingSha, state.deployedSha, state.releaseSha].includes(current)) {
+	if (![state.branchSha, state.deployedSha, state.releaseSha, options.deployed].includes(current)) {
 		console.warn(`${state.branch} moved since this run; leaving it alone.`);
 		return;
 	}
@@ -613,8 +546,7 @@ if (import.meta.main) {
 			upstream: { type: 'string' },
 			stage: { type: 'string' },
 			state: { type: 'string' },
-			'author-name': { type: 'string' },
-			'author-email': { type: 'string' },
+			deployed: { type: 'string' },
 		},
 	});
 	const command = positionals[0];
@@ -628,10 +560,7 @@ if (import.meta.main) {
 			values.state ?? join(process.env['RUNNER_TEMP'] ?? tmpdir(), 'action-mirror-state.json'),
 		),
 		token: process.env['MIRROR_TOKEN'],
-		author:
-			values['author-name'] === undefined || values['author-email'] === undefined
-				? undefined
-				: { name: values['author-name'], email: values['author-email'] },
+		deployed: values.deployed === undefined || values.deployed === '' ? undefined : values.deployed,
 	};
 	try {
 		if (
@@ -643,15 +572,13 @@ if (import.meta.main) {
 		}
 		if (command === 'prepare') {
 			prepare(options);
-		} else if (command === 'deploy') {
-			deploy(options);
 		} else if (command === 'promote') {
 			promote(options);
 		} else if (command === 'cleanup') {
 			cleanup(options);
 		} else {
 			throw new MirrorError(
-				'Usage: tag-action-mirror.ts <prepare|deploy|promote|cleanup> --mirror <url> --version <x.y.z> --upstream <sha> [--stage <dir>] [--author-name <name> --author-email <email>]',
+				'Usage: tag-action-mirror.ts <prepare|promote|cleanup> --mirror <url> --version <x.y.z> --upstream <sha> [--stage <dir>] [--deployed <sha>]',
 			);
 		}
 	} catch (error) {
