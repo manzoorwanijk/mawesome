@@ -58,8 +58,8 @@ export function selectRefWriter(clone: GitRepo | null, options: RefWriterOptions
 		async () => (clone === null ? null : createLeaseRefWriter(clone, options)),
 		async () => {
 			ephemeral ??= createEphemeralRepo(options);
-			const repo = await ephemeral;
-			return repo === null ? null : createLeaseRefWriter(repo.repo, options);
+			const repo = (await ephemeral)?.repo ?? null;
+			return repo === null ? null : createLeaseRefWriter(repo, options);
 		},
 		async () => {
 			options.logger.warn(
@@ -146,7 +146,10 @@ export function createLeaseRefWriter(
 				await git.git([
 					'push',
 					'--quiet',
+					'--no-verify',
 					'--no-signed',
+					'--no-follow-tags',
+					'--recurse-submodules=no',
 					`--force-with-lease=${ref}:${raw ?? ''}`,
 					'--',
 					git.url ?? git.remote,
@@ -169,7 +172,8 @@ export function createLeaseRefWriter(
 }
 
 interface EphemeralRepo {
-	repo: GitRepo;
+	/** Null when the repository could not be set up; `close` still removes the directory. */
+	repo: GitRepo | null;
 	close(): Promise<void>;
 }
 
@@ -220,7 +224,7 @@ async function createEphemeralRepo(options: RefWriterOptions): Promise<Ephemeral
 	await close().catch((error: unknown) => {
 		warnQuietly(options.logger, `Could not remove ${dir} (${describeError(error)}).`);
 	});
-	return null;
+	return { repo: null, close };
 }
 
 /** A diagnostic must never become the failure: an injected logger may throw. */

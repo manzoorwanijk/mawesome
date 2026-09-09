@@ -1237,6 +1237,28 @@ describe('move-baseline through a clone', () => {
 		expect(pushes).toBe(1);
 	});
 
+	it('pushes the leased ref and nothing else, whatever the clone asks for', async () => {
+		const [, , c3, c4] = world.c;
+		const clone = world.fixture.cloneDir;
+		world.fixture.git(clone, ['config', 'push.followTags', 'true']);
+		world.fixture.git(clone, ['config', 'push.recurseSubmodules', 'on-demand']);
+		world.fixture.git(clone, ['config', 'push.pushOption', 'lab=1']);
+		world.fixture.git(clone, ['tag', '-a', '-m', 'stray', 'stray', c4 as string]);
+		const before = world.fixture.git(world.fixture.remoteDir, [
+			'for-each-ref',
+			'--format=%(refname) %(objectname)',
+		]);
+		const result = await client().moveBaseline({ force: true });
+		expect(result.moves[0]).toMatchObject({ moved: true, from: c3, to: c4, via: 'git' });
+		const after = world.fixture.git(world.fixture.remoteDir, [
+			'for-each-ref',
+			'--format=%(refname) %(objectname)',
+		]);
+		const changed = after.split('\n').filter((line) => !before.includes(line));
+		expect(changed).toEqual([`refs/baselines/pr-baseline ${c4}`]);
+		expect(world.fixture.remoteRef('refs/tags/stray')).toBeNull();
+	});
+
 	it('never signs a push, whatever the clone asks for', async () => {
 		const [, , c3, c4] = world.c;
 		world.fixture.git(world.fixture.cloneDir, ['config', 'push.gpgSign', 'true']);

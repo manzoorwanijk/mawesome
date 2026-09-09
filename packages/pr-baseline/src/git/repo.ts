@@ -119,6 +119,10 @@ const HARDENING: ConfigEntry[] = [
 	['maintenance.auto', 'false'],
 	['gc.auto', '0'],
 	['credential.interactive', 'false'],
+	// A push may update the one leased ref and nothing else: no tags, no submodules, no server options.
+	['push.followTags', 'false'],
+	['push.recurseSubmodules', 'no'],
+	['push.pushOption', ''],
 ];
 
 /**
