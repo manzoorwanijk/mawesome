@@ -182,14 +182,20 @@ async function createEphemeralRepo(options: RefWriterOptions): Promise<Ephemeral
 	try {
 		dir = await mkdtemp(join(tmpdir(), 'pr-baseline-'));
 	} catch (error) {
-		options.logger.warn(`No temporary directory for the move (${describeError(error)}).`);
+		warnQuietly(options.logger, `No temporary directory for the move (${describeError(error)}).`);
 		return null;
 	}
+	// Removal is best effort and retried by a later close; nothing here may fail the run.
 	let closed = false;
 	const close = async (): Promise<void> => {
-		if (!closed) {
-			closed = true;
+		if (closed) {
+			return;
+		}
+		try {
 			await rm(dir, { recursive: true, force: true });
+			closed = true;
+		} catch (error) {
+			warnQuietly(options.logger, `Could not remove ${dir} (${describeError(error)}).`);
 		}
 	};
 	// The bootstrap runs under the same hardened environment as every other git call: no inherited GIT_*, no token.
@@ -212,14 +218,21 @@ async function createEphemeralRepo(options: RefWriterOptions): Promise<Ephemeral
 	} catch (error) {
 		failure = error;
 	}
-	try {
-		options.logger.warn(
-			`No temporary git repository for the move${failure === undefined ? '' : ` (${describeError(failure)})`}.`,
-		);
-	} finally {
-		await close();
-	}
+	warnQuietly(
+		options.logger,
+		`No temporary git repository for the move${failure === undefined ? '' : ` (${describeError(failure)})`}.`,
+	);
+	await close();
 	return null;
+}
+
+/** A diagnostic must never become the failure: an injected logger may throw. */
+function warnQuietly(logger: Logger, message: string): void {
+	try {
+		logger.warn(message);
+	} catch {
+		// Nothing to do: the message was only a courtesy.
+	}
 }
 
 function describeError(error: unknown): string {

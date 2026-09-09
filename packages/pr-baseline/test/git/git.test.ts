@@ -1266,6 +1266,7 @@ describe('move-baseline through a clone', () => {
 		const [, , c3, c4] = world.c;
 		world.fixture.shallowClone();
 		const hijack = `${world.fixture.root}/hijack`;
+		const previous = process.env['GIT_DIR'];
 		process.env['GIT_DIR'] = hijack;
 		try {
 			const result = await client({ serverUrl: world.fixture.serverUrl }).moveBaseline({
@@ -1273,7 +1274,11 @@ describe('move-baseline through a clone', () => {
 			});
 			expect(result.moves[0]).toMatchObject({ moved: true, from: c3, to: c4, via: 'git' });
 		} finally {
-			delete process.env['GIT_DIR'];
+			if (previous === undefined) {
+				delete process.env['GIT_DIR'];
+			} else {
+				process.env['GIT_DIR'] = previous;
+			}
 		}
 		expect(existsSync(hijack)).toBe(false);
 	});
@@ -1299,6 +1304,35 @@ describe('move-baseline through a clone', () => {
 		}
 		expect(world.warnings.join('\n')).toContain('No temporary directory');
 		expect(world.warnings.join('\n')).toContain('cannot refuse a concurrent move');
+	});
+
+	it('still moves when the injected logger throws on the cleanup diagnostics', async () => {
+		const [, , c3, c4] = world.c;
+		world.fixture.shallowClone();
+		world.github.refSource = undefined;
+		world.github.baseline('pr-baseline', c3 as string);
+		const previous = process.env['TMPDIR'];
+		process.env['TMPDIR'] = `${world.fixture.root}/missing`;
+		try {
+			const result = await client({
+				serverUrl: world.fixture.serverUrl,
+				logger: {
+					info() {},
+					warn(message) {
+						if (message.includes('temporary')) {
+							throw new Error(`logger refused: ${message}`);
+						}
+					},
+				},
+			}).moveBaseline({ force: true });
+			expect(result.moves[0]).toMatchObject({ moved: true, from: c3, to: c4, via: 'api' });
+		} finally {
+			if (previous === undefined) {
+				delete process.env['TMPDIR'];
+			} else {
+				process.env['TMPDIR'] = previous;
+			}
+		}
 	});
 
 	it('keeps the writes on the refs API with --ancestry api', async () => {

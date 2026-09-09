@@ -92,10 +92,8 @@ export async function runMoveBaseline(
 			logger.info(describe(move));
 		}
 	} finally {
-		// A failed cleanup is worth a warning, never the run: the moves it would mask have already landed.
-		await writer?.close?.().catch((error: unknown) => {
-			logger.warn(`Could not remove the temporary repository: ${String(error)}`);
-		});
+		// Cleanup is best effort: the moves an error here could mask have already landed.
+		await writer?.close?.().catch(() => undefined);
 	}
 
 	/*
