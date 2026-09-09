@@ -12,7 +12,7 @@ import { toolVersion } from '../../lib/tool-versions.ts';
 
 <CardGrid>
 	{tools.map((tool) => (
-		<Card title={tool.name} icon={tool.icon}>
+		<Card title={`<a href="/${tool.slug}/">${tool.name}</a>`} icon={tool.icon}>
 			<p><a href={`https://www.npmjs.com/package/${tool.npm}`}><code>v{toolVersion(tool.npm)}</code></a></p>
 			<p>{tool.tagline}</p>
 			<p>
