@@ -364,12 +364,12 @@ function clientOptions(): ClientOptions {
 	assign(
 		options,
 		'maxWritesPerRun',
-		integer(core.getInput('max-writes-per-run'), 'max-writes-per-run'),
+		positiveInteger(core.getInput('max-writes-per-run'), 'max-writes-per-run'),
 	);
 	assign(
 		options,
 		'maxWritesPerMinute',
-		integer(core.getInput('max-writes-per-minute'), 'max-writes-per-minute'),
+		positiveInteger(core.getInput('max-writes-per-minute'), 'max-writes-per-minute'),
 	);
 	const descriptions: NonNullable<ClientOptions['descriptions']> = {};
 	assign(descriptions, 'pass', core.getInput('description-pass'));
@@ -430,14 +430,16 @@ function booleanInput(name: string, fallback: boolean): boolean {
 	return core.getInput(name).length === 0 ? fallback : core.getBooleanInput(name);
 }
 
-function integer(value: string, name: string): number | undefined {
+/** Both caps are positive by contract; checking here names the input rather than the library option. */
+function positiveInteger(value: string, name: string): number | undefined {
 	if (value.length === 0) {
 		return undefined;
 	}
-	if (!/^\d+$/.test(value)) {
-		throw new ConfigError(`${name} expects a non-negative integer, got "${value}".`);
+	const parsed = /^\d+$/.test(value) ? Number(value) : Number.NaN;
+	if (!Number.isSafeInteger(parsed) || parsed < 1) {
+		throw new ConfigError(`${name} expects a positive integer, got "${value}".`);
 	}
-	return Number(value);
+	return parsed;
 }
 
 function setCommonOutputs(values: Record<string, string | number | boolean>): void {

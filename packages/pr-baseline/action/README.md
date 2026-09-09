@@ -144,8 +144,8 @@ Explicit modes (`refresh-pr-status`, `refresh-pr-statuses`, `move-baseline`, `re
 | `other-bases`                    | PRs against other branches: skip (default) or pass.                                                            |                       |
 | `creator`                        | Login the token writes statuses as; required for a GitHub App token.                                           |                       |
 | `ancestry`                       | Ancestry source: auto (default), git or api.                                                                   |                       |
-| `max-writes-per-run`             | Stop a refresh after this many status writes (default 450).                                                    |                       |
-| `max-writes-per-minute`          | Pace status writes (default 60 per minute).                                                                    |                       |
+| `max-writes-per-run`             | Stop a refresh after this many status writes; a positive integer (default 450).                                |                       |
+| `max-writes-per-minute`          | Pace status writes; a positive integer per minute (default 60).                                                |                       |
 | `dry-run`                        | Log every intended write and tag move instead of making it.                                                    | `false`               |
 | `force`                          | In move-baseline mode, move by intent alone and seed absent tags.                                              | `false`               |
 | `refresh-pr-statuses-after-move` | In move-baseline mode, refresh every open PR's status afterwards (default true).                               | `true`                |
@@ -185,7 +185,7 @@ Every run, including a skip or an error, sets every output and writes a step sum
 | `refresh-pr-status`   | read       | write      |                 |
 | `refresh-pr-statuses` | write      | write      | read            |
 
-Require the status context (`PR baseline` by default) in the base branch's ruleset only, with the source matching the token, and protect the baseline tags with a tag ruleset restricted to the actor that moves them. The package docs cover [permissions](https://github.com/manzoorwanijk/mawesome/blob/main/packages/pr-baseline/docs/permissions.md), [rate limits](https://github.com/manzoorwanijk/mawesome/blob/main/packages/pr-baseline/docs/rate-limits.md), [edge cases](https://github.com/manzoorwanijk/mawesome/blob/main/packages/pr-baseline/docs/edge-cases.md) and the [runbook](https://github.com/manzoorwanijk/mawesome/blob/main/packages/pr-baseline/docs/runbook.md).
+Require the status context (`PR baseline` by default) in the base branch's ruleset only, with the source matching the token, and protect the baseline tags with a tag ruleset whose bypass list names the actor that moves them: an App installed on the repository, or a team or role holding a PAT's owner. GitHub does not accept the GitHub Actions app there, so `GITHUB_TOKEN` cannot move a protected tag. The package docs cover [permissions](https://github.com/manzoorwanijk/mawesome/blob/main/packages/pr-baseline/docs/permissions.md), [rate limits](https://github.com/manzoorwanijk/mawesome/blob/main/packages/pr-baseline/docs/rate-limits.md), [edge cases](https://github.com/manzoorwanijk/mawesome/blob/main/packages/pr-baseline/docs/edge-cases.md) and the [runbook](https://github.com/manzoorwanijk/mawesome/blob/main/packages/pr-baseline/docs/runbook.md).
 
 ## Support
 

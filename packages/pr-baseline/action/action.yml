@@ -63,10 +63,10 @@ inputs:
     description: 'Ancestry source: auto (default), git or api.'
     required: false
   max-writes-per-run:
-    description: Stop a refresh after this many status writes (default 450).
+    description: Stop a refresh after this many status writes; a positive integer (default 450).
     required: false
   max-writes-per-minute:
-    description: Pace status writes (default 60 per minute).
+    description: Pace status writes; a positive integer per minute (default 60).
     required: false
   dry-run:
     description: Log every intended write and tag move instead of making it.

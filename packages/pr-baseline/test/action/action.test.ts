@@ -500,6 +500,29 @@ describe('action explicit modes and errors', () => {
 		expect(outputs()['description']).toContain('does not read files');
 	});
 
+	it('names the input when a write cap is not a positive integer', async () => {
+		for (const [name, value] of [
+			['max-writes-per-run', '0'],
+			['max-writes-per-minute', 'abc'],
+			['max-writes-per-run', '9'.repeat(23)],
+		] as const) {
+			runner({ event: 'schedule', payload: {}, inputs: { [name]: value } });
+			await run();
+			expect(process.exitCode).toBe(1);
+			process.exitCode = 0;
+			expect(outputs()['description']).toBe(`${name} expects a positive integer, got "${value}".`);
+		}
+		// Leading zeros are still digits and stay accepted.
+		runner({
+			event: 'schedule',
+			payload: {},
+			inputs: { 'max-writes-per-run': '01', 'max-writes-per-minute': '007' },
+		});
+		await run();
+		expect(process.exitCode ?? 0).toBe(0);
+		expect(outputs()['state']).toBe('success');
+	});
+
 	it('bounds the summary output by dropping entries', () => {
 		const entries = Array.from({ length: 200 }, (_, index) => ({
 			number: index + 1,
