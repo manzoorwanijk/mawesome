@@ -236,6 +236,18 @@ describe('git ancestry', () => {
 		expect(result).toMatchObject({ ancestry: 'git', openPulls: 2, stale: 1, current: 1 });
 	});
 
+	it('counts a failing status with the default link as current, and the refresh skips it', async () => {
+		const [, c2, c3] = world.c;
+		const head = openPull(1, c2 as string, { 'x.txt': 'x' });
+		world.github.status(head, {
+			state: 'failure',
+			description: 'Merge or rebase main to include: pr-baseline',
+			targetUrl: `https://github.com/acme/widgets/compare/${head}...${c3}`,
+		});
+		expect(await client().report()).toMatchObject({ stale: 0, current: 1 });
+		expect(await client().refreshPrStatuses()).toMatchObject({ written: 0, skipped: 1 });
+	});
+
 	it("evaluates a local commit offline against the clone's baseline refs", async () => {
 		const [, c2] = world.c;
 		world.fixture.checkout(c2 as string, 'local');

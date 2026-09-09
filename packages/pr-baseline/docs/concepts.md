@@ -42,7 +42,7 @@ The two are independent: a repository-wide baseline can move only when `.nvmrc` 
 
 ## Idempotency
 
-A refresh recomputes every in-scope PR's verdict and writes only when the existing status differs in state, description, target URL or creator. The description is human text and encodes no SHA. Without a configured target URL a failing status links to the compare view `<head>...<baseline commit>` on the server, so the PRs that were already failing are written once more after a move, with the new commit. A status written by another creator (an old token, a previous integration) is rewritten, so a ruleset pinned to a source is always satisfied by the configured token.
+A refresh recomputes every in-scope PR's verdict and writes only when the existing status differs in state, description, target URL or creator. The description is human text and encodes no SHA. Without a configured target URL a failing status links to the compare view `<head>...<baseline commit>` on the server; a PR that was already failing is written once more when the baseline that link names moves, with the new commit. A status written by another creator (an old token, a previous integration) is rewritten, so a ruleset pinned to a source is always satisfied by the configured token.
 
 ## Recovery
 

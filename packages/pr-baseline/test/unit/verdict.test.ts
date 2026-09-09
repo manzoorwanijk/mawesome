@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_DESCRIPTIONS } from '../../src/config.ts';
+import { DEFAULT_DESCRIPTIONS, repoUrl } from '../../src/config.ts';
 import {
 	boundDescription,
 	computeVerdict,
@@ -113,6 +113,23 @@ describe('computeVerdict', () => {
 		expect(bad.kind).toBe('misconfigured');
 		expect(bad.status.state).toBe('success');
 		expect(bad.status.description).toContain('stale not on main');
+	});
+
+	it('leaves every pass unlinked without a target URL, whatever the server', () => {
+		const ghes: VerdictContext = {
+			...context,
+			targetUrl: undefined,
+			repoUrl: repoUrl({ serverUrl: 'https://ghe.test/', repo: 'acme/widgets' }),
+		};
+		const answers = [{ name: 'one', sha: 'x', applicable: true, contains: false }];
+		expect(computeVerdict(answers, ghes, 'h').status.targetUrl).toBe(
+			'https://ghe.test/acme/widgets/compare/h...x',
+		);
+		expect(
+			computeVerdict([{ ...answers[0], contains: true }], ghes, 'h').status.targetUrl,
+		).toBeUndefined();
+		expect(notApplicableVerdict(ghes).status.targetUrl).toBeUndefined();
+		expect(misconfiguredVerdict(['one'], ghes).status.targetUrl).toBeUndefined();
 	});
 });
 
