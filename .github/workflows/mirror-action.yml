@@ -39,9 +39,12 @@ jobs:
         uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2
         with:
           egress-policy: audit
+      # Full treeless history, so the ancestry check below can walk main back to the tagged commit.
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-depth: 0
+          filter: tree:0
           persist-credentials: false
       # The tag names the version; its commit must carry that package version and be on main, and is what this job builds.
       - name: Resolve the release
@@ -65,8 +68,8 @@ jobs:
             sha="$(printf '%s\n' "$listing" | awk -v ref="$tag" '$2 == ref { print $1 }')"
           fi
           test -n "$sha"
-          git fetch --quiet --filter=tree:0 origin "$sha" refs/heads/main
-          git merge-base --is-ancestor "$sha" FETCH_HEAD
+          git fetch --quiet --filter=tree:0 origin "$sha" '+refs/heads/main:refs/remotes/origin/main'
+          git merge-base --is-ancestor "$sha" refs/remotes/origin/main
           git checkout --quiet "$sha"
           manifest="$(node -p 'JSON.parse(require("fs").readFileSync("packages/pr-baseline/package.json", "utf8")).version')"
           test "$manifest" = "$version"
@@ -103,7 +106,7 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Build the action bundle
         run: pnpm --filter @mawesome/pr-baseline build:action
-      # The deploy action copies from a workspace path; release.json records what this mirror commit was built from.
+      # release.json records what this mirror commit was built from, so every release changes the tree.
       - name: Stage the mirror contents
         env:
           VERSION: ${{ steps.release.outputs.version }}
@@ -124,23 +127,23 @@ jobs:
           --version "$VERSION"
           --upstream "$SHA"
           --stage mirror-stage
+      # One commit on top of the recorded main carrying exactly the staged tree, attributed to the App's bot user.
       - name: Deploy to the release branch
         if: steps.prepare.outputs.deploy == 'true'
-        uses: manzoorwanijk/action-deploy-to-repo@90d51a70f8acb6d2363316f99a4fe597126e022d # v3.0.0
-        with:
-          src_dir: mirror-stage
-          target_owner: ${{ env.MIRROR_OWNER }}
-          target_repo: ${{ env.MIRROR_REPO }}
-          target_dir: .
-          target_branch: ${{ steps.prepare.outputs.target_branch }}
-          access_token: ${{ steps.mirror-token.outputs.token }}
-          git_user_name: ${{ steps.bot.outputs.name }}
-          git_user_email: ${{ steps.bot.outputs.email }}
-          cleanup_command: find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
-          commit_msg: |
-            Release v${{ steps.release.outputs.version }}
-
-            Upstream-Ref: ${{ steps.release.outputs.sha }}
+        env:
+          MIRROR_TOKEN: ${{ steps.mirror-token.outputs.token }}
+          VERSION: ${{ steps.release.outputs.version }}
+          SHA: ${{ steps.release.outputs.sha }}
+          BOT_NAME: ${{ steps.bot.outputs.name }}
+          BOT_EMAIL: ${{ steps.bot.outputs.email }}
+        run: >-
+          node tools/repo/scripts/tag-action-mirror.ts deploy
+          --mirror "https://github.com/$MIRROR_OWNER/$MIRROR_REPO.git"
+          --version "$VERSION"
+          --upstream "$SHA"
+          --stage mirror-stage
+          --author-name "$BOT_NAME"
+          --author-email "$BOT_EMAIL"
       - name: Promote the release
         if: steps.prepare.outputs.deploy == 'true'
         env:
@@ -153,16 +156,14 @@ jobs:
           --version "$VERSION"
           --upstream "$SHA"
           --stage mirror-stage
-      # The deploy action leaves a clone with the token in its remote URL; it goes with the branch.
-      - name: Remove the release branch and the deploy clone
+      - name: Remove the release branch
         if: always() && steps.prepare.outcome != 'skipped'
         env:
           MIRROR_TOKEN: ${{ steps.mirror-token.outputs.token }}
           VERSION: ${{ steps.release.outputs.version }}
           SHA: ${{ steps.release.outputs.sha }}
-        run: |
-          rm -rf -- "__${MIRROR_REPO}__clone__"
-          node tools/repo/scripts/tag-action-mirror.ts cleanup \
-            --mirror "https://github.com/$MIRROR_OWNER/$MIRROR_REPO.git" \
-            --version "$VERSION" \
-            --upstream "$SHA"
+        run: >-
+          node tools/repo/scripts/tag-action-mirror.ts cleanup
+          --mirror "https://github.com/$MIRROR_OWNER/$MIRROR_REPO.git"
+          --version "$VERSION"
+          --upstream "$SHA"

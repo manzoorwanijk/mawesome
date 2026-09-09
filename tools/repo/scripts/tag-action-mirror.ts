@@ -1,9 +1,17 @@
 /**
  * Publishes a release of the pr-baseline action to its mirror repository in guarded steps.
- * `prepare` records main and creates the release branch, `promote` verifies the deployed commit and moves the refs, `cleanup` drops the branch.
+ * `prepare` records main and creates the release branch, `deploy` commits the staged tree on it, `promote` verifies that commit and moves the refs, `cleanup` drops the branch.
  */
 import { execFileSync } from 'node:child_process';
-import { appendFileSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+	appendFileSync,
+	existsSync,
+	lstatSync,
+	mkdtempSync,
+	readdirSync,
+	readFileSync,
+	writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
@@ -23,6 +31,8 @@ export interface Options {
 	state: string;
 	/** Scratch directory for a local repository. */
 	work?: string | undefined;
+	/** Author and committer of the deployed commit; git's defaults when absent. */
+	author?: { name: string; email: string } | undefined;
 	/** Test hooks run before the branch creation and around the atomic promotion, to inject failures and races. */
 	hooks?: { beforeCreate?(): void; beforePush?(): void; afterPush?(): void } | undefined;
 }
@@ -34,6 +44,8 @@ export interface State {
 	branchCreated: boolean;
 	/** Where this run created the branch. */
 	branchSha?: string;
+	/** The commit the deploy step is about to push, recorded first so a crash between push and save is recoverable. */
+	pendingSha?: string;
 	/** The commit the deploy step left on the branch, recorded before it is verified. */
 	deployedSha?: string;
 	releaseSha?: string;
@@ -82,6 +94,9 @@ class Mirror {
 	readonly dir: string;
 	private readonly options: Options;
 	private readonly env: Record<string, string | undefined>;
+	/* The credential only reaches the commands that talk to the mirror, never the local ones that read the stage. */
+	private readonly remoteEnv: Record<string, string>;
+	private readonly secrets: string[];
 
 	constructor(options: Options) {
 		this.options = options;
@@ -92,36 +107,46 @@ class Mirror {
 				delete env[name];
 			}
 		}
-		const origin = httpsOrigin(options.mirror);
-		if (origin !== null && options.token !== undefined) {
-			const basic = Buffer.from(`x-access-token:${options.token}`).toString('base64');
-			env['GIT_CONFIG_COUNT'] = '2';
-			env['GIT_CONFIG_KEY_0'] = `http.${origin}/.extraheader`;
-			env['GIT_CONFIG_VALUE_0'] = '';
-			env['GIT_CONFIG_KEY_1'] = `http.${origin}/.extraheader`;
-			env['GIT_CONFIG_VALUE_1'] = `AUTHORIZATION: basic ${basic}`;
-		}
 		this.env = env;
+		this.remoteEnv = {};
+		this.secrets = [];
+		const origin = httpsOrigin(options.mirror);
+		if (origin !== null && options.token !== undefined && options.token.length > 0) {
+			const basic = Buffer.from(`x-access-token:${options.token}`).toString('base64');
+			this.remoteEnv = {
+				GIT_CONFIG_COUNT: '2',
+				GIT_CONFIG_KEY_0: `http.${origin}/.extraheader`,
+				GIT_CONFIG_VALUE_0: '',
+				GIT_CONFIG_KEY_1: `http.${origin}/.extraheader`,
+				GIT_CONFIG_VALUE_1: `AUTHORIZATION: basic ${basic}`,
+			};
+			this.secrets = [options.token, basic];
+		}
 		this.git(['init', '--quiet']);
 	}
 
-	git(args: string[], extraEnv: Record<string, string> = {}): string {
+	git(args: string[], extraEnv: Record<string, string> = {}, remote = false): string {
 		try {
 			return execFileSync('git', args, {
 				cwd: this.dir,
-				env: { ...this.env, ...extraEnv },
+				env: { ...this.env, ...(remote ? this.remoteEnv : {}), ...extraEnv },
 				encoding: 'utf8',
 				stdio: ['ignore', 'pipe', 'pipe'],
 			});
 		} catch (error) {
 			const stderr = String((error as { stderr?: string }).stderr ?? '').trim();
-			throw new MirrorError(`git ${args[0]} failed: ${scrub(stderr, this.options.token)}`);
+			throw new MirrorError(`git ${args[0]} failed: ${scrub(stderr, this.secrets)}`);
 		}
+	}
+
+	/** A command that talks to the mirror: the credential is present and no local hook runs. */
+	private remote(args: string[]): string {
+		return this.git(args, {}, true);
 	}
 
 	/** Advertised OIDs for the given refs, peeled where the remote offers it. */
 	refs(...names: string[]): Map<string, string> {
-		const listing = this.git([
+		const listing = this.remote([
 			'ls-remote',
 			'--',
 			this.options.mirror,
@@ -143,15 +168,15 @@ class Mirror {
 	}
 
 	fetch(...refs: string[]): void {
-		this.git(['fetch', '--quiet', '--no-tags', '--', this.options.mirror, ...refs]);
+		this.remote(['fetch', '--quiet', '--no-tags', '--', this.options.mirror, ...refs]);
 	}
 
 	message(sha: string): string {
 		return this.git(['log', '-1', '--format=%B', sha]);
 	}
 
-	firstParent(sha: string): string {
-		return this.git(['log', '-1', '--format=%P', sha]).trim().split(' ')[0] ?? '';
+	parents(sha: string): string[] {
+		return this.git(['log', '-1', '--format=%P', sha]).trim().split(' ').filter(Boolean);
 	}
 
 	treeOf(sha: string): string {
@@ -160,10 +185,23 @@ class Mirror {
 
 	/** The tree id of a directory's contents, built through a private index so nothing else is touched. */
 	stagedTree(directory: string): string {
+		if (!existsSync(directory) || !lstatSync(directory).isDirectory()) {
+			throw new MirrorError(`Stage directory ${directory} does not exist or is a link.`);
+		}
+		rejectNestedRepositories(directory, directory);
 		const index = join(this.dir, 'stage-index');
 		this.git(['--work-tree', directory, 'add', '--all', '--force', '.'], {
 			GIT_INDEX_FILE: index,
 		});
+		const entries = this.git(['ls-files', '--stage'], { GIT_INDEX_FILE: index })
+			.split('\n')
+			.filter((line) => line.length > 0);
+		if (entries.length === 0) {
+			throw new MirrorError(`Stage directory ${directory} is empty.`);
+		}
+		if (entries.some((line) => line.startsWith('160000 '))) {
+			throw new MirrorError(`Stage directory ${directory} contains a nested repository.`);
+		}
 		return this.git(['write-tree'], { GIT_INDEX_FILE: index }).trim();
 	}
 
@@ -177,14 +215,23 @@ class Mirror {
 	}
 
 	push(refspecs: string[], flags: string[] = []): void {
-		this.git(['push', '--quiet', ...flags, '--', this.options.mirror, ...refspecs]);
+		this.remote([
+			'push',
+			'--quiet',
+			'--no-verify',
+			...flags,
+			'--',
+			this.options.mirror,
+			...refspecs,
+		]);
 	}
 
 	/** Creates a ref that must not exist yet; a ref that already holds the value is not a creation and is someone else's. */
 	create(ref: string, sha: string): void {
-		const report = this.git([
+		const report = this.remote([
 			'push',
 			'--porcelain',
+			'--no-verify',
 			`--force-with-lease=${ref}:`,
 			'--',
 			this.options.mirror,
@@ -200,6 +247,18 @@ class Mirror {
 	}
 }
 
+/** A `.git` inside the stage would become a gitlink instead of files; git only warns about it. */
+function rejectNestedRepositories(directory: string, root: string): void {
+	for (const entry of readdirSync(directory, { withFileTypes: true })) {
+		if (entry.name === '.git') {
+			throw new MirrorError(`Stage directory ${root} contains a nested repository.`);
+		}
+		if (entry.isDirectory()) {
+			rejectNestedRepositories(join(directory, entry.name), root);
+		}
+	}
+}
+
 function httpsOrigin(url: string): string | null {
 	try {
 		const parsed = new URL(url);
@@ -209,8 +268,8 @@ function httpsOrigin(url: string): string | null {
 	}
 }
 
-function scrub(text: string, token: string | undefined): string {
-	return token === undefined || token.length === 0 ? text : text.replaceAll(token, '***');
+function scrub(text: string, secrets: string[]): string {
+	return secrets.reduce((result, secret) => result.replaceAll(secret, '***'), text);
 }
 
 function output(name: string, value: string): void {
@@ -248,7 +307,10 @@ export function prepare(options: Options): State {
 	if (released !== undefined) {
 		// Resume path: the release commit exists; only the major tag may still need reconciling.
 		mirror.fetch(released, main);
-		if (!messageMatches(mirror.message(released), options.version, options.upstream)) {
+		if (
+			!messageMatches(mirror.message(released), options.version, options.upstream) ||
+			mirror.parents(released).length !== 1
+		) {
 			throw new MirrorError(`Tag v${options.version} exists but its commit is not this release.`);
 		}
 		if (!mirror.isAncestor(released, main)) {
@@ -274,11 +336,10 @@ export function prepare(options: Options): State {
 	const majorSha = mirror.commitOf(major, refs);
 	if (majorSha !== undefined) {
 		mirror.fetch(majorSha);
-		const subject = mirror.message(majorSha).split('\n')[0] ?? '';
-		const current = /^Release v(\d+\.\d+\.\d+)$/.exec(subject.trim());
-		if (current !== null && !isNewer(version, parseVersion(current[1] as string))) {
+		const current = releasedVersion(mirror, majorSha);
+		if (current !== undefined && !isNewer(version, current.version)) {
 			throw new MirrorError(
-				`v${version.major} already points at v${current[1]}, which is not older than v${options.version}.`,
+				`v${version.major} already points at v${current.text}, which is not older than v${options.version}.`,
 			);
 		}
 	}
@@ -319,8 +380,14 @@ export function promote(options: Options): State {
 	if (head === undefined) {
 		throw new MirrorError(`${state.branch} vanished before promotion.`);
 	}
-	state.deployedSha = head;
-	saveState(options, state);
+	if (state.deployedSha !== undefined && head !== state.deployedSha) {
+		throw new MirrorError(`${state.branch} moved since this run deployed; fix it by hand.`);
+	}
+	if (state.deployedSha === undefined) {
+		// Deployed outside this script: recorded so cleanup may delete it once the checks below fail.
+		state.deployedSha = head;
+		saveState(options, state);
+	}
 	if (refs.has(tag)) {
 		throw new MirrorError(
 			`Tag v${options.version} appeared while this run was deploying; rerun to resume.`,
@@ -332,9 +399,11 @@ export function promote(options: Options): State {
 			"The deployed commit does not carry this release's subject and Upstream-Ref footer.",
 		);
 	}
-	if (mirror.firstParent(head) !== state.mainSha) {
+	const parents = mirror.parents(head);
+	if (parents.length !== 1 || parents[0] !== state.mainSha) {
+		// A merge commit would carry foreign history onto main even with the right tree, so only a single parent is accepted.
 		throw new MirrorError(
-			'The deployed commit is not on top of the main recorded before deploying.',
+			'The deployed commit is not a single commit on top of the main recorded before deploying.',
 		);
 	}
 	if (options.stage !== undefined && mirror.treeOf(head) !== mirror.stagedTree(options.stage)) {
@@ -385,6 +454,9 @@ function reconcileMajor(
 		return;
 	}
 	mirror.fetch(current, release);
+	if (isSupersedingRelease(mirror, version, release, current, refs)) {
+		return;
+	}
 	if (!mirror.isAncestor(current, release)) {
 		throw new MirrorError(
 			`v${version.major} points at a commit that is not an ancestor of v${options.version}; fix it by hand.`,
@@ -394,6 +466,119 @@ function reconcileMajor(
 		[`${release}:${major}`],
 		[`--force-with-lease=${major}:${refs.get(major) as string}`],
 	);
+}
+
+/** The version a release commit's subject names, if it is one, with the subject's own spelling of it. */
+function releasedVersion(
+	mirror: Mirror,
+	sha: string,
+): { version: Version; text: string } | undefined {
+	const subject = mirror.message(sha).split('\n')[0] ?? '';
+	const match = /^Release v(\d+\.\d+\.\d+)$/.exec(subject.trim());
+	return match === null
+		? undefined
+		: { version: parseVersion(match[1] as string), text: match[1] as string };
+}
+
+/* A rerun of a superseded release finds the major tag already past it; that is fine only when the tag sits on main at a newer release of the same major. */
+function isSupersedingRelease(
+	mirror: Mirror,
+	version: Version,
+	release: string,
+	current: string,
+	refs: Map<string, string>,
+): boolean {
+	if (!mirror.isAncestor(release, current)) {
+		return false;
+	}
+	const main = refs.get('refs/heads/main');
+	if (main === undefined || !mirror.isAncestor(current, main)) {
+		return false;
+	}
+	const newer = releasedVersion(mirror, current);
+	if (
+		newer === undefined ||
+		newer.version.major !== version.major ||
+		!isNewer(newer.version, version) ||
+		mirror.parents(current).length !== 1
+	) {
+		return false;
+	}
+	// The subject alone proves nothing; the newer release's own tag has to point at this commit.
+	const newerTag = `refs/tags/v${newer.text}`;
+	return mirror.commitOf(newerTag, mirror.refs(newerTag)) === current;
+}
+
+/** Commits the staged tree on the release branch as one commit on top of the recorded main, with a lease on the branch this run created. */
+export function deploy(options: Options): State {
+	const state = loadState(options);
+	if (state.path !== 'publish') {
+		return state;
+	}
+	if (options.stage === undefined) {
+		throw new MirrorError('--stage is required to deploy.');
+	}
+	if (!existsSync(options.stage) || !lstatSync(options.stage).isDirectory()) {
+		throw new MirrorError(`Stage directory ${options.stage} does not exist or is a link.`);
+	}
+	if (!state.branchCreated || state.branchSha === undefined) {
+		throw new MirrorError(`${state.branch} was not created by this run; nothing to deploy onto.`);
+	}
+	const mirror = new Mirror(options);
+	if (state.deployedSha !== undefined || state.pendingSha !== undefined) {
+		// A rerun of the deploy step: the commit is already on the branch, never landed, or the branch was taken over.
+		const current = mirror.commitOf(state.branch, mirror.refs(state.branch));
+		const settled = (state.deployedSha ?? state.pendingSha) as string;
+		if (current === settled) {
+			state.deployedSha = settled;
+			delete state.pendingSha;
+			saveState(options, state);
+			output('deployed_sha', settled);
+			return state;
+		}
+		if (state.deployedSha !== undefined || current !== state.branchSha) {
+			throw new MirrorError(
+				`${state.branch} no longer holds this run's deployed commit; fix it by hand.`,
+			);
+		}
+		// The pending push never landed, so the deploy is redone from the recorded main.
+	}
+	mirror.fetch(state.mainSha);
+	const tree = mirror.stagedTree(options.stage);
+	const identity: Record<string, string> =
+		options.author === undefined
+			? {}
+			: {
+					GIT_AUTHOR_NAME: options.author.name,
+					GIT_AUTHOR_EMAIL: options.author.email,
+					GIT_COMMITTER_NAME: options.author.name,
+					GIT_COMMITTER_EMAIL: options.author.email,
+				};
+	const commit = mirror
+		.git(
+			[
+				'commit-tree',
+				tree,
+				'-p',
+				state.mainSha,
+				'-m',
+				releaseMessage(options.version, options.upstream),
+			],
+			identity,
+		)
+		.trim();
+	state.pendingSha = commit;
+	saveState(options, state);
+	// The lease keeps this run from overwriting a branch another run or a hand took over meanwhile.
+	mirror.push(
+		[`${commit}:${state.branch}`],
+		[`--force-with-lease=${state.branch}:${state.branchSha}`],
+	);
+	state.deployedSha = commit;
+	delete state.pendingSha;
+	saveState(options, state);
+	output('deployed_sha', commit);
+	return state;
 }
 
 /** Deletes the temporary branch, only when this run created it and it points at a commit this run recorded. */
@@ -412,7 +597,7 @@ export function cleanup(options: Options): void {
 	if (current === undefined) {
 		return;
 	}
-	if (![state.branchSha, state.deployedSha, state.releaseSha].includes(current)) {
+	if (![state.branchSha, state.pendingSha, state.deployedSha, state.releaseSha].includes(current)) {
 		console.warn(`${state.branch} moved since this run; leaving it alone.`);
 		return;
 	}
@@ -428,6 +613,8 @@ if (import.meta.main) {
 			upstream: { type: 'string' },
 			stage: { type: 'string' },
 			state: { type: 'string' },
+			'author-name': { type: 'string' },
+			'author-email': { type: 'string' },
 		},
 	});
 	const command = positionals[0];
@@ -441,6 +628,10 @@ if (import.meta.main) {
 			values.state ?? join(process.env['RUNNER_TEMP'] ?? tmpdir(), 'action-mirror-state.json'),
 		),
 		token: process.env['MIRROR_TOKEN'],
+		author:
+			values['author-name'] === undefined || values['author-email'] === undefined
+				? undefined
+				: { name: values['author-name'], email: values['author-email'] },
 	};
 	try {
 		if (
@@ -452,13 +643,15 @@ if (import.meta.main) {
 		}
 		if (command === 'prepare') {
 			prepare(options);
+		} else if (command === 'deploy') {
+			deploy(options);
 		} else if (command === 'promote') {
 			promote(options);
 		} else if (command === 'cleanup') {
 			cleanup(options);
 		} else {
 			throw new MirrorError(
-				'Usage: tag-action-mirror.ts <prepare|promote|cleanup> --mirror <url> --version <x.y.z> --upstream <sha> [--stage <dir>]',
+				'Usage: tag-action-mirror.ts <prepare|deploy|promote|cleanup> --mirror <url> --version <x.y.z> --upstream <sha> [--stage <dir>] [--author-name <name> --author-email <email>]',
 			);
 		}
 	} catch (error) {

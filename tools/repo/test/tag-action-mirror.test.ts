@@ -1,11 +1,21 @@
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+	chmodSync,
+	mkdirSync,
+	mkdtempSync,
+	readdirSync,
+	readFileSync,
+	rmSync,
+	symlinkSync,
+	writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
 	cleanup,
+	deploy,
 	isNewer,
 	messageMatches,
 	parseVersion,
@@ -108,15 +118,11 @@ class Fixture {
 		return git(this.bare, 'show', `${ref}:${path}`);
 	}
 
-	/** Runs a full release the way the workflow does. */
+	/** A full publication through the script: prepare, deploy the staged files, promote, cleanup. */
 	release(version: string): string {
 		const options = this.options(version);
-		const state = prepare(options);
-		this.deploy(
-			state.branch.replace('refs/heads/', ''),
-			releaseMessage(version, UPSTREAM),
-			releaseFiles(version),
-		);
+		prepare(options);
+		deploy(options);
 		const promoted = promote(options);
 		cleanup(options);
 		return promoted.releaseSha as string;
@@ -164,6 +170,154 @@ describe('tag-action-mirror', () => {
 		expect(fixture.file(sha, 'release.json')).toContain('"version": "1.0.0"');
 	});
 
+	it('deploys one commit on top of the recorded main with the staged tree and the given identity', () => {
+		const options = {
+			...fixture.options('1.0.0'),
+			author: { name: 'lab-app[bot]', email: '1+lab-app[bot]@users.noreply.github.com' },
+		};
+		const state = prepare(options);
+		const deployed = deploy(options);
+		const branch = deployed.deployedSha as string;
+		expect(fixture.ref(state.branch)).toBe(branch);
+		expect(git(fixture.bare, 'rev-parse', `${branch}^`)).toBe(state.mainSha);
+		expect(git(fixture.bare, 'log', '-1', '--format=%P', branch).split(' ')).toHaveLength(1);
+		expect(git(fixture.bare, 'log', '-1', '--format=%B', branch)).toContain(
+			releaseMessage('1.0.0', UPSTREAM),
+		);
+		expect(git(fixture.bare, 'log', '-1', '--format=%an <%ae>', branch)).toBe(
+			'lab-app[bot] <1+lab-app[bot]@users.noreply.github.com>',
+		);
+		expect(fixture.file(branch, 'release.json')).toContain('"version": "1.0.0"');
+		expect(fixture.ref('refs/heads/main')).toBe(state.mainSha);
+	});
+
+	it('does not deploy when the stage directory is missing, and leaves the branch where prepare put it', () => {
+		const options = { ...fixture.options('1.0.0'), stage: join(fixture.root, 'missing-stage') };
+		const state = prepare(options);
+		expect(() => deploy(options)).toThrow('does not exist');
+		expect(fixture.ref(state.branch)).toBe(state.mainSha);
+	});
+
+	it('does not deploy over a branch that moved since prepare', () => {
+		const options = fixture.options('1.0.0');
+		const state = prepare(options);
+		const moved = fixture.deploy(state.branch.replace('refs/heads/', ''), 'Someone else');
+		expect(() => deploy(options)).toThrow(/git push failed/);
+		expect(fixture.ref(state.branch)).toBe(moved);
+	});
+
+	it('refuses an empty stage, a stage that is a link, and a stage with a nested repository', () => {
+		const options = fixture.options('1.0.0');
+		const state = prepare(options);
+		const empty = mkdtempSync(join(fixture.root, 'empty-'));
+		expect(() => deploy({ ...options, stage: empty })).toThrow('is empty');
+		const link = join(fixture.root, 'stage-link');
+		symlinkSync(options.stage as string, link);
+		expect(() => deploy({ ...options, stage: link })).toThrow('is a link');
+		const nested = options.stage as string;
+		mkdirSync(join(nested, 'vendor', '.git'), { recursive: true });
+		writeFileSync(join(nested, 'vendor', '.git', 'HEAD'), 'ref: refs/heads/main\n');
+		expect(() => deploy(options)).toThrow('nested repository');
+		expect(fixture.ref(state.branch)).toBe(state.mainSha);
+	});
+
+	it('keeps executable bits and inner symlinks of the staged files', () => {
+		const options = fixture.options('1.0.0');
+		const stage = options.stage as string;
+		writeFileSync(join(stage, 'run.sh'), '#!/bin/sh\n');
+		chmodSync(join(stage, 'run.sh'), 0o755);
+		symlinkSync('README.md', join(stage, 'link.md'));
+		const state = prepare(options);
+		const deployed = deploy(options).deployedSha as string;
+		const tree = git(fixture.bare, 'ls-tree', '-r', deployed);
+		expect(tree).toMatch(/^100755 blob \w+\trun\.sh$/m);
+		expect(tree).toMatch(/^120000 blob \w+\tlink\.md$/m);
+		expect(tree).toMatch(/^100644 blob \w+\trelease\.json$/m);
+		expect(promote(options).releaseSha).toBe(deployed);
+		expect(fixture.ref('refs/heads/main')).toBe(deployed);
+		expect(state.mainSha).not.toBe(deployed);
+	});
+
+	it('repeats a deploy as a no-op and refuses it once the branch was taken over', () => {
+		const options = fixture.options('1.0.0');
+		const state = prepare(options);
+		const first = deploy(options).deployedSha as string;
+		expect(deploy(options).deployedSha).toBe(first);
+		expect(fixture.ref(state.branch)).toBe(first);
+		fixture.deploy(state.branch.replace('refs/heads/', ''), 'Someone else');
+		expect(() => deploy(options)).toThrow('no longer holds');
+	});
+
+	it('recovers a deploy whose push landed before the state was saved, and redoes one that never landed', () => {
+		const options = fixture.options('1.0.0');
+		const state = prepare(options);
+		const landed = deploy(options).deployedSha as string;
+		// The push landed but the process died before recording it: only the pending SHA is in the state.
+		writeFileSync(options.state, JSON.stringify({ ...state, pendingSha: landed }));
+		expect(deploy(options).deployedSha).toBe(landed);
+		expect(JSON.parse(readFileSync(options.state, 'utf8'))).not.toHaveProperty('pendingSha');
+		// The push never landed: the branch is still where prepare created it, so the deploy is redone.
+		git(fixture.bare, 'update-ref', state.branch, state.mainSha);
+		writeFileSync(options.state, JSON.stringify({ ...state, pendingSha: 'f'.repeat(40) }));
+		const redone = deploy(options).deployedSha as string;
+		expect(fixture.ref(state.branch)).toBe(redone);
+		expect(git(fixture.bare, 'rev-parse', `${redone}^`)).toBe(state.mainSha);
+		// A foreign commit on the branch is neither: refused.
+		const foreign = fixture.deploy(state.branch.replace('refs/heads/', ''), 'Someone else');
+		writeFileSync(options.state, JSON.stringify({ ...state, pendingSha: 'f'.repeat(40) }));
+		expect(() => deploy(options)).toThrow('no longer holds');
+		expect(fixture.ref(state.branch)).toBe(foreign);
+	});
+
+	it('does not promote a commit that replaced the deployed one, even when it passes every content check', () => {
+		const options = fixture.options('1.0.0');
+		const state = prepare(options);
+		const deployed = deploy(options).deployedSha as string;
+		const tree = git(fixture.bare, 'rev-parse', `${deployed}^{tree}`);
+		const twin = git(
+			fixture.bare,
+			'commit-tree',
+			tree,
+			'-p',
+			state.mainSha,
+			'-m',
+			releaseMessage('1.0.0', UPSTREAM),
+		);
+		git(fixture.bare, 'update-ref', state.branch, twin);
+		expect(() => promote(options)).toThrow('moved since this run deployed');
+		expect(fixture.ref('refs/tags/v1.0.0')).toBeUndefined();
+		// Cleanup leaves the foreign commit alone: it is not one this run recorded.
+		cleanup(options);
+		expect(fixture.ref(state.branch)).toBe(twin);
+	});
+
+	it('does not leak the credential into a failing local git command', () => {
+		const options = {
+			...fixture.options('1.0.0'),
+			mirror: 'https://example.invalid/owner/repo.git',
+			token: 'ghs_secret_value_123',
+		};
+		const basic = Buffer.from('x-access-token:ghs_secret_value_123').toString('base64');
+		let message = '';
+		try {
+			prepare(options);
+		} catch (error) {
+			message = String(error);
+		}
+		expect(message).toContain('git ls-remote failed');
+		expect(message).not.toContain('ghs_secret_value_123');
+		expect(message).not.toContain(basic);
+	});
+
+	it('deploys nothing on the resume path', () => {
+		const sha = fixture.release('1.0.0');
+		const options = fixture.options('1.0.0');
+		expect(prepare(options).path).toBe('resume');
+		expect(deploy(options).path).toBe('resume');
+		expect(fixture.ref('refs/heads/main')).toBe(sha);
+		expect(fixture.refs()).not.toContain('refs/heads/release/v1.0.0');
+	});
+
 	it('advances the major tag on later releases and creates a new one on a major bump', () => {
 		fixture.release('1.0.0');
 		const second = fixture.release('1.1.0');
@@ -206,6 +360,103 @@ describe('tag-action-mirror', () => {
 		expect(promote(options).path).toBe('resume');
 		cleanup(options);
 		expect(fixture.refs()).toEqual(before);
+	});
+
+	it('resumes a superseded release without moving the major tag back', () => {
+		fixture.release('1.0.0');
+		fixture.release('1.1.0');
+		const before = fixture.refs();
+		const options = fixture.options('1.0.0');
+		expect(prepare(options)).toMatchObject({ path: 'resume' });
+		expect(promote(options).path).toBe('resume');
+		cleanup(options);
+		expect(fixture.refs()).toEqual(before);
+		expect(fixture.ref('refs/tags/v1')).toBe(fixture.ref('refs/tags/v1.1.0'));
+	});
+
+	it('resumes a superseded release when the major tag is annotated at the newer release', () => {
+		fixture.release('1.0.0');
+		const newer = fixture.release('1.1.0');
+		git(fixture.bare, 'tag', '-d', 'v1');
+		git(fixture.bare, 'tag', '-a', '-m', 'v1', 'v1', newer);
+		const before = fixture.refs();
+		const tagObject = git(fixture.bare, 'rev-parse', 'refs/tags/v1');
+		expect(prepare(fixture.options('1.0.0'))).toMatchObject({ path: 'resume' });
+		expect(fixture.refs()).toEqual(before);
+		expect(fixture.ref('refs/tags/v1')).toBe(newer);
+		expect(git(fixture.bare, 'rev-parse', 'refs/tags/v1')).toBe(tagObject);
+	});
+
+	it('refuses a resume when the major tag descends from the release but is not on main', () => {
+		const sha = fixture.release('1.0.0');
+		fixture.release('1.1.0');
+		git(fixture.bare, 'update-ref', 'refs/heads/stray', sha);
+		const stray = fixture.deploy('stray', 'Release v1.2.0\n\nUpstream-Ref: ' + 'a'.repeat(40));
+		git(fixture.bare, 'update-ref', 'refs/tags/v1', stray);
+		git(fixture.bare, 'update-ref', '-d', 'refs/heads/stray');
+		expect(() => prepare(fixture.options('1.0.0'))).toThrow('not an ancestor of v1.0.0');
+	});
+
+	it('refuses a resume when the major tag is on a release of another major or one that is not newer', () => {
+		fixture.release('1.0.0');
+		for (const subject of ['Release v2.0.0', 'Release v1.0.0']) {
+			const other = fixture.deploy('main', `${subject}\n\nUpstream-Ref: ${'a'.repeat(40)}`);
+			git(fixture.bare, 'update-ref', 'refs/tags/v1', other);
+			expect(() => prepare(fixture.options('1.0.0'))).toThrow('not an ancestor of v1.0.0');
+		}
+	});
+
+	it('refuses a resume when the major tag is on an untagged commit that only claims to be a newer release', () => {
+		fixture.release('1.0.0');
+		const claimed = fixture.deploy('main', `Release v1.1.0\n\nUpstream-Ref: ${'a'.repeat(40)}`);
+		git(fixture.bare, 'update-ref', 'refs/tags/v1', claimed);
+		expect(() => prepare(fixture.options('1.0.0'))).toThrow('not an ancestor of v1.0.0');
+	});
+
+	it('names the major tag release as its subject spells it when refusing an older version', () => {
+		fixture.release('1.0.0');
+		const padded = fixture.deploy(
+			'main',
+			`Release v01.002.0003\n\nUpstream-Ref: ${'a'.repeat(40)}`,
+		);
+		git(fixture.bare, 'update-ref', 'refs/tags/v1', padded);
+		expect(() => prepare(fixture.options('1.1.0'))).toThrow(
+			'v1 already points at v01.002.0003, which is not older than v1.1.0.',
+		);
+	});
+
+	it('refuses a resume when the major tag is on a descendant that is not a release commit', () => {
+		fixture.release('1.0.0');
+		fixture.release('1.1.0');
+		const plain = fixture.deploy('main', 'Not a release');
+		git(fixture.bare, 'update-ref', 'refs/tags/v1', plain);
+		expect(() => prepare(fixture.options('1.0.0'))).toThrow('not an ancestor of v1.0.0');
+	});
+
+	it('rejects a resume when the existing tag points at a merge commit, and does not move the major tag', () => {
+		const first = fixture.release('1.0.0');
+		git(fixture.bare, 'update-ref', 'refs/heads/other', first);
+		const other = fixture.deploy('other', 'Other history');
+		git(fixture.bare, 'update-ref', '-d', 'refs/heads/other');
+		const tree = git(fixture.bare, 'rev-parse', `${first}^{tree}`);
+		const merge = git(
+			fixture.bare,
+			'commit-tree',
+			tree,
+			'-p',
+			first,
+			'-p',
+			other,
+			'-m',
+			releaseMessage('1.1.0', UPSTREAM),
+		);
+		git(fixture.bare, 'update-ref', 'refs/heads/main', merge);
+		git(fixture.bare, 'update-ref', 'refs/tags/v1.1.0', merge);
+		expect(() => prepare(fixture.options('1.1.0'))).toThrow('not this release');
+		expect(fixture.ref('refs/tags/v1')).toBe(first);
+		// The merge is also no superseding release for a rerun of 1.0.0.
+		git(fixture.bare, 'update-ref', 'refs/tags/v1', merge);
+		expect(() => prepare(fixture.options('1.0.0'))).toThrow('not an ancestor of v1.0.0');
 	});
 
 	it('rejects a resume when the existing tag is not this release', () => {
@@ -268,8 +519,37 @@ describe('tag-action-mirror', () => {
 		const other = fixture.deploy('release/v1.0.0', 'Rewritten base');
 		git(fixture.bare, 'update-ref', state.branch, other);
 		fixture.deploy('release/v1.0.0', releaseMessage('1.0.0', UPSTREAM), releaseFiles('1.0.0'));
-		expect(() => promote(options)).toThrow('not on top of the main');
+		expect(() => promote(options)).toThrow('not a single commit on top of the main');
 		expect(fixture.ref('refs/tags/v1.0.0')).toBeUndefined();
+	});
+
+	it('does not promote a merge commit, even with the right tree and first parent', () => {
+		const options = fixture.options('1.0.0');
+		const state = prepare(options);
+		const single = fixture.deploy(
+			'release/v1.0.0',
+			releaseMessage('1.0.0', UPSTREAM),
+			releaseFiles('1.0.0'),
+		);
+		git(fixture.bare, 'update-ref', 'refs/heads/other', state.mainSha);
+		const other = fixture.deploy('other', 'Other history');
+		git(fixture.bare, 'update-ref', '-d', 'refs/heads/other');
+		const tree = git(fixture.bare, 'rev-parse', `${single}^{tree}`);
+		const merge = git(
+			fixture.bare,
+			'commit-tree',
+			tree,
+			'-p',
+			state.mainSha,
+			'-p',
+			other,
+			'-m',
+			releaseMessage('1.0.0', UPSTREAM),
+		);
+		git(fixture.bare, 'update-ref', state.branch, merge);
+		expect(() => promote(options)).toThrow('not a single commit on top of the main');
+		expect(fixture.ref('refs/tags/v1.0.0')).toBeUndefined();
+		expect(fixture.ref('refs/heads/main')).toBe(state.mainSha);
 	});
 
 	it('does not promote when main moved after prepare', () => {
@@ -357,12 +637,13 @@ describe('tag-action-mirror', () => {
 			writeFileSync(join(cwd, 'mirror-stage', name), content);
 		}
 		const script = join(import.meta.dirname, '..', 'scripts', 'tag-action-mirror.ts');
-		const cli = (command: string): string => {
+		const cli = (command: string, ...extra: string[]): string => {
 			const result = spawnSync(
 				process.execPath,
 				[
 					script,
 					command,
+					...extra,
 					'--mirror',
 					fixture.url,
 					'--version',
@@ -380,10 +661,21 @@ describe('tag-action-mirror', () => {
 			return result.stdout;
 		};
 		expect(cli('prepare')).toContain('deploy=true');
-		fixture.deploy('release/v1.0.0', releaseMessage('1.0.0', UPSTREAM), files);
+		expect(
+			cli(
+				'deploy',
+				'--author-name',
+				'lab-app[bot]',
+				'--author-email',
+				'1+lab-app[bot]@users.noreply.github.com',
+			),
+		).toContain('deployed_sha=');
 		expect(cli('promote')).toContain('release_sha=');
 		cli('cleanup');
 		expect(fixture.ref('refs/tags/v1.0.0')).toBe(fixture.ref('refs/heads/main'));
+		expect(git(fixture.bare, 'log', '-1', '--format=%an <%ae> %cn <%ce>', 'main')).toBe(
+			'lab-app[bot] <1+lab-app[bot]@users.noreply.github.com> lab-app[bot] <1+lab-app[bot]@users.noreply.github.com>',
+		);
 		expect(fixture.refs()).not.toContain('refs/heads/release/v1.0.0');
 		expect(readFileSync(join(cwd, 'outputs.txt'), 'utf8')).toContain(
 			'target_branch=release/v1.0.0',
