@@ -1244,19 +1244,50 @@ describe('move-baseline through a clone', () => {
 		world.fixture.git(clone, ['config', 'push.recurseSubmodules', 'on-demand']);
 		world.fixture.git(clone, ['config', 'push.pushOption', 'lab=1']);
 		world.fixture.git(clone, ['tag', '-a', '-m', 'stray', 'stray', c4 as string]);
-		const before = world.fixture.git(world.fixture.remoteDir, [
-			'for-each-ref',
-			'--format=%(refname) %(objectname)',
-		]);
+		const refs = (): Map<string, string> =>
+			new Map(
+				world.fixture
+					.git(world.fixture.remoteDir, ['for-each-ref', '--format=%(refname) %(objectname)'])
+					.trim()
+					.split('\n')
+					.map((line) => line.split(' ') as [string, string]),
+			);
+		const before = refs();
 		const result = await client().moveBaseline({ force: true });
 		expect(result.moves[0]).toMatchObject({ moved: true, from: c3, to: c4, via: 'git' });
-		const after = world.fixture.git(world.fixture.remoteDir, [
-			'for-each-ref',
-			'--format=%(refname) %(objectname)',
-		]);
-		const changed = after.split('\n').filter((line) => !before.includes(line));
-		expect(changed).toEqual([`refs/baselines/pr-baseline ${c4}`]);
+		// The clone's own push must have done it: a fallback would hide a leaked setting.
+		expect(world.warnings.join('\n')).not.toContain('trying the next way');
+		before.set('refs/baselines/pr-baseline', c4 as string);
+		expect(refs()).toEqual(before);
 		expect(world.fixture.remoteRef('refs/tags/stray')).toBeNull();
+	});
+
+	it('passes every hardening flag on the push itself', async () => {
+		const [, , c3, c4] = world.c;
+		const pushes: string[][] = [];
+		const lease = await writer((repo) => ({
+			...repo,
+			async git(args, extraEnv) {
+				if (args[0] === 'push') {
+					pushes.push(args);
+				}
+				return repo.git(args, extraEnv);
+			},
+		}));
+		expect(await lease.move('pr-baseline', c3 as string, c4 as string)).toEqual({
+			ok: true,
+			via: 'git',
+		});
+		expect(pushes).toHaveLength(1);
+		expect(pushes[0]).toEqual(
+			expect.arrayContaining([
+				'--no-verify',
+				'--no-signed',
+				'--no-follow-tags',
+				'--recurse-submodules=no',
+				`--force-with-lease=refs/baselines/pr-baseline:${c3}`,
+			]),
+		);
 	});
 
 	it('never signs a push, whatever the clone asks for', async () => {
