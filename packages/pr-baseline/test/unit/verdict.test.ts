@@ -121,12 +121,12 @@ describe('computeVerdict', () => {
 			targetUrl: undefined,
 			repoUrl: repoUrl({ serverUrl: 'https://ghe.test/', repo: 'acme/widgets' }),
 		};
-		const answers = [{ name: 'one', sha: 'x', applicable: true, contains: false }];
-		expect(computeVerdict(answers, ghes, 'h').status.targetUrl).toBe(
+		const missing = { name: 'one', sha: 'x', applicable: true, contains: false };
+		expect(computeVerdict([missing], ghes, 'h').status.targetUrl).toBe(
 			'https://ghe.test/acme/widgets/compare/h...x',
 		);
 		expect(
-			computeVerdict([{ ...answers[0], contains: true }], ghes, 'h').status.targetUrl,
+			computeVerdict([{ ...missing, contains: true }], ghes, 'h').status.targetUrl,
 		).toBeUndefined();
 		expect(notApplicableVerdict(ghes).status.targetUrl).toBeUndefined();
 		expect(misconfiguredVerdict(['one'], ghes).status.targetUrl).toBeUndefined();
