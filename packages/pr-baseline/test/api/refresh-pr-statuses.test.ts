@@ -21,6 +21,7 @@ function populate(gh: FakeGitHub): void {
 	gh.status(sha(13), {
 		state: 'failure',
 		description: 'Merge or rebase main to include: pr-baseline',
+		targetUrl: `https://github.com/acme/widgets/compare/${sha(13)}...${sha(3)}`,
 	});
 	gh.status(sha(14), { state: 'success', description: PASS, creator: 'someone-else' });
 }

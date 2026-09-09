@@ -51,7 +51,7 @@ inputs:
     description: Description written for PRs against other branches when other-bases is pass.
     required: false
   target-url:
-    description: Link attached to the status.
+    description: Link attached to every status; by default a failing status links to the compare view of what it lacks.
     required: false
   other-bases:
     description: 'PRs against other branches: skip (default) or pass.'

@@ -223,6 +223,11 @@ function compactTemplates(
 	return result;
 }
 
+/** The repository's web URL on the configured server, with a trailing slash on the server trimmed. */
+export function repoUrl(config: Pick<ResolvedConfig, 'serverUrl' | 'repo'>): string {
+	return `${config.serverUrl.replace(/\/+$/, '')}/${config.repo}`;
+}
+
 /** The git server behind a REST root: `api.github.com` is `github.com`, a GHES `/api/v3` root is its host. */
 export function serverUrlFor(apiUrl: string): string {
 	if (apiUrl === DEFAULT_API_URL) {

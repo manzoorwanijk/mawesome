@@ -74,6 +74,35 @@ describe('computeVerdict', () => {
 		);
 	});
 
+	it('links a failure to the compare view of the first missing baseline unless a target URL is set', () => {
+		const answers = [
+			{ name: 'one', sha: 'x', applicable: true, contains: true },
+			{ name: 'two', sha: 'y', applicable: true, contains: false },
+			{ name: 'three', sha: 'z', applicable: true, contains: false },
+		];
+		const linked: VerdictContext = {
+			...context,
+			targetUrl: undefined,
+			repoUrl: 'https://github.com/acme/widgets',
+		};
+		expect(computeVerdict(answers, linked, 'h').status.targetUrl).toBe(
+			'https://github.com/acme/widgets/compare/h...y',
+		);
+		expect(computeVerdict(answers, context, 'h').status.targetUrl).toBe(
+			'https://example.test/help',
+		);
+		expect(computeVerdict(answers, linked).status.targetUrl).toBeUndefined();
+		expect(
+			computeVerdict(answers, { ...context, targetUrl: undefined }, 'h').status.targetUrl,
+		).toBeUndefined();
+		const pass = computeVerdict(
+			[{ name: 'one', sha: 'x', applicable: true, contains: true }],
+			linked,
+			'h',
+		);
+		expect(pass.status.targetUrl).toBeUndefined();
+	});
+
 	it('renders the not-applicable and misconfigured passes', () => {
 		expect(notApplicableVerdict(context).status).toEqual({
 			state: 'success',

@@ -18,10 +18,19 @@ export interface VerdictContext {
 	base: string;
 	descriptions: DescriptionTemplates;
 	targetUrl: string | undefined;
+	/** The repository's web URL; without a configured target URL a failing status links to its compare view. */
+	repoUrl?: string;
 }
 
-/** Combines per-baseline answers into the one status the context carries. */
-export function computeVerdict(baselines: VerdictBaseline[], context: VerdictContext): Verdict {
+/**
+ * Combines per-baseline answers into the one status the context carries.
+ * With `head`, a failing status without a configured link points at the commits the head lacks up to the first missing baseline.
+ */
+export function computeVerdict(
+	baselines: VerdictBaseline[],
+	context: VerdictContext,
+	head?: string,
+): Verdict {
 	const applicable = baselines.filter((entry) => entry.applicable);
 	const missing = applicable
 		.filter((entry) => entry.sha !== null && entry.contains === false)
@@ -35,12 +44,28 @@ export function computeVerdict(baselines: VerdictBaseline[], context: VerdictCon
 			applicable: names,
 		};
 	}
+	const first = applicable.find((entry) => entry.name === missing[0])?.sha ?? null;
 	return {
 		kind: 'fail',
-		status: payload('failure', context.descriptions.fail, context, missing),
+		status: {
+			...payload('failure', context.descriptions.fail, context, missing),
+			targetUrl: context.targetUrl ?? compareUrl(context, head, first),
+		},
 		missing,
 		applicable: names,
 	};
+}
+
+/** GitHub's three-dot compare: the commits reachable from the baseline that the head does not contain. */
+export function compareUrl(
+	context: Pick<VerdictContext, 'repoUrl'>,
+	head: string | undefined,
+	baseline: string | null,
+): string | undefined {
+	if (context.repoUrl === undefined || head === undefined || baseline === null) {
+		return undefined;
+	}
+	return `${context.repoUrl}/compare/${head}...${baseline}`;
 }
 
 /** The pass written for a PR outside the base branch when `other-bases` is `pass`. */

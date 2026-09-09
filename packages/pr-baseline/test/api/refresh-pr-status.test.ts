@@ -41,6 +41,26 @@ describe('refresh-pr-status', () => {
 		});
 	});
 
+	it('links a failing status to the compare view by default', async () => {
+		const { client, github } = harness({ baselines: [{ name: 'one' }, { name: 'two' }] }, (gh) => {
+			gh.baseline('one', sha(2));
+			gh.baseline('two', sha(4));
+			gh.commit(sha(10), [sha(3)]);
+		});
+		await client.refreshPrStatus({ sha: sha(10), report: true });
+		expect(github.latestStatus(sha(10), 'PR baseline')).toMatchObject({
+			state: 'failure',
+			targetUrl: `https://github.com/acme/widgets/compare/${sha(10)}...${sha(4)}`,
+		});
+		// A move changes the link, so the failing status is written again with the new baseline commit.
+		github.baseline('two', sha(5));
+		const again = await client.refreshPrStatus({ sha: sha(10), report: true });
+		expect(again.written).toBe(true);
+		expect(github.latestStatus(sha(10), 'PR baseline')?.targetUrl).toBe(
+			`https://github.com/acme/widgets/compare/${sha(10)}...${sha(5)}`,
+		);
+	});
+
 	it('treats an absent baseline as satisfied', async () => {
 		const { client } = harness({}, (gh) => gh.commit(sha(10), [sha(1)]));
 		const result = await client.refreshPrStatus({ sha: sha(10), report: true });

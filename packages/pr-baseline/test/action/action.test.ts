@@ -413,8 +413,9 @@ describe('action mode: auto', () => {
 		});
 		await run();
 		expect(world.github.baselineAt('pr-baseline')).toBe(sha(5));
-		// The failure written earlier reads the same after the move, so nothing is rewritten.
-		expect(outputs()['skipped']).toBe('1');
+		// The failure written earlier now links to the moved baseline, so it is written once more.
+		expect(outputs()['written']).toBe('1');
+		expect(world.github.latestStatus(sha(12), 'PR baseline')?.targetUrl).toContain(`...${sha(5)}`);
 	});
 });
 

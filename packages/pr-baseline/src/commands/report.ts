@@ -1,5 +1,5 @@
 import { applicableBaselines, evaluateCommit } from '../evaluate.ts';
-import { ConfigError } from '../config.ts';
+import { ConfigError, repoUrl } from '../config.ts';
 import type { OpenPull } from '../github/pulls.ts';
 import type { Ancestry, ResolvedBaseline } from '../types.ts';
 import { refSnapshot } from '../util.ts';
@@ -104,7 +104,12 @@ async function staleness(
 		throw error;
 	}
 	const { config, logger } = runtime;
-	const context = { base, descriptions: config.descriptions, targetUrl: config.targetUrl };
+	const context = {
+		base,
+		descriptions: config.descriptions,
+		targetUrl: config.targetUrl,
+		repoUrl: repoUrl(config),
+	};
 	let stale = 0;
 	let current = 0;
 	for (const pull of pulls) {

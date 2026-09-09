@@ -1,5 +1,5 @@
 import { createWriteBudget } from '../budget.ts';
-import { ConfigError } from '../config.ts';
+import { ConfigError, repoUrl } from '../config.ts';
 import { baselinesOffBase, evaluateCommit } from '../evaluate.ts';
 import { GitError } from '../git/repo.ts';
 import { isGitHubError, RETRY_HINT } from '../github/errors.ts';
@@ -151,6 +151,7 @@ export async function runRefreshPrStatuses(
 		base,
 		descriptions: config.descriptions,
 		targetUrl: config.targetUrl,
+		repoUrl: repoUrl(config),
 	};
 	const inScope = setup.pulls;
 	logger.info(

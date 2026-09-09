@@ -140,7 +140,7 @@ Explicit modes (`refresh-pr-status`, `refresh-pr-statuses`, `move-baseline`, `re
 | `description-pass`               | Description of a passing status; `{base}` and `{baselines}` are replaced.                                        |                       |
 | `description-fail`               | Description of a failing status; `{base}` and `{baselines}` are replaced.                                        |                       |
 | `description-not-applicable`     | Description written for PRs against other branches when other-bases is pass.                                     |                       |
-| `target-url`                     | Link attached to the status.                                                                                     |                       |
+| `target-url`                     | Link attached to every status; by default a failing status links to the compare view of what it lacks.           |                       |
 | `other-bases`                    | PRs against other branches: skip (default) or pass.                                                              |                       |
 | `creator`                        | Login the token writes statuses as; required for a GitHub App token.                                             |                       |
 | `ancestry`                       | Ancestry source: auto (default), git or api.                                                                     |                       |

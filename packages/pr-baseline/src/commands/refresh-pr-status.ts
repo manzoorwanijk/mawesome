@@ -1,4 +1,4 @@
-import { ConfigError } from '../config.ts';
+import { ConfigError, repoUrl } from '../config.ts';
 import { baselinesOffBase, evaluateCommit } from '../evaluate.ts';
 import { tryRevParse } from '../git/local.ts';
 import { revParse } from '../git/repo.ts';
@@ -52,6 +52,7 @@ export async function runRefreshPrStatus(
 		base,
 		descriptions: config.descriptions,
 		targetUrl: config.targetUrl,
+		repoUrl: repoUrl(config),
 	};
 	const result = (verdict: Verdict, baselines: ResolvedBaseline[]): RefreshPrStatusResult => ({
 		sha: target.sha,

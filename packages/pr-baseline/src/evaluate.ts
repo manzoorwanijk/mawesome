@@ -52,7 +52,7 @@ export async function evaluateCommit(input: EvaluateInput): Promise<Verdict> {
 			contains,
 		});
 	}
-	return computeVerdict(answers, input.context);
+	return computeVerdict(answers, input.context, input.sha);
 }
 
 /** Baselines whose commit is not on the base branch; such a baseline can never be satisfied by merging. */
