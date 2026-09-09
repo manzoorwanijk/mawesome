@@ -38,6 +38,7 @@ export default defineConfig({
 	integrations: [
 		starlight({
 			title: 'mawesome',
+			customCss: ['./src/styles/custom.css'],
 			tagline: 'Sharp, single-purpose tools for npm package authors.',
 			social: [
 				{ icon: 'github', label: 'GitHub', href: 'https://github.com/manzoorwanijk/mawesome' },
