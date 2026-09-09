@@ -52,15 +52,28 @@ describe('mirror workflow', () => {
 	it('validates the version, checks out the peeled tag commit, and requires it on main with a matching manifest', () => {
 		expect(resolve).toContain("grep -Eq '^[0-9]+\\.[0-9]+\\.[0-9]+$'");
 		expect(resolve).toContain('$tag^{}');
-		expect(resolve).toContain('git merge-base --is-ancestor "$sha" FETCH_HEAD');
+		expect(resolve).toContain('origin "$sha" \'+refs/heads/main:refs/remotes/origin/main\'');
+		expect(resolve).toContain('git merge-base --is-ancestor "$sha" refs/remotes/origin/main');
+		expect(resolve).not.toContain('FETCH_HEAD');
+		expect(text).toMatch(
+			/- name: Checkout\n\s+uses: actions\/checkout@\w+ # v[\d.]+\n\s+with:\n\s+fetch-depth: 0\n\s+filter: tree:0/,
+		);
 		expect(resolve).toContain('git checkout --quiet "$sha"');
 		expect(resolve).toContain('test "$manifest" = "$version"');
 	});
 
 	it('stages, prepares, deploys, promotes and always cleans up with the same stage path', () => {
-		expect(text.match(/--stage mirror-stage/g)).toHaveLength(2);
-		expect(text).toContain("if: steps.prepare.outputs.deploy == 'true'");
+		expect(text.match(/--stage mirror-stage/g)).toHaveLength(3);
+		expect(text.match(/if: steps\.prepare\.outputs\.deploy == 'true'/g)).toHaveLength(2);
 		expect(text).toMatch(/always\(\) && steps\.prepare\.outcome != 'skipped'/);
-		expect(text).toContain('rm -rf -- "__${MIRROR_REPO}__clone__"');
+		expect(text).not.toContain('uses: manzoorwanijk/action-deploy-to-repo');
+	});
+
+	it('deploys through the script with the App bot identity and no third-party clone', () => {
+		expect(text).toContain('tag-action-mirror.ts deploy');
+		expect(text).toContain('--author-name "$BOT_NAME"');
+		expect(text).toContain('--author-email "$BOT_EMAIL"');
+		expect(text).toContain('BOT_EMAIL: ${{ steps.bot.outputs.email }}');
+		expect(text).not.toContain('__clone__');
 	});
 });
