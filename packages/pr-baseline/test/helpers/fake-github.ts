@@ -80,6 +80,10 @@ export class FakeGitHub {
 	creator: string;
 	/** Mirrors ref writes made through the API into a real remote, when a test pairs the fake with one. */
 	onRefWrite: ((ref: string, sha: string) => void) | undefined;
+	/** Answers ref reads from a real remote instead of `refs`, so a ref pushed there directly is what the API reports. */
+	refSource: ((ref: string) => { type: string; sha: string; peeled: string } | null) | undefined;
+	/** Answers tag-object reads from the same remote. */
+	tagSource: ((sha: string) => { type: string; sha: string } | null) | undefined;
 	rateLimitRemaining: number;
 	readonly restPrefix: string;
 	readonly graphqlPath: string;
@@ -130,11 +134,18 @@ export class FakeGitHub {
 	}
 
 	baselineAt(name: string): string | undefined {
-		return this.refs.get(`refs/baselines/${name}`)?.peeled;
+		return this.lookupRef(`refs/baselines/${name}`)?.peeled;
 	}
 
 	hasBaseline(name: string): boolean {
-		return this.refs.has(`refs/baselines/${name}`);
+		return this.lookupRef(`refs/baselines/${name}`) !== undefined;
+	}
+
+	private lookupRef(ref: string): { type: string; sha: string; peeled: string } | undefined {
+		if (this.refSource !== undefined && !ref.startsWith('refs/heads/')) {
+			return this.refSource(ref) ?? undefined;
+		}
+		return this.refs.get(ref);
 	}
 
 	private setRef(ref: string, target: string, annotated: boolean): void {
@@ -187,7 +198,7 @@ export class FakeGitHub {
 	private refAt(ref: string): string | undefined {
 		return ref.startsWith('refs/heads/')
 			? this.branches.get(ref.slice('refs/heads/'.length))
-			: this.refs.get(ref)?.peeled;
+			: this.lookupRef(ref)?.peeled;
 	}
 
 	private writeRef(ref: string, target: string): void {
@@ -297,14 +308,15 @@ export class FakeGitHub {
 		}
 		if ((match = rest.match(/^\/git\/ref\/(.+)$/)) && method === 'GET') {
 			const ref = `refs/${decodeURIComponent(match[1] as string)}`;
-			const entry = this.refs.get(ref);
+			const entry = this.lookupRef(ref);
 			return entry === undefined
 				? this.respond(404, { message: 'Not Found' })
 				: this.respond(200, { ref, object: { type: entry.type, sha: entry.sha } });
 		}
 		if ((match = rest.match(/^\/git\/tags\/(.+)$/)) && method === 'GET') {
-			const nested = this.nestedTags.get(match[1] as string);
-			if (nested !== undefined) {
+			const nested =
+				this.nestedTags.get(match[1] as string) ?? this.tagSource?.(match[1] as string);
+			if (nested !== undefined && nested !== null) {
 				return this.respond(200, { object: nested });
 			}
 			const entry = [...this.refs.values()].find((candidate) => candidate.sha === match?.[1]);
@@ -314,7 +326,7 @@ export class FakeGitHub {
 		}
 		if (rest === '/git/refs' && method === 'POST') {
 			const { ref, sha: target } = body as { ref: string; sha: string };
-			if (this.refs.has(ref) || this.branches.has(ref.replace(/^refs\/heads\//, ''))) {
+			if (this.refAt(ref) !== undefined) {
 				return this.respond(422, { message: 'Reference already exists' });
 			}
 			this.writeRef(ref, target);
@@ -327,8 +339,8 @@ export class FakeGitHub {
 			if (current === undefined) {
 				return this.respond(422, { message: 'Reference does not exist' });
 			}
-			// Every namespace is held to a fast-forward here; GitHub does that for branches only, which the move path handles itself.
-			if (!force && !this.isAncestor(current, target)) {
+			// GitHub enforces the fast-forward for branches only; every other ref rewinds silently, exactly as here.
+			if (!force && ref.startsWith('refs/heads/') && !this.isAncestor(current, target)) {
 				return this.respond(422, { message: 'Update is not a fast forward' });
 			}
 			this.writeRef(ref, target);

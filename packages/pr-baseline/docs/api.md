@@ -43,7 +43,7 @@ Resolves the configuration (flags over `env` over defaults) and throws `ConfigEr
 - `moveBaseline(options?: MoveBaselineOptions): Promise<MoveBaselineResult>` with `force`, `to`, `baseline` and `refreshPrStatuses`.
 - `report(): Promise<ReportResult>`.
 
-Each result carries the base branch and the resolved baselines (`{ name, sha }` with `sha: null` for an absent baseline; after `moveBaseline`, the SHAs after the moves). `RefreshPrStatusResult.verdict` holds the verdict, `RefreshPrStatusesResult.entries` lists every PR the refresh reached with its outcome (`written`, `skipped`, `closed`, `deferred`, `out-of-scope`, `failed`, with matching counters including `outOfScope`; a refresh stopped by a budget or a rate limit lists only the PRs before the stop), `MoveBaselineResult.moves` says what moved and why, and `ReportResult.offBase` names baselines that left the base branch.
+Each result carries the base branch and the resolved baselines (`{ name, sha }` with `sha: null` for an absent baseline; after `moveBaseline`, the SHAs after the moves). `RefreshPrStatusResult.verdict` holds the verdict, `RefreshPrStatusesResult.entries` lists every PR the refresh reached with its outcome (`written`, `skipped`, `closed`, `deferred`, `out-of-scope`, `failed`, with matching counters including `outOfScope`; a refresh stopped by a budget or a rate limit lists only the PRs before the stop), `MoveBaselineResult.moves` says what moved and why, `MoveBaselineResult.writer` tells whether the refs were written by a lease push from the clone (`git`) or through the refs API (`api`), and `ReportResult.offBase` names baselines that left the base branch.
 
 ## Ports
 

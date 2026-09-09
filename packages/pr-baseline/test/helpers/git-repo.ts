@@ -116,6 +116,32 @@ export class GitFixture {
 		this.push(`refs/tags/${local}`, `refs/baselines/${name}`);
 	}
 
+	/** What the remote holds under a full ref name: the object, its type and what it peels to. */
+	remoteRef(ref: string): { type: string; sha: string; peeled: string } | null {
+		let sha: string;
+		try {
+			sha = this.git(this.remoteDir, ['rev-parse', '--verify', '--quiet', ref]).trim();
+		} catch {
+			return null;
+		}
+		const type = this.git(this.remoteDir, ['cat-file', '-t', sha]).trim();
+		const peeled = this.git(this.remoteDir, ['rev-parse', `${sha}^{}`]).trim();
+		return { type, sha, peeled };
+	}
+
+	/** The object a tag object on the remote points at, as the tags API reports it. */
+	remoteTagObject(sha: string): { type: string; sha: string } | null {
+		let raw: string;
+		try {
+			raw = this.git(this.remoteDir, ['cat-file', '-p', sha]);
+		} catch {
+			return null;
+		}
+		const object = /^object (\w+)$/m.exec(raw)?.[1];
+		const type = /^type (\w+)$/m.exec(raw)?.[1];
+		return object === undefined || type === undefined ? null : { type, sha: object };
+	}
+
 	/** Creates the treeless clone the adapter works in; call after the remote has its branches. */
 	clone(): string {
 		rmSync(this.cloneDir, { recursive: true, force: true });

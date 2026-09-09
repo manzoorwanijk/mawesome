@@ -10,7 +10,7 @@ A **baseline** is a git ref on the base branch that marks the last commit every 
 
 The namespace is deliberate; see [why not a tag](#why-not-a-tag-or-a-branch) below.
 
-The tool never rewinds a baseline: it checks that the target descends from the current commit before every move, and a rewind is an operator action (delete the ref, seed it again). GitHub itself enforces a fast-forward only for branches, so the move re-reads the ref afterwards and reports what another writer may have done meanwhile; see [edge cases](./edge-cases.md) for the concurrency rules.
+The tool never rewinds a baseline: it checks that the target descends from the current commit before every move, and a rewind is an operator action (delete the ref, seed it again). GitHub itself enforces a fast-forward only for branches, so the write must not trust the server. From a clone (the git adapter, which is what a workflow with a checkout uses) the move is a `git push --force-with-lease` on the commit the run read, a compare-and-swap the server honours for every ref. Through the API alone the tool writes and re-reads, and re-applies its move once when another writer crossed it; see [edge cases](./edge-cases.md) for the concurrency rules.
 
 ## Why not a tag, or a branch
 

@@ -1,13 +1,8 @@
 import { ConfigError } from '../config.ts';
-import { isGitHubError } from '../github/errors.ts';
 import { listLabeledMergeCommits } from '../github/pulls.ts';
-import {
-	createBaselineRef,
-	readBaselineRef,
-	resolveCommit,
-	updateBaselineRef,
-} from '../github/refs.ts';
+import { resolveCommit } from '../github/refs.ts';
 import { createMatcher } from '../paths.ts';
+import { createApiRefWriter, createLeaseRefWriter } from '../ref-writer.ts';
 import type { Runtime } from '../runtime.ts';
 import type {
 	Ancestry,
@@ -34,6 +29,12 @@ export async function runMoveBaseline(
 		);
 	}
 	const ancestry = await runtime.ancestry();
+	const repo = await runtime.repo();
+	// A clone makes the move a lease push, atomic on the server; the API alone re-reads after each write.
+	const writer =
+		repo === null
+			? createApiRefWriter(api, config.repo)
+			: createLeaseRefWriter(repo, api, config.repo, logger);
 	if (
 		options.baseline !== undefined &&
 		options.baseline !== '' &&
@@ -93,6 +94,7 @@ export async function runMoveBaseline(
 		baselines: authoritative,
 		moves,
 		dryRun: config.dryRun,
+		writer: writer.name,
 	};
 	if (options.refreshPrStatuses) {
 		// A dry-run refresh evaluates statuses against the intended positions while the adapter still verifies the real, unmoved refs.
@@ -120,6 +122,16 @@ export async function runMoveBaseline(
 					note: 'already at the target',
 				};
 			}
+			// After a lost race the other writer may have gone past the target, which is not a rewind to refuse.
+			if (attempt > 1 && current !== null && (await ancestry.isAncestor(to, current))) {
+				return {
+					name: baseline.name,
+					from: current,
+					to,
+					moved: false,
+					note: 'another writer moved it past the target',
+				};
+			}
 			const decision = await decide(ancestry, baseline, current, to, merges, forced);
 			if ('note' in decision) {
 				return { name: baseline.name, from: current, to, moved: false, note: decision.note };
@@ -132,36 +144,24 @@ export async function runMoveBaseline(
 			if (config.dryRun) {
 				return { name: baseline.name, from: current, to, moved: true, reason: decision.reason };
 			}
-			try {
-				if (current === null) {
-					await createBaselineRef(api, config.repo, baseline.name, to);
-				} else {
-					await updateBaselineRef(api, config.repo, baseline.name, to);
-				}
+			const outcome = await writer.move(baseline.name, current, to);
+			if (outcome.ok) {
 				return { name: baseline.name, from: current, to, moved: true, reason: decision.reason };
-			} catch (error) {
-				if (!isGitHubError(error, 'conflict') && !isGitHubError(error, 'validation')) {
-					throw error;
-				}
-				// A rejected update means either another writer moved the baseline or the request was invalid.
-				const latest = await readBaselineRef(api, config.repo, baseline.name);
-				if (latest === current) {
-					throw error;
-				}
-				if (attempt > 1) {
-					throw new BaselineError(
-						`${baseline.name} moved twice during this run (now ${latest === null ? 'absent' : shortSha(latest)}); rerun to converge.`,
-					);
-				}
-				logger.warn(
-					`${baseline.name} moved to ${latest === null ? 'absent' : shortSha(latest)} while this run was deciding; re-evaluating once.`,
+			}
+			const latest = outcome.actual;
+			if (attempt > 1) {
+				throw new BaselineError(
+					`${baseline.name} moved twice during this run (now ${latest === null ? 'absent' : shortSha(latest)}); rerun to converge.`,
 				);
-				current = latest;
-				// The re-read commit is new to the adapter and must be prepared before any question about it.
-				baseline.sha = latest;
-				if (latest !== null) {
-					await prepare([latest]);
-				}
+			}
+			logger.warn(
+				`${baseline.name} moved to ${latest === null ? 'absent' : shortSha(latest)} while this run was deciding; re-evaluating once.`,
+			);
+			current = latest;
+			// The re-read commit is new to the adapter and must be prepared before any question about it.
+			baseline.sha = latest;
+			if (latest !== null) {
+				await prepare([latest]);
 			}
 		}
 	}

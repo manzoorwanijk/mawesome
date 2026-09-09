@@ -56,7 +56,7 @@ describe('computeVerdict', () => {
 		expect(verdict.applicable).toEqual(['a']);
 	});
 
-	it('fails naming the missing tags, listing two and counting the rest', () => {
+	it('fails naming the missing baselines, listing two and counting the rest', () => {
 		const verdict = computeVerdict(
 			[
 				{ name: 'one', sha: 'x', applicable: true, contains: false },

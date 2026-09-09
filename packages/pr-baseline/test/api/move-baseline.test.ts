@@ -174,50 +174,43 @@ describe('move-baseline', () => {
 		expect(github.requests(/graphql/)).toHaveLength(2);
 	});
 
-	it('re-evaluates once when another writer moved the baseline first', async () => {
+	it('re-applies its move once when another writer crossed it', async () => {
 		const { client, github, warnings } = harness({}, (gh) => gh.baseline('pr-baseline', sha(3)));
-		github.overrides.push({
-			path: /\/git\/refs\/baselines\/pr-baseline/,
-			method: 'PATCH',
-			status: 422,
-			body: { message: 'Update is not a fast forward' },
-		});
-		const original = github.fetch;
-		github.fetch = async (input, init) => {
-			// The rejected PATCH is followed by a re-read that finds the ref moved by someone else.
-			const response = await original(input, init);
-			if (response.status === 422) {
+		let crossed = false;
+		// The refs API enforces no fast-forward here, so the other writer's rewind lands right after this run's write.
+		github.onRefWrite = (_ref, target) => {
+			if (!crossed && target === sha(5)) {
+				crossed = true;
 				github.baseline('pr-baseline', sha(4));
 			}
-			return response;
 		};
 		const result = await client.moveBaseline({ force: true });
 		expect(result.moves[0]).toMatchObject({ moved: true, from: sha(4), to: sha(5) });
+		expect(result.baselines[0]?.sha).toBe(sha(5));
+		expect(github.requests(/\/git\/refs\/baselines\/pr-baseline/, 'PATCH')).toHaveLength(2);
 		expect(warnings.join('\n')).toContain('re-evaluating once');
 	});
 
-	it('settles when the other writer already reached the target', async () => {
-		const { client, github } = harness({}, (gh) => gh.baseline('pr-baseline', sha(3)));
-		github.overrides.push({
-			path: /\/git\/refs\/baselines\/pr-baseline/,
-			method: 'PATCH',
-			status: 409,
+	it('leaves a baseline another writer moved past the target', async () => {
+		const { client, github } = harness({}, (gh) => {
+			gh.baseline('pr-baseline', sha(3));
+			gh.commit(sha(6), [sha(5)]);
 		});
-		const original = github.fetch;
-		github.fetch = async (input, init) => {
-			const response = await original(input, init);
-			if (response.status === 409) {
-				github.baseline('pr-baseline', sha(5));
+		let crossed = false;
+		github.onRefWrite = (_ref, target) => {
+			if (!crossed && target === sha(5)) {
+				crossed = true;
+				github.baseline('pr-baseline', sha(6));
 			}
-			return response;
 		};
 		const result = await client.moveBaseline({ force: true });
 		expect(result.moves[0]).toMatchObject({
 			moved: false,
-			from: sha(5),
-			note: 'already at the target',
+			from: sha(6),
+			to: sha(5),
+			note: 'another writer moved it past the target',
 		});
-		expect(result.baselines[0]?.sha).toBe(sha(5));
+		expect(result.baselines[0]?.sha).toBe(sha(6));
 	});
 
 	it('treats a rejection with an unmoved baseline as terminal', async () => {
@@ -235,20 +228,11 @@ describe('move-baseline', () => {
 
 	it('gives up with a retry hint after a second race', async () => {
 		const { client, github } = harness({}, (gh) => gh.baseline('pr-baseline', sha(2)));
-		github.overrides.push({
-			path: /\/git\/refs\/baselines\/pr-baseline/,
-			method: 'PATCH',
-			status: 409,
-			times: 2,
-		});
 		let bumps = 3;
-		const original = github.fetch;
-		github.fetch = async (input, init) => {
-			const response = await original(input, init);
-			if (response.status === 409) {
+		github.onRefWrite = (_ref, target) => {
+			if (target === sha(5)) {
 				github.baseline('pr-baseline', sha(bumps++));
 			}
-			return response;
 		};
 		await expect(client.moveBaseline({ force: true })).rejects.toThrow(/moved twice/);
 	});
@@ -327,6 +311,7 @@ describe('move-baseline races and paging', () => {
 		const result = await client.moveBaseline({ force: true });
 		expect(result.moves[0]).toMatchObject({ moved: true, from: sha(4), to: sha(5) });
 		expect(result.baselines[0]?.sha).toBe(sha(5));
+		expect(result.writer).toBe('api');
 	});
 });
 
@@ -369,7 +354,7 @@ describe('move-baseline after a successful move', () => {
 			return response;
 		};
 		const result = await client.moveBaseline({ force: true, refreshPrStatuses: true });
-		expect(result.moves[0]).toMatchObject({ moved: true, to: sha(5) });
+		expect(result.moves[0]).toMatchObject({ moved: false, from: sha(6), to: sha(5) });
 		expect(result.baselines[0]?.sha).toBe(sha(6));
 		expect(result.refresh?.entries[0]?.verdict?.kind).toBe('fail');
 		expect(github.latestStatus(sha(11), 'PR baseline')?.state).toBe('failure');

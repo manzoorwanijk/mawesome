@@ -243,6 +243,8 @@ export interface MoveBaselineResult {
 	moves: MoveEntry[];
 	refresh?: RefreshPrStatusesResult;
 	dryRun: boolean;
+	/** How the refs were written: a lease push from the clone, or the refs API with a re-read after each write. */
+	writer: 'git' | 'api';
 }
 
 export interface ReportBaseline extends ResolvedBaseline {

@@ -320,7 +320,7 @@ describe('refresh-pr-status round 3', () => {
 		]);
 	});
 
-	it('requests nested tag refs with the slash percent-encoded', async () => {
+	it('requests a nested baseline ref with the slash percent-encoded', async () => {
 		const { client, github } = harness({ baselines: [{ name: 'baseline/web' }] }, (gh) => {
 			gh.baseline('baseline/web', sha(3));
 			gh.commit(sha(10), [sha(4)]);

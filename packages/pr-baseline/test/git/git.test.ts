@@ -1,6 +1,9 @@
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { openRepo } from '../../src/git/repo.ts';
+import { createApiClient } from '../../src/github/api.ts';
 import { createClient, type Client, type ClientOptions } from '../../src/index.ts';
+import { createLeaseRefWriter } from '../../src/ref-writer.ts';
 import { FakeGitHub } from '../helpers/fake-github.ts';
 import { GitFixture } from '../helpers/git-repo.ts';
 
@@ -28,8 +31,10 @@ function build(): World {
 	const github = new FakeGitHub();
 	fixture.mirror(github);
 	github.baseline('pr-baseline', c3);
-	// The API and the remote are one server in reality; a ref written through the API shows up on the remote.
+	// The API and the remote are one server in reality: API writes land on the remote, and reads come from it.
 	github.onRefWrite = (ref, sha) => fixture.push(sha, ref);
+	github.refSource = (ref) => fixture.remoteRef(ref);
+	github.tagSource = (sha) => fixture.remoteTagObject(sha);
 	return { fixture, github, logs: [], warnings: [], c: [c1, c2, c3, c4] };
 }
 
@@ -178,6 +183,7 @@ describe('git ancestry', () => {
 	it('refuses when the remote baseline ref disagrees with the API', async () => {
 		const [, c2, , c4] = world.c;
 		openPull(1, c2 as string, { 'x.txt': 'x' });
+		world.github.refSource = undefined;
 		world.github.baseline('pr-baseline', c4 as string);
 		await expect(client().refreshPrStatuses()).rejects.toThrow(
 			/differs between the API and the remote/,
@@ -281,6 +287,7 @@ describe('git ancestry review round 2', () => {
 	it('refuses when the API knows a baseline the remote lacks, and the other way round', async () => {
 		const [, c2, c3] = world.c;
 		openPull(1, c2 as string, { 'x.txt': 'x' });
+		world.github.refSource = undefined;
 		world.github.baseline('extra', c3 as string);
 		await expect(
 			client({ baselines: [{ name: 'pr-baseline' }, { name: 'extra' }] }).refreshPrStatuses(),
@@ -508,6 +515,7 @@ describe('git ancestry review round 4', () => {
 		const [, c2] = world.c;
 		// A baseline ref pointing at a tree, pushed from the work tree; the treeless clone gets the ref but not the object.
 		const tree = world.fixture.git(world.fixture.workDir, ['rev-parse', `${c2}^{tree}`]).trim();
+		world.github.refSource = undefined;
 		world.fixture.baseline('pr-baseline', tree);
 		world.fixture.git(world.fixture.cloneDir, [
 			'fetch',
@@ -666,6 +674,7 @@ describe('git ancestry review round 9', () => {
 		const [, c2] = world.c;
 		const head = openPull(1, c2 as string, { 'x.txt': 'x' });
 		rmSync(world.fixture.remoteDir, { recursive: true, force: true });
+		world.github.refSource = undefined;
 		const result = await client().refreshPrStatuses();
 		expect(result.ancestry).toBe('api');
 		expect(result.written).toBe(1);
@@ -1044,6 +1053,7 @@ describe('git ancestry review round 23', () => {
 		openPull(1, c2 as string, { 'x.txt': 'x' });
 		// The API still reports the commit; on the remote the ref now points at a tree.
 		const tree = world.fixture.git(world.fixture.workDir, ['rev-parse', `${c2}^{tree}`]).trim();
+		world.github.refSource = undefined;
 		world.fixture.baseline('pr-baseline', tree);
 		await expect(client().refreshPrStatuses()).rejects.toThrow(
 			/differs between the API and the remote/,
@@ -1091,4 +1101,102 @@ describe('git ancestry review round 24', () => {
 		expect(result.ancestry).toBe('git');
 		expect(result.verdict.missing).toEqual(['foo/bar']);
 	});
+});
+
+describe('move-baseline through a clone', () => {
+	/** The lease writer over the treeless clone, talking to the fake API the way a run does. */
+	async function writer() {
+		const repo = await openRepo(world.fixture.cloneDir, { token: 'test-token' });
+		if (repo === null) {
+			throw new Error('no clone');
+		}
+		const logger = {
+			info: (message: string) => world.logs.push(message),
+			warn: (message: string) => world.warnings.push(message),
+		};
+		const api = createApiClient({
+			apiUrl: 'https://api.github.com',
+			graphqlUrl: 'https://api.github.com/graphql',
+			token: 'test-token',
+			fetch: (input, init) => world.github.fetch(input, init),
+			retryBaseMs: 0,
+			logger,
+		});
+		return createLeaseRefWriter(repo, api, world.github.repo, logger);
+	}
+
+	it('moves with a lease push and never touches the refs API', async () => {
+		const [, c2, c3, c4] = world.c;
+		const head = openPull(1, c2 as string, { 'x.txt': 'x' });
+		const result = await client().moveBaseline({ force: true, refreshPrStatuses: true });
+		expect(result).toMatchObject({ writer: 'git' });
+		expect(result.moves[0]).toMatchObject({ moved: true, from: c3, to: c4, reason: 'forced' });
+		expect(world.fixture.remoteRef('refs/baselines/pr-baseline')?.sha).toBe(c4);
+		expect(world.github.requests(/\/git\/refs/, 'PATCH')).toHaveLength(0);
+		expect(world.github.requests(/\/git\/refs$/, 'POST')).toHaveLength(0);
+		expect(world.github.latestStatus(head, 'PR baseline')?.state).toBe('failure');
+	});
+
+	it('seeds an absent baseline with a lease on its absence', async () => {
+		const [, , , c4] = world.c;
+		world.fixture.git(world.fixture.workDir, [
+			'push',
+			'--quiet',
+			'origin',
+			':refs/baselines/pr-baseline',
+		]);
+		const result = await client().moveBaseline({ force: true });
+		expect(result.moves[0]).toMatchObject({ moved: true, from: null, to: c4 });
+		expect(world.fixture.remoteRef('refs/baselines/pr-baseline')?.sha).toBe(c4);
+		const again = await (await writer()).move('pr-baseline', null, c4 as string);
+		expect(again).toEqual({ ok: false, actual: c4 });
+	});
+
+	it('reports the advertised commit instead of pushing when the lease is stale', async () => {
+		const [, c2, c3, c4] = world.c;
+		const lease = await writer();
+		expect(await lease.move('pr-baseline', c2 as string, c4 as string)).toEqual({
+			ok: false,
+			actual: c3,
+		});
+		expect(world.fixture.remoteRef('refs/baselines/pr-baseline')?.sha).toBe(c3);
+		expect(await lease.move('pr-baseline', c3 as string, c4 as string)).toEqual({ ok: true });
+		expect(world.fixture.remoteRef('refs/baselines/pr-baseline')?.sha).toBe(c4);
+	});
+
+	it('leases on the tag object a baseline is parked on and replaces it with the commit', async () => {
+		const [, , c3, c4] = world.c;
+		world.fixture.baseline('pr-baseline', c3 as string, true);
+		expect(world.fixture.remoteRef('refs/baselines/pr-baseline')?.type).toBe('tag');
+		const result = await client().moveBaseline({ force: true });
+		expect(result.moves[0]).toMatchObject({ moved: true, from: c3, to: c4 });
+		expect(world.fixture.remoteRef('refs/baselines/pr-baseline')).toMatchObject({
+			type: 'commit',
+			sha: c4,
+		});
+	});
+
+	it.skipIf(process.platform === 'win32')(
+		'falls back to the refs API when the push fails with the ref unmoved',
+		async () => {
+			const [, , c3, c4] = world.c;
+			const { chmodSync } = await import('node:fs');
+			const refsDir = `${world.fixture.remoteDir}/refs/baselines`;
+			chmodSync(refsDir, 0o555);
+			// The API stands alone here, as it does when only the git transport is broken.
+			world.github.refSource = undefined;
+			world.github.onRefWrite = undefined;
+			world.github.baseline('pr-baseline', c3 as string);
+			try {
+				const result = await client().moveBaseline({ force: true });
+				expect(result.moves[0]).toMatchObject({ moved: true, from: c3, to: c4 });
+				expect(world.warnings.join('\n')).toContain('moving through the API instead');
+				expect(world.github.requests(/\/git\/refs\/baselines\/pr-baseline/, 'PATCH')).toHaveLength(
+					1,
+				);
+			} finally {
+				chmodSync(refsDir, 0o755);
+			}
+		},
+	);
 });

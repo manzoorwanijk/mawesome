@@ -72,7 +72,7 @@ For each selected baseline decides whether it should move, and to where:
 - Otherwise a merged PR against the base carrying the baseline's label moves it when the merge commit is not the current baseline, descends from it, and is an ancestor of the target. Every merged PR with the label is scanned, newest first, with no date cutoff.
 - Otherwise a change to one of the baseline's `markers` between the current baseline and the target moves it. When the compare API returns 300 files the answer is indeterminate; the tool warns and does not move automatically.
 
-`--to <sha>` sets the target instead of the base branch head; it must be reachable from the base branch. The target must descend from the current baseline. A rejected update is followed by one re-read: if another writer moved the baseline, the decision is re-evaluated once from the new commit; if it did not move, the error is terminal.
+`--to <sha>` sets the target instead of the base branch head; it must be reachable from the base branch. The target must descend from the current baseline. With git ancestry the ref is written with `git push --force-with-lease` from the clone, so a concurrent move is refused by the server; with API ancestry it is written through the refs API and re-read. A lost race re-evaluates the decision once from the ref's new commit; a rejected write with the ref unmoved is terminal.
 
 `--refresh-pr-statuses` runs a refresh afterwards, also when nothing moved, so a re-dispatch is a safe retry. In a dry run the refresh is evaluated against the intended, unwritten baseline positions.
 
