@@ -12,7 +12,7 @@ Reference documentation for `@mawesome/pr-baseline`, a tool that keeps open pull
 - [Edge cases](./edge-cases.md): forks, other base branches, stacked PRs, races, absent baselines.
 - [Runbook](./runbook.md): rollout order, retries, rollback and what "Expected" means.
 - [For PR authors](./for-pr-authors.md): the one paragraph a blocked author needs.
-- [GitHub Action](./action.md): how events map to commands, the consumer workflow and the release to the mirror.
+- [GitHub Action](./action.md): the workflow to copy, every input and output, how events map to commands and the release to the mirror.
 
 ## One-paragraph summary
 

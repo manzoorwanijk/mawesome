@@ -1,6 +1,103 @@
 # GitHub Action
 
-The action is one root action, `manzoorwanijk/pr-baseline-action`, with a `mode` input. Its source is the [`action/`](../action/) directory of this package, which is the complete mirror repository: the mirror adds only the bundled `dist/` and a `release.json` naming the release. The action's own [README](../action/README.md) carries the generated inputs and outputs tables and the consumer workflow; this page explains how the pieces fit.
+The action is one root action, `manzoorwanijk/pr-baseline-action`, with a `mode` input. Its source is the [`action/`](../action/) directory of this package, which is the complete mirror repository: the mirror adds only the bundled `dist/` and a `release.json` naming the release. The workflow and the tables below are generated from [`action.yml`](../action/action.yml) and the [workflow template](../action/workflow-template.yml), the same sources as the action's own [README](../action/README.md).
+
+## Usage
+
+One workflow, two jobs, both calling the action. Copy it, replace every `BASE` with your base branch, pin the action and `actions/checkout` to commit SHAs, and adjust `PR_BASELINES`. [Permissions](./permissions.md) covers the tokens and the rulesets, the [runbook](./runbook.md) the rollout order.
+
+<!-- workflow:start -->
+
+```yaml
+name: PR baseline
+# Replace every BASE below with your base branch (for example main). The env context is unavailable
+# in a job-level `if`, so the branch name is a literal in the marked places.
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review, edited, closed]
+  merge_group:
+  push:
+    branches: [BASE]
+  schedule:
+    - cron: '17 * * * *'
+  workflow_dispatch:
+    inputs:
+      mode:
+        type: choice
+        default: auto
+        options: [auto, move-baseline, refresh-pr-statuses]
+        description: auto recovers like the schedule; move-baseline forces a move and then refreshes; refresh-pr-statuses only refreshes open PR statuses
+      baseline:
+        type: string
+        default: ''
+        description: Name of one baseline to move; blank moves all
+permissions: {}
+env:
+  # One source of truth for both jobs. Omit to use the single default baseline.
+  PR_BASELINES: '[{"name":"pr-baseline","label":"Require PR update","markers":[".nvmrc"]}]'
+jobs:
+  refresh-pr-status:
+    name: Refresh the PR status against the baseline
+    if: >-
+      !github.event.repository.fork &&
+      (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && github.event.action != 'closed'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      statuses: write
+    concurrency:
+      group: pr-baseline-status-${{ github.event.pull_request.number || github.event.merge_group.head_sha }}
+      cancel-in-progress: false
+    steps:
+      - uses: manzoorwanijk/pr-baseline-action@<sha> # vX.Y.Z
+        with:
+          base: BASE
+          baselines: ${{ env.PR_BASELINES }}
+  refresh-pr-statuses:
+    name: Move baselines and refresh PR statuses
+    if: >-
+      !github.event.repository.fork && (
+        (github.event_name == 'pull_request_target' && github.event.action == 'closed' && github.event.pull_request.merged) ||
+        (github.event_name == 'push' && github.ref_name == 'BASE') ||
+        github.event_name == 'schedule' ||
+        github.event_name == 'workflow_dispatch'
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: write
+      statuses: write
+      pull-requests: read
+    concurrency:
+      group: pr-baseline-refresh
+      cancel-in-progress: false
+      queue: max # Delete this line on GitHub Enterprise Server; one pending run is enough there.
+    steps:
+      - uses: actions/checkout@<sha> # vN
+        with:
+          ref: BASE
+          fetch-depth: 0
+          filter: tree:0
+          persist-credentials: false
+      - id: pr-baseline
+        uses: manzoorwanijk/pr-baseline-action@<sha> # vX.Y.Z
+        with:
+          base: BASE
+          baselines: ${{ env.PR_BASELINES }}
+          mode: ${{ inputs.mode || 'auto' }}
+          force: ${{ inputs.mode == 'move-baseline' }}
+          baseline: ${{ inputs.baseline || '' }}
+      - if: ${{ always() && steps.pr-baseline.outputs.results-file != '' }}
+        uses: actions/upload-artifact@<sha> # vN
+        with:
+          name: pr-baseline-refresh
+          path: ${{ steps.pr-baseline.outputs.results-file }}
+```
+
+<!-- workflow:end -->
+
+The `refresh-pr-status` job serves PR and merge-queue events, the `refresh-pr-statuses` job serves base pushes, labeled merges, the schedule and dispatches. `BASE` is a literal in the marked places because the `env` context is unavailable in a job-level `if`. The baseline list is defined once in the workflow-level `env` and read by both steps. Both jobs carry a `!github.event.repository.fork` guard, the `refresh-pr-status` job never checks out code, and the `refresh-pr-statuses` job checks out a treeless full-history clone with `persist-credentials: false`; the action authenticates its own fetches. Job names must not resemble the status context; require the context, not the job.
 
 ## Modes
 
@@ -19,19 +116,68 @@ The action is one root action, `manzoorwanijk/pr-baseline-action`, with a `mode`
 
 ## Inputs and outputs
 
-Inputs mirror the [CLI](./cli.md), except that `baselines` is inline JSON only: `token`, `mode`, `sha`, `base`, `baselines`, the shorthand `name`, `label`, `markers` (multiline), `baseline`, `status-context`, the three `description-*` texts, `target-url`, `other-bases`, `creator`, `ancestry`, `max-writes-per-run`, `max-writes-per-minute`, `dry-run`, `force`, `refresh-pr-statuses-after-move`. The API, GraphQL and server URLs come from the runner's environment, so GitHub Enterprise Server needs no extra input.
+Inputs mirror the [CLI](./cli.md), except that `baselines` is inline JSON only and `markers` is multiline. The API, GraphQL and server URLs come from the runner's environment, so GitHub Enterprise Server needs no extra input.
 
 A hidden `github-token-probe` input, defaulting to `${{ github.token }}` like `token`, lets the action prove whether `token` is the workflow's own token: when the two are equal the status creator is `github-actions[bot]` without any request; an App token never matches and must come with `creator`.
 
-Outputs are plain strings: `state`, `description`, `base`, `baselines` (JSON), `missing` (JSON, `refresh-pr-status` only), `written`, `skipped`, `closed`, `deferred`, `failed`, `incomplete`, `summary` (JSON, per-PR results capped at 200 entries) and `results-file` (a runner-local JSON file with the uncapped refresh results). Every run, including a skip or an error, sets every output and writes a step summary; `state` is then `skipped` or `error`. The `summary` output of a refresh drops per-PR entries until it fits a quarter of GitHub's 1 MB output cap and says how many it omitted; after a move it also carries the moves. A run Dependabot triggers has a read-only workflow token, so it evaluates without writing and leaves moves to the schedule. An incomplete refresh, an off-base baseline in `report`, a configuration error and a permission error fail the step; a failing `refresh-pr-status` verdict does not, since the commit status is the gate.
+Outputs are plain strings, several of them JSON documents. Every run, including a skip or an error, sets every output and writes a step summary; `state` is then `skipped` or `error`. The `summary` output of a refresh drops per-PR entries until it fits a quarter of GitHub's 1 MB output cap and says how many it omitted; after a move it also carries the moves. A run Dependabot triggers has a read-only workflow token, so it evaluates without writing and leaves moves to the schedule. An incomplete refresh, an off-base baseline in `report`, a configuration error and a permission error fail the step; a failing `refresh-pr-status` verdict does not, since the commit status is the gate.
 
-## Consumer workflow
+### Inputs
 
-The [workflow template](../action/workflow-template.yml) is the copyable consumer workflow: a `refresh-pr-status` job for PR and merge-queue events and a `refresh-pr-statuses` job for base pushes, labeled merges, the schedule and dispatches. `BASE` is a literal in the marked places because the `env` context is unavailable in a job-level `if`. The baseline list is defined once in the workflow-level `env` and read by both steps. Both jobs carry a `!github.event.repository.fork` guard, the `refresh-pr-status` job never checks out code, and the `refresh-pr-statuses` job checks out a treeless full-history clone with `persist-credentials: false`; the action authenticates its own fetches. Job names must not resemble the status context; require the context, not the job.
+<!-- inputs:start -->
+
+| Input                            | Description                                                                                                      | Default               |
+| -------------------------------- | ---------------------------------------------------------------------------------------------------------------- | --------------------- |
+| `token`                          | Token used for every read and write; defaults to the workflow's own token.                                       | `${{ github.token }}` |
+| `mode`                           | What to do: auto (from the event), refresh-pr-status, refresh-pr-statuses, move-baseline or report.              | `auto`                |
+| `sha`                            | Commit to evaluate in refresh-pr-status mode; auto takes it from the event.                                      |                       |
+| `base`                           | Base branch; defaults to the repository's default branch.                                                        |                       |
+| `baselines`                      | JSON array of `{ name, label?, scope?, markers? }`, inline only; cannot be combined with name, label or markers. |                       |
+| `name`                           | Shorthand for a single baseline's name (default `pr-baseline`).                                                  |                       |
+| `label`                          | Shorthand for a single baseline's label (default `Require PR update`).                                           |                       |
+| `markers`                        | Shorthand for a single baseline's auto-move patterns, one gitignore pattern per line.                            |                       |
+| `baseline`                       | In move-baseline mode, move only the baseline with this name; blank moves all.                                   |                       |
+| `status-context`                 | Status context (default `PR baseline`).                                                                          |                       |
+| `description-pass`               | Description of a passing status; `{base}` and `{baselines}` are replaced.                                        |                       |
+| `description-fail`               | Description of a failing status; `{base}` and `{baselines}` are replaced.                                        |                       |
+| `description-not-applicable`     | Description written for PRs against other branches when other-bases is pass.                                     |                       |
+| `target-url`                     | Link attached to every status; by default a failing status links to the compare view of what it lacks.           |                       |
+| `other-bases`                    | PRs against other branches: skip (default) or pass.                                                              |                       |
+| `creator`                        | Login the token writes statuses as; required for a GitHub App token.                                             |                       |
+| `ancestry`                       | Ancestry source: auto (default), git or api.                                                                     |                       |
+| `max-writes-per-run`             | Stop a refresh after this many status writes; a positive integer (default 450).                                  |                       |
+| `max-writes-per-minute`          | Pace status writes; a positive integer per minute (default 60).                                                  |                       |
+| `dry-run`                        | Log every intended write and baseline move instead of making it.                                                 | `false`               |
+| `force`                          | In move-baseline mode, move by intent alone and seed absent baselines.                                           | `false`               |
+| `refresh-pr-statuses-after-move` | In move-baseline mode, refresh every open PR's status afterwards (default true).                                 | `true`                |
+
+<!-- inputs:end -->
+
+### Outputs
+
+<!-- outputs:start -->
+
+| Output         | Description                                                                                                              |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `state`        | Status state of the checked commit (`success` or `failure`), or of the run (`success`, `failure`, `skipped` or `error`). |
+| `description`  | Status description of the checked commit.                                                                                |
+| `base`         | The base branch the run served.                                                                                          |
+| `baselines`    | JSON array of `{ name, sha }` for every configured baseline.                                                             |
+| `missing`      | JSON array of baseline names the evaluated commit lacks (refresh-pr-status mode).                                        |
+| `written`      | Statuses written.                                                                                                        |
+| `skipped`      | PRs whose status was already current.                                                                                    |
+| `closed`       | PRs that closed while the refresh ran.                                                                                   |
+| `deferred`     | PRs whose head was still moving.                                                                                         |
+| `failed`       | PRs whose status could not be written.                                                                                   |
+| `incomplete`   | Whether a refresh stopped before covering every PR (`true` or `false`).                                                  |
+| `summary`      | JSON summary of the run, per-PR results capped to stay under the output size limit.                                      |
+| `results-file` | Path of a JSON file with the uncapped per-PR results of a refresh, for an upload step.                                   |
+
+<!-- outputs:end -->
 
 ## Building and testing
 
-`pnpm build:action` bundles `action/src/main.ts` into `action/dist/index.js` (ESM, node24, every dependency bundled, third-party licenses in `licenses.txt`); `action/dist` is committed only in the mirror. `pnpm readme:action` regenerates the README tables from `action.yml`, and `--check` fails CI when they drift. The action tests run the entry in-process with `INPUT_*` variables and event payload fixtures against the fake API, one per row of the mode table, plus the creator migration fixture; a second suite builds the bundle and runs `action/dist/index.js` in a subprocess against the fake API served over HTTP for the main rows, so a bundling regression cannot pass on source alone.
+`pnpm build:action` bundles `action/src/main.ts` into `action/dist/index.js` (ESM, node24, every dependency bundled, third-party licenses in `licenses.txt`); `action/dist` is committed only in the mirror. `pnpm readme:action` regenerates the tables and the workflow in the README and on this page from `action.yml` and the template, and `--check` fails CI when they drift. The action tests run the entry in-process with `INPUT_*` variables and event payload fixtures against the fake API, one per row of the mode table, plus the creator migration fixture; a second suite builds the bundle and runs `action/dist/index.js` in a subprocess against the fake API served over HTTP for the main rows, so a bundling regression cannot pass on source alone.
 
 ## Release and mirror
 

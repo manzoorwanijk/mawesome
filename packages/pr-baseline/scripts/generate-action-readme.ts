@@ -1,14 +1,23 @@
 /**
- * Regenerates the inputs, outputs and workflow sections of `action/README.md` from `action.yml` and the template.
- * Run with `pnpm readme:action`; `--check` fails when the README is stale, for CI.
+ * Regenerates the inputs, outputs and workflow sections of `action/README.md` and `docs/action.md` from `action.yml` and the template.
+ * Run with `pnpm readme:action`; `--check` fails when either file is stale, for CI.
  */
 import { readFileSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const actionDir = join(here, '..', 'action');
+const packageDir = join(here, '..');
+const actionDir = join(packageDir, 'action');
+
+type Marker = 'inputs' | 'outputs' | 'workflow';
+
+/** Every file carrying generated blocks: the mirror's README and the documentation page. */
+const TARGETS: { file: string; markers: Marker[] }[] = [
+	{ file: join(actionDir, 'README.md'), markers: ['inputs', 'outputs', 'workflow'] },
+	{ file: join(packageDir, 'docs', 'action.md'), markers: ['workflow', 'inputs', 'outputs'] },
+];
 
 interface Input {
 	description: string;
@@ -98,53 +107,62 @@ function table(rows: string[][]): string {
 	return [line(rows[0] as string[]), separator, ...rows.slice(1).map(line)].join('\n');
 }
 
-function render(readme: string, marker: string, body: string): string {
+function render(text: string, marker: Marker, body: string, file: string): string {
 	const start = `<!-- ${marker}:start -->`;
 	const end = `<!-- ${marker}:end -->`;
-	const from = readme.indexOf(start);
-	const to = readme.indexOf(end);
+	const from = text.indexOf(start);
+	const to = text.indexOf(end);
 	if (from === -1 || to === -1 || to < from) {
-		throw new Error(`README is missing the ${marker} markers.`);
+		throw new Error(`${relative(packageDir, file)} is missing the ${marker} markers.`);
 	}
 	// A blank line on each side is what the formatter leaves around a block, so the result is stable under it.
-	return `${readme.slice(0, from + start.length)}\n\n${body}\n\n${readme.slice(to)}`;
+	return `${text.slice(0, from + start.length)}\n\n${body}\n\n${text.slice(to)}`;
 }
 
-export function generate(): { current: string; next: string } {
+export function generate(): { file: string; current: string; next: string }[] {
 	const action = parseAction(readFileSync(join(actionDir, 'action.yml'), 'utf8'));
 	const workflow = readFileSync(join(actionDir, 'workflow-template.yml'), 'utf8').trimEnd();
-	const current = readFileSync(join(actionDir, 'README.md'), 'utf8');
-	const inputs = table([
-		['Input', 'Description', 'Default'],
-		...[...action.inputs]
-			.filter(([name]) => name !== 'github-token-probe')
-			.map(([name, input]) => [
-				`\`${name}\``,
-				cell(input.description),
-				input.default === undefined ? '' : `\`${input.default}\``,
-			]),
-	]);
-	const outputs = table([
-		['Output', 'Description'],
-		...[...action.outputs].map(([name, description]) => [`\`${name}\``, cell(description)]),
-	]);
-	let next = render(current, 'inputs', inputs);
-	next = render(next, 'outputs', outputs);
-	next = render(next, 'workflow', `\`\`\`yaml\n${workflow}\n\`\`\``);
-	return { current, next };
+	const blocks: Record<Marker, string> = {
+		inputs: table([
+			['Input', 'Description', 'Default'],
+			...[...action.inputs]
+				.filter(([name]) => name !== 'github-token-probe')
+				.map(([name, input]) => [
+					`\`${name}\``,
+					cell(input.description),
+					input.default === undefined ? '' : `\`${input.default}\``,
+				]),
+		]),
+		outputs: table([
+			['Output', 'Description'],
+			...[...action.outputs].map(([name, description]) => [`\`${name}\``, cell(description)]),
+		]),
+		workflow: `\`\`\`yaml\n${workflow}\n\`\`\``,
+	};
+	return TARGETS.map(({ file, markers }) => {
+		const current = readFileSync(file, 'utf8');
+		let next = current;
+		for (const marker of markers) {
+			next = render(next, marker, blocks[marker], file);
+		}
+		return { file, current, next };
+	});
 }
 
 if (import.meta.main) {
 	const { values } = parseArgs({ options: { check: { type: 'boolean', default: false } } });
-	const { current, next } = generate();
+	const stale = generate().filter(({ current, next }) => current !== next);
+	const names = stale.map(({ file }) => relative(packageDir, file)).join(', ');
 	if (values.check) {
-		if (current !== next) {
-			console.error('action/README.md is stale; run `pnpm readme:action`.');
+		if (stale.length > 0) {
+			console.error(`${names} stale; run \`pnpm readme:action\`.`);
 			process.exit(1);
 		}
-		console.log('action/README.md is current.');
-	} else if (current !== next) {
-		writeFileSync(join(actionDir, 'README.md'), next);
-		console.log('action/README.md updated.');
+		console.log('the generated action docs are current.');
+	} else if (stale.length > 0) {
+		for (const { file, next } of stale) {
+			writeFileSync(file, next);
+		}
+		console.log(`updated ${names}.`);
 	}
 }
