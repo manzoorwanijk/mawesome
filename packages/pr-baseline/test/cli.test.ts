@@ -86,7 +86,7 @@ describe('cli', () => {
 			'--token',
 			'x',
 			'--baselines',
-			'[{"tag":"a"}]',
+			'[{"name":"a"}]',
 			'--name',
 			'b',
 		]);

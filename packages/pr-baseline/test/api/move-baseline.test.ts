@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { harness, sha } from '../helpers/client.ts';
 
 describe('move-baseline', () => {
-	it('seeds an absent tag only when forced', async () => {
+	it('seeds an absent baseline only when forced', async () => {
 		const { client, github } = harness();
 		const quiet = await client.moveBaseline();
 		expect(quiet.moves[0]).toMatchObject({
@@ -132,7 +132,7 @@ describe('move-baseline', () => {
 		await expect(client.moveBaseline({ force: true, to: sha(20) })).rejects.toThrow(/not on main/);
 	});
 
-	it('restricts to one baseline and rejects an unknown tag', async () => {
+	it('restricts to one baseline and rejects an unknown name', async () => {
 		const { client, github } = harness({ baselines: [{ name: 'a' }, { name: 'b' }] });
 		const result = await client.moveBaseline({ force: true, baseline: 'b' });
 		expect(result.moves.map((move) => move.name)).toEqual(['b']);
@@ -184,7 +184,7 @@ describe('move-baseline', () => {
 		});
 		const original = github.fetch;
 		github.fetch = async (input, init) => {
-			// The rejected PATCH is followed by a re-read that finds the tag moved by someone else.
+			// The rejected PATCH is followed by a re-read that finds the ref moved by someone else.
 			const response = await original(input, init);
 			if (response.status === 422) {
 				github.baseline('pr-baseline', sha(4));
@@ -360,7 +360,7 @@ describe('move-baseline after a successful move', () => {
 		const original = github.fetch;
 		github.fetch = async (input, init) => {
 			const response = await original(input, init);
-			// Right after this run's PATCH lands, another writer pushes commit 6 and moves the tag there.
+			// Right after this run's PATCH lands, another writer pushes commit 6 and moves the ref there.
 			if ((init?.method ?? '').toUpperCase() === 'PATCH' && response.status === 200) {
 				github.commit(sha(6), [sha(5)]);
 				github.branch('main', sha(6));
@@ -376,7 +376,7 @@ describe('move-baseline after a successful move', () => {
 	});
 });
 
-describe('move-baseline with a tag named @', () => {
+describe('move-baseline with a baseline named @', () => {
 	it('reads, seeds and fast-forwards it through the encoded route', async () => {
 		const { client, github } = harness({ baselines: [{ name: '@' }] });
 		await client.moveBaseline({ force: true, to: sha(4) });

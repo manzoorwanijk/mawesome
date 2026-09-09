@@ -35,7 +35,7 @@ describe('computeVerdict', () => {
 		expect(verdict.applicable).toEqual(['a', 'b']);
 	});
 
-	it('treats an absent tag as satisfied', () => {
+	it('treats an absent baseline as satisfied', () => {
 		const verdict = computeVerdict(
 			[{ name: 'a', sha: null, applicable: true, contains: null }],
 			context,

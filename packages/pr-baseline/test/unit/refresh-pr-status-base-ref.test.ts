@@ -4,7 +4,7 @@ import { harness, sha } from '../helpers/client.ts';
 describe('refresh-pr-status with baseRef', () => {
 	it('applies the other-bases rule to a ref as well as to a full SHA', async () => {
 		const { client, github } = harness({}, (fake) => {
-			fake.tag('pr-baseline', sha(3));
+			fake.baseline('pr-baseline', sha(3));
 			fake.commit(sha(12), [sha(2)]);
 			fake.branch('topic', sha(12));
 		});

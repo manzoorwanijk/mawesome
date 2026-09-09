@@ -41,7 +41,7 @@ describe('refresh-pr-status', () => {
 		});
 	});
 
-	it('treats an absent tag as satisfied', async () => {
+	it('treats an absent baseline as satisfied', async () => {
 		const { client } = harness({}, (gh) => gh.commit(sha(10), [sha(1)]));
 		const result = await client.refreshPrStatus({ sha: sha(10), report: true });
 		expect(result.verdict.kind).toBe('pass');
@@ -120,7 +120,7 @@ describe('refresh-pr-status', () => {
 		});
 		let reads = 0;
 		const original = github.fetch;
-		// The second tag read sees a move; the verdict must be computed against the new commit.
+		// The second ref read sees a move; the verdict must be computed against the new commit.
 		github.fetch = async (input, init) => {
 			const url = decodeURIComponent(String(input instanceof Request ? input.url : input));
 			if (url.includes('/git/ref/baselines/pr-baseline') && ++reads === 2) {
@@ -294,7 +294,7 @@ describe('refresh-pr-status round 3', () => {
 		const original = github.fetch;
 		github.fetch = async (input, init) => {
 			const url = decodeURIComponent(String(input instanceof Request ? input.url : input));
-			// Base and baseline both advance to a new commit 6 during the second tag read.
+			// Base and baseline both advance to a new commit 6 during the second ref read.
 			if (url.includes('/git/ref/baselines/pr-baseline') && ++reads === 2) {
 				github.commit(sha(6), [sha(5)]);
 				github.branch('main', sha(6));
@@ -353,18 +353,18 @@ describe('refresh-pr-status validation order', () => {
 });
 
 describe('refresh-pr-status round 7', () => {
-	it('judges a move landing between the tag read and the head read against the new refs', async () => {
+	it('judges a move landing between the ref read and the head read against the new refs', async () => {
 		const { client, github } = harness({}, (gh) => {
 			gh.baseline('pr-baseline', sha(3));
 			gh.commit(sha(10), [sha(4)]);
 		});
-		let tagReads = 0;
+		let refReads = 0;
 		const original = github.fetch;
 		github.fetch = async (input, init) => {
 			const url = decodeURIComponent(String(input instanceof Request ? input.url : input));
 			const response = await original(input, init);
-			// The second tag read has answered with commit 3; both refs then advance before the head read.
-			if (url.includes('/git/ref/baselines/pr-baseline') && ++tagReads === 2) {
+			// The second ref read has answered with commit 3; both refs then advance before the head read.
+			if (url.includes('/git/ref/baselines/pr-baseline') && ++refReads === 2) {
 				github.commit(sha(6), [sha(5)]);
 				github.branch('main', sha(6));
 				github.baseline('pr-baseline', sha(6));

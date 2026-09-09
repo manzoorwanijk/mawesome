@@ -55,7 +55,7 @@ describe('refresh-pr-statuses', () => {
 		expect(github.requests(/\/statuses\//, 'POST')).toHaveLength(3);
 	});
 
-	it('stamps every PR when the tag is absent', async () => {
+	it('stamps every PR when the baseline is absent', async () => {
 		const { client } = harness({}, (gh) => {
 			gh.commit(sha(11), [sha(1)]);
 			gh.pull({ number: 1, headSha: sha(11) });
@@ -501,9 +501,9 @@ function strictAdapter(): { adapter: Ancestry; prepared: string[][] } {
 				for (const commit of input.shas) {
 					known.add(commit);
 				}
-				for (const tag of input.refs) {
-					if (tag.sha !== null) {
-						known.add(tag.sha);
+				for (const ref of input.refs) {
+					if (ref.sha !== null) {
+						known.add(ref.sha);
 					}
 				}
 				return Promise.resolve({ heads: new Map() });

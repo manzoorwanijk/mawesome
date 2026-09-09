@@ -351,7 +351,11 @@ describe('git ancestry review round 2', () => {
 
 	it('ignores a stale local baseline ref when the API and the remote agree on a newer one', async () => {
 		const [, c2, , c4] = world.c;
-		world.fixture.git(world.fixture.cloneDir, ['tag', '--force', 'pr-baseline', c2 as string]);
+		world.fixture.git(world.fixture.cloneDir, [
+			'update-ref',
+			'refs/baselines/pr-baseline',
+			c2 as string,
+		]);
 		world.fixture.baseline('pr-baseline', c4 as string);
 		world.github.baseline('pr-baseline', c4 as string);
 		const head = openPull(1, c2 as string, { 'x.txt': 'x' });
@@ -502,7 +506,7 @@ describe('git ancestry review round 3', () => {
 describe('git ancestry review round 4', () => {
 	it('fails offline on a local baseline ref that is not a commit instead of passing it as absent', async () => {
 		const [, c2] = world.c;
-		// A tag pointing at a tree, pushed from the work tree; the treeless clone gets the ref but not the object.
+		// A baseline ref pointing at a tree, pushed from the work tree; the treeless clone gets the ref but not the object.
 		const tree = world.fixture.git(world.fixture.workDir, ['rev-parse', `${c2}^{tree}`]).trim();
 		world.fixture.baseline('pr-baseline', tree);
 		world.fixture.git(world.fixture.cloneDir, [
@@ -1038,7 +1042,7 @@ describe('git ancestry review round 23', () => {
 	it('refuses, without falling back, a remote baseline ref that no longer peels to a commit', async () => {
 		const [, c2] = world.c;
 		openPull(1, c2 as string, { 'x.txt': 'x' });
-		// The API still reports the commit; on the remote the tag now points at a tree.
+		// The API still reports the commit; on the remote the ref now points at a tree.
 		const tree = world.fixture.git(world.fixture.workDir, ['rev-parse', `${c2}^{tree}`]).trim();
 		world.fixture.baseline('pr-baseline', tree);
 		await expect(client().refreshPrStatuses()).rejects.toThrow(
