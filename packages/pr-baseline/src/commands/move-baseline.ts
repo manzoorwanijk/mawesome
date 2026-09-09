@@ -2,7 +2,7 @@ import { ConfigError } from '../config.ts';
 import { listLabeledMergeCommits } from '../github/pulls.ts';
 import { resolveCommit } from '../github/refs.ts';
 import { createMatcher } from '../paths.ts';
-import { selectRefWriter, type RefWriter } from '../ref-writer.ts';
+import { describeError, selectRefWriter, warnQuietly, type RefWriter } from '../ref-writer.ts';
 import type { Runtime } from '../runtime.ts';
 import type {
 	Ancestry,
@@ -92,8 +92,10 @@ export async function runMoveBaseline(
 			logger.info(describe(move));
 		}
 	} finally {
-		// Cleanup is best effort: the moves an error here could mask have already landed.
-		await writer?.close?.().catch(() => undefined);
+		// Cleanup is worth a warning, never a failure: the moves it could mask have already landed.
+		await writer?.close?.().catch((error: unknown) => {
+			warnQuietly(logger, `Could not remove the temporary repository (${describeError(error)}).`);
+		});
 	}
 
 	/*

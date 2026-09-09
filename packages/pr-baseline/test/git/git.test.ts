@@ -1306,34 +1306,59 @@ describe('move-baseline through a clone', () => {
 		expect(world.warnings.join('\n')).toContain('cannot refuse a concurrent move');
 	});
 
-	it('still moves when the injected logger throws on the cleanup diagnostics', async () => {
-		const [, , c3, c4] = world.c;
-		world.fixture.shallowClone();
-		world.github.refSource = undefined;
-		world.github.baseline('pr-baseline', c3 as string);
-		const previous = process.env['TMPDIR'];
-		process.env['TMPDIR'] = `${world.fixture.root}/missing`;
-		try {
-			const result = await client({
-				serverUrl: world.fixture.serverUrl,
-				logger: {
-					info() {},
-					warn(message) {
-						if (message.includes('temporary')) {
-							throw new Error(`logger refused: ${message}`);
-						}
-					},
-				},
-			}).moveBaseline({ force: true });
-			expect(result.moves[0]).toMatchObject({ moved: true, from: c3, to: c4, via: 'api' });
-		} finally {
-			if (previous === undefined) {
-				delete process.env['TMPDIR'];
-			} else {
-				process.env['TMPDIR'] = previous;
+	it.skipIf(process.platform === 'win32').each([
+		['a plain logger', (message: string) => world.warnings.push(message)],
+		[
+			'a logger that throws on the diagnostic',
+			(message: string) => {
+				world.warnings.push(message);
+				if (message.startsWith('Could not remove')) {
+					throw new Error(`logger refused: ${message}`);
+				}
+			},
+		],
+	])(
+		'warns and still succeeds when the temporary repository cannot be removed, with %s',
+		async (_name, warn) => {
+			const [, , c3, c4] = world.c;
+			const { chmodSync, mkdirSync: mkdir } = await import('node:fs');
+			world.fixture.shallowClone();
+			world.github.refSource = undefined;
+			world.github.onRefWrite = undefined;
+			world.github.baseline('pr-baseline', c3 as string);
+			const tmp = `${world.fixture.root}/tmp`;
+			mkdir(tmp);
+			const previous = process.env['TMPDIR'];
+			process.env['TMPDIR'] = tmp;
+			// The remote refuses the lease push, so the run reaches the API writer with the temporary repository alive.
+			const refsDir = `${world.fixture.remoteDir}/refs/baselines`;
+			chmodSync(refsDir, 0o555);
+			const original = world.github.fetch;
+			world.github.fetch = async (input, init) => {
+				// Once the API write is under way, the temporary directory's parent stops allowing removals.
+				if ((init?.method ?? '').toUpperCase() === 'PATCH') {
+					chmodSync(tmp, 0o555);
+				}
+				return original(input, init);
+			};
+			try {
+				const result = await client({
+					serverUrl: world.fixture.serverUrl,
+					logger: { info() {}, warn },
+				}).moveBaseline({ force: true });
+				expect(result.moves[0]).toMatchObject({ moved: true, from: c3, to: c4, via: 'api' });
+				expect(world.warnings.some((line) => line.startsWith('Could not remove'))).toBe(true);
+			} finally {
+				chmodSync(tmp, 0o755);
+				chmodSync(refsDir, 0o755);
+				if (previous === undefined) {
+					delete process.env['TMPDIR'];
+				} else {
+					process.env['TMPDIR'] = previous;
+				}
 			}
-		}
-	});
+		},
+	);
 
 	it('keeps the writes on the refs API with --ancestry api', async () => {
 		const [, , c3, c4] = world.c;

@@ -185,17 +185,12 @@ async function createEphemeralRepo(options: RefWriterOptions): Promise<Ephemeral
 		warnQuietly(options.logger, `No temporary directory for the move (${describeError(error)}).`);
 		return null;
 	}
-	// Removal is best effort and retried by a later close; nothing here may fail the run.
+	// A failed removal rejects, so the caller decides what it means; a later close tries again.
 	let closed = false;
 	const close = async (): Promise<void> => {
-		if (closed) {
-			return;
-		}
-		try {
+		if (!closed) {
 			await rm(dir, { recursive: true, force: true });
 			closed = true;
-		} catch (error) {
-			warnQuietly(options.logger, `Could not remove ${dir} (${describeError(error)}).`);
 		}
 	};
 	// The bootstrap runs under the same hardened environment as every other git call: no inherited GIT_*, no token.
@@ -222,12 +217,14 @@ async function createEphemeralRepo(options: RefWriterOptions): Promise<Ephemeral
 		options.logger,
 		`No temporary git repository for the move${failure === undefined ? '' : ` (${describeError(failure)})`}.`,
 	);
-	await close();
+	await close().catch((error: unknown) => {
+		warnQuietly(options.logger, `Could not remove ${dir} (${describeError(error)}).`);
+	});
 	return null;
 }
 
 /** A diagnostic must never become the failure: an injected logger may throw. */
-function warnQuietly(logger: Logger, message: string): void {
+export function warnQuietly(logger: Logger, message: string): void {
 	try {
 		logger.warn(message);
 	} catch {
@@ -235,7 +232,7 @@ function warnQuietly(logger: Logger, message: string): void {
 	}
 }
 
-function describeError(error: unknown): string {
+export function describeError(error: unknown): string {
 	return error instanceof Error ? error.message : String(error);
 }
 
