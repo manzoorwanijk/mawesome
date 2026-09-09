@@ -18,7 +18,7 @@ A tag is the obvious ref for "this commit", and it is the wrong one for a ref th
 
 A branch is worse in different ways: a `refs/heads/` ref triggers workflows on every move, shows a "Compare & pull request" prompt to whoever pushed it, and is the first thing branch-cleanup tooling and "delete merged branches" habits remove.
 
-`refs/baselines/<name>` has none of that. Nothing fetches the namespace unless asked to, so a move is invisible to clones and costs developers nothing; it starts no workflow, and no cleanup tool knows it exists. The price is that the ref has no page in the GitHub UI: `pr-baseline report` and `git ls-remote origin 'refs/baselines/*'` show it, the failing status names the baselines a PR lacks. The [permissions](./permissions.md) page covers the other consequence, that no ruleset can guard the namespace.
+`refs/baselines/<name>` has none of that. Nothing fetches the namespace unless asked to, so a move is invisible to clones and costs developers nothing; it starts no workflow, and no cleanup tool knows it exists. The price is that the ref has no page in the GitHub UI: `pr-baseline report` and `git ls-remote origin 'refs/baselines/*'` show it, the failing status names the baselines a PR lacks, and its default link opens the compare view of what the PR is missing. The [permissions](./permissions.md) page covers the other consequence, that no ruleset can guard the namespace.
 
 ## Verdicts
 
