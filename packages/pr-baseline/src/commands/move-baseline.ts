@@ -31,17 +31,16 @@ export async function runMoveBaseline(
 	const ancestry = await runtime.ancestry();
 	/* The writer is chosen at the first write, after preparation may have switched the adapter to the API.
 	 * `--ancestry api` means no git at all, so it also keeps the writes on the refs API. */
-	let writer: Promise<RefWriter> | undefined;
-	const refWriter = (): Promise<RefWriter> => {
-		writer ??= (async () =>
-			selectRefWriter(ancestry.name === 'git' ? await runtime.repo() : null, {
-				api,
-				repo: config.repo,
-				serverUrl: config.serverUrl,
-				token: config.token,
-				logger,
-				allowGit: config.ancestry !== 'api',
-			}))();
+	let writer: RefWriter | undefined;
+	const refWriter = async (): Promise<RefWriter> => {
+		writer ??= selectRefWriter(ancestry.name === 'git' ? await runtime.repo() : null, {
+			api,
+			repo: config.repo,
+			serverUrl: config.serverUrl,
+			token: config.token,
+			logger,
+			allowGit: config.ancestry !== 'api',
+		});
 		return writer;
 	};
 	if (
@@ -93,7 +92,10 @@ export async function runMoveBaseline(
 			logger.info(describe(move));
 		}
 	} finally {
-		await (await writer)?.close?.();
+		// A failed cleanup is worth a warning, never the run: the moves it would mask have already landed.
+		await writer?.close?.().catch((error: unknown) => {
+			logger.warn(`Could not remove the temporary repository: ${String(error)}`);
+		});
 	}
 
 	/*

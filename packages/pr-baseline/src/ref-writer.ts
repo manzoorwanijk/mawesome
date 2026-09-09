@@ -6,7 +6,14 @@ import { promisify } from 'node:util';
 import { type ApiClient } from './github/api.ts';
 import { isGitHubError } from './github/errors.ts';
 import { createBaselineRef, readBaselineRef, updateBaselineRef } from './github/refs.ts';
-import { fetchMissingCommits, GitError, lsRemote, openRepo, type GitRepo } from './git/repo.ts';
+import {
+	fetchMissingCommits,
+	gitBaseEnv,
+	GitError,
+	lsRemote,
+	openRepo,
+	type GitRepo,
+} from './git/repo.ts';
 import { baselineRef } from './refname.ts';
 import type { Logger } from './types.ts';
 
@@ -38,28 +45,53 @@ export interface RefWriterOptions {
 }
 
 /**
- * The writer for a run: a lease push from the clone when there is one, else from an ephemeral repository when git
- * exists, else the refs API, which cannot refuse a concurrent move.
+ * The writer for a run: a lease push from the clone when there is one, then from a temporary repository, then
+ * the refs API, which cannot refuse a concurrent move. Each later way is set up only when the one before failed.
  */
-export async function selectRefWriter(
-	clone: GitRepo | null,
-	options: RefWriterOptions,
-): Promise<RefWriter> {
+export function selectRefWriter(clone: GitRepo | null, options: RefWriterOptions): RefWriter {
 	const api = createApiRefWriter(options.api, options.repo);
 	if (!options.allowGit) {
 		return api;
 	}
-	const ephemeral = await createEphemeralRepo(options);
-	if (ephemeral === null) {
-		options.logger.warn(
-			'Git is not available, so the move goes through the refs API, which cannot refuse a concurrent move.',
-		);
-	}
-	const last =
-		ephemeral === null
-			? api
-			: withFallback(createLeaseRefWriter(ephemeral.repo, options), api, options, ephemeral.close);
-	return clone === null ? last : withFallback(createLeaseRefWriter(clone, options), last, options);
+	let ephemeral: Promise<EphemeralRepo | null> | undefined;
+	const ways: Array<() => Promise<RefWriter | null>> = [
+		async () => (clone === null ? null : createLeaseRefWriter(clone, options)),
+		async () => {
+			ephemeral ??= createEphemeralRepo(options);
+			const repo = await ephemeral;
+			return repo === null ? null : createLeaseRefWriter(repo.repo, options);
+		},
+		async () => {
+			options.logger.warn(
+				'Git could not move the ref, so the refs API is used, which cannot refuse a concurrent move.',
+			);
+			return api;
+		},
+	];
+	let active = 0;
+	return {
+		async move(baseline, expected, to) {
+			for (; ; active++) {
+				const writer = await (ways[active] ?? ways[ways.length - 1])!();
+				if (writer === null) {
+					continue;
+				}
+				try {
+					return await writer.move(baseline, expected, to);
+				} catch (error) {
+					if (!(error instanceof GitError) || writer === api) {
+						throw error;
+					}
+					options.logger.warn(
+						`Git could not move ${baselineRef(baseline)} (${firstLine(error.stderr) || error.message}); trying the next way.`,
+					);
+				}
+			}
+		},
+		async close() {
+			await (await ephemeral)?.close();
+		},
+	};
 }
 
 /**
@@ -136,68 +168,62 @@ export function createLeaseRefWriter(
 	};
 }
 
-/** Hands a move to `next` when `primary` fails on a git error, with the reason in the log. */
-function withFallback(
-	primary: RefWriter,
-	next: RefWriter,
-	options: Pick<RefWriterOptions, 'logger'>,
-	close?: () => Promise<void>,
-): RefWriter {
-	return {
-		async move(baseline, expected, to) {
-			try {
-				return await primary.move(baseline, expected, to);
-			} catch (error) {
-				if (!(error instanceof GitError)) {
-					throw error;
-				}
-				options.logger.warn(
-					`Git could not move ${baselineRef(baseline)} (${firstLine(error.stderr) || error.message}); trying the next way.`,
-				);
-				return next.move(baseline, expected, to);
-			}
-		},
-		async close() {
-			await close?.();
-			await next.close?.();
-		},
-	};
+interface EphemeralRepo {
+	repo: GitRepo;
+	close(): Promise<void>;
 }
 
 /**
  * An empty repository in a temporary directory, with the server's copy of the repository as its only remote.
  * It exists so a run without a usable clone can still lease-push; null when git cannot set it up.
  */
-async function createEphemeralRepo(
-	options: RefWriterOptions,
-): Promise<{ repo: GitRepo; close: () => Promise<void> } | null> {
+async function createEphemeralRepo(options: RefWriterOptions): Promise<EphemeralRepo | null> {
 	let dir: string;
 	try {
 		dir = await mkdtemp(join(tmpdir(), 'pr-baseline-'));
-	} catch {
+	} catch (error) {
+		options.logger.warn(`No temporary directory for the move (${describeError(error)}).`);
 		return null;
 	}
-	const close = () => rm(dir, { recursive: true, force: true });
+	let closed = false;
+	const close = async (): Promise<void> => {
+		if (!closed) {
+			closed = true;
+			await rm(dir, { recursive: true, force: true });
+		}
+	};
+	// The bootstrap runs under the same hardened environment as every other git call: no inherited GIT_*, no token.
+	const env = gitBaseEnv(process.env, {
+		serverUrl: options.serverUrl,
+		...(options.token === undefined ? {} : { token: options.token }),
+	});
+	let failure: unknown;
 	try {
 		const url = `${options.serverUrl.replace(/\/+$/, '')}/${options.repo}`;
-		await run('git', ['init', '--quiet', dir]);
-		await run('git', ['-C', dir, 'remote', 'add', 'origin', url]);
+		await run('git', ['init', '--quiet', '--template=', dir], { env });
+		await run('git', ['-C', dir, 'remote', 'add', 'origin', url], { env });
 		const repo = await openRepo(dir, {
 			serverUrl: options.serverUrl,
 			...(options.token === undefined ? {} : { token: options.token }),
 		});
-		if (repo === null) {
-			await close();
-			return null;
+		if (repo !== null) {
+			return { repo, close };
 		}
-		return { repo, close };
 	} catch (error) {
-		options.logger.warn(
-			`No temporary git repository for the move (${error instanceof Error ? error.message : String(error)}).`,
-		);
-		await close();
-		return null;
+		failure = error;
 	}
+	try {
+		options.logger.warn(
+			`No temporary git repository for the move${failure === undefined ? '' : ` (${describeError(failure)})`}.`,
+		);
+	} finally {
+		await close();
+	}
+	return null;
+}
+
+function describeError(error: unknown): string {
+	return error instanceof Error ? error.message : String(error);
 }
 
 function firstLine(text: string): string {

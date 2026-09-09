@@ -1136,6 +1136,7 @@ describe('move-baseline through a clone', () => {
 			reason: 'forced',
 			via: 'git',
 		});
+		expect(world.warnings.join('\n')).not.toContain('temporary');
 		expect(world.fixture.remoteRef('refs/baselines/pr-baseline')?.sha).toBe(c4);
 		expect(world.github.requests(/\/git\/refs/, 'PATCH')).toHaveLength(0);
 		expect(world.github.requests(/\/git\/refs$/, 'POST')).toHaveLength(0);
@@ -1259,6 +1260,45 @@ describe('move-baseline through a clone', () => {
 		expect(world.fixture.remoteRef('refs/baselines/pr-baseline')?.sha).toBe(c4);
 		expect(world.github.requests(/\/git\/refs/, 'PATCH')).toHaveLength(0);
 		expect(world.github.latestStatus(head, 'PR baseline')?.state).toBe('failure');
+	});
+
+	it('bootstraps the temporary repository under the hardened environment', async () => {
+		const [, , c3, c4] = world.c;
+		world.fixture.shallowClone();
+		const hijack = `${world.fixture.root}/hijack`;
+		process.env['GIT_DIR'] = hijack;
+		try {
+			const result = await client({ serverUrl: world.fixture.serverUrl }).moveBaseline({
+				force: true,
+			});
+			expect(result.moves[0]).toMatchObject({ moved: true, from: c3, to: c4, via: 'git' });
+		} finally {
+			delete process.env['GIT_DIR'];
+		}
+		expect(existsSync(hijack)).toBe(false);
+	});
+
+	it('falls back to the refs API when no temporary repository can be created', async () => {
+		const [, , c3, c4] = world.c;
+		world.fixture.shallowClone();
+		world.github.refSource = undefined;
+		world.github.baseline('pr-baseline', c3 as string);
+		const previous = process.env['TMPDIR'];
+		process.env['TMPDIR'] = `${world.fixture.root}/missing`;
+		try {
+			const result = await client({ serverUrl: world.fixture.serverUrl }).moveBaseline({
+				force: true,
+			});
+			expect(result.moves[0]).toMatchObject({ moved: true, from: c3, to: c4, via: 'api' });
+		} finally {
+			if (previous === undefined) {
+				delete process.env['TMPDIR'];
+			} else {
+				process.env['TMPDIR'] = previous;
+			}
+		}
+		expect(world.warnings.join('\n')).toContain('No temporary directory');
+		expect(world.warnings.join('\n')).toContain('cannot refuse a concurrent move');
 	});
 
 	it('keeps the writes on the refs API with --ancestry api', async () => {
