@@ -1103,6 +1103,9 @@ describe('git ancestry review round 24', () => {
 	});
 });
 
+/** The command boundary's own wording, so the test fails if the writer swallows the removal error itself. */
+const CLEANUP_DIAGNOSTIC = 'Could not remove the temporary repository (';
+
 describe('move-baseline through a clone', () => {
 	/** The lease writer over the treeless clone, talking to the fake API the way a run does. */
 	async function writer(wrap: (repo: GitRepo) => GitRepo = (repo) => repo) {
@@ -1312,7 +1315,7 @@ describe('move-baseline through a clone', () => {
 			'a logger that throws on the diagnostic',
 			(message: string) => {
 				world.warnings.push(message);
-				if (message.startsWith('Could not remove')) {
+				if (message.startsWith(CLEANUP_DIAGNOSTIC)) {
 					throw new Error(`logger refused: ${message}`);
 				}
 			},
@@ -1347,7 +1350,9 @@ describe('move-baseline through a clone', () => {
 					logger: { info() {}, warn },
 				}).moveBaseline({ force: true });
 				expect(result.moves[0]).toMatchObject({ moved: true, from: c3, to: c4, via: 'api' });
-				expect(world.warnings.some((line) => line.startsWith('Could not remove'))).toBe(true);
+				expect(world.warnings.filter((line) => line.startsWith(CLEANUP_DIAGNOSTIC))).toHaveLength(
+					1,
+				);
 			} finally {
 				chmodSync(tmp, 0o755);
 				chmodSync(refsDir, 0o755);
