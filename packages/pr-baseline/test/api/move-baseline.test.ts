@@ -10,7 +10,7 @@ describe('move-baseline', () => {
 			from: null,
 			note: expect.stringContaining('--force'),
 		});
-		expect(github.tags.has('pr-baseline')).toBe(false);
+		expect(github.hasBaseline('pr-baseline')).toBe(false);
 		const forced = await client.moveBaseline({ force: true });
 		expect(forced.moves[0]).toMatchObject({
 			moved: true,
@@ -18,11 +18,11 @@ describe('move-baseline', () => {
 			to: sha(5),
 			reason: 'forced',
 		});
-		expect(github.tags.get('pr-baseline')?.peeled).toBe(sha(5));
+		expect(github.baselineAt('pr-baseline')).toBe(sha(5));
 	});
 
 	it('does nothing without intent and reports why', async () => {
-		const { client, github } = harness({}, (gh) => gh.tag('pr-baseline', sha(3)));
+		const { client, github } = harness({}, (gh) => gh.baseline('pr-baseline', sha(3)));
 		const result = await client.moveBaseline();
 		expect(result.moves[0]).toMatchObject({
 			moved: false,
@@ -34,7 +34,7 @@ describe('move-baseline', () => {
 
 	it('moves on a labeled merge that landed after the baseline, without any date logic', async () => {
 		const { client, github } = harness({}, (gh) => {
-			gh.tag('pr-baseline', sha(3));
+			gh.baseline('pr-baseline', sha(3));
 			gh.pull({
 				number: 1,
 				headSha: sha(2),
@@ -67,16 +67,16 @@ describe('move-baseline', () => {
 			to: sha(5),
 			reason: 'label',
 		});
-		expect(github.tags.get('pr-baseline')?.peeled).toBe(sha(5));
-		const patch = github.requests(/\/git\/refs\/tags\/pr-baseline/, 'PATCH')[0];
+		expect(github.baselineAt('pr-baseline')).toBe(sha(5));
+		const patch = github.requests(/\/git\/refs\/baselines\/pr-baseline/, 'PATCH')[0];
 		expect(patch?.body).toEqual({ sha: sha(5), force: false });
 	});
 
 	it('moves on a marker change since the baseline', async () => {
 		const { client } = harness(
-			{ baselines: [{ tag: 'pr-baseline', markers: ['.nvmrc'] }] },
+			{ baselines: [{ name: 'pr-baseline', markers: ['.nvmrc'] }] },
 			(gh) => {
-				gh.tag('pr-baseline', sha(3));
+				gh.baseline('pr-baseline', sha(3));
 				gh.files.set(`${sha(3)}...${sha(5)}`, ['src/a.ts', '.nvmrc']);
 			},
 		);
@@ -86,9 +86,9 @@ describe('move-baseline', () => {
 
 	it('does not move automatically when the marker diff is indeterminate', async () => {
 		const { client } = harness(
-			{ baselines: [{ tag: 'pr-baseline', markers: ['.nvmrc'] }] },
+			{ baselines: [{ name: 'pr-baseline', markers: ['.nvmrc'] }] },
 			(gh) => {
-				gh.tag('pr-baseline', sha(3));
+				gh.baseline('pr-baseline', sha(3));
 				gh.files.set(
 					`${sha(3)}...${sha(5)}`,
 					Array.from({ length: 300 }, (_, i) => `f${i}`),
@@ -104,7 +104,7 @@ describe('move-baseline', () => {
 
 	it('reports a baseline already at the target and still refreshes', async () => {
 		const { client } = harness({}, (gh) => {
-			gh.tag('pr-baseline', sha(5));
+			gh.baseline('pr-baseline', sha(5));
 			gh.commit(sha(11), [sha(4)]);
 			gh.pull({ number: 1, headSha: sha(11) });
 		});
@@ -116,27 +116,27 @@ describe('move-baseline', () => {
 	it('refuses a target that does not descend from the current baseline', async () => {
 		const { client } = harness({}, (gh) => {
 			gh.commit(sha(20), [sha(2)]);
-			gh.tag('pr-baseline', sha(20));
+			gh.baseline('pr-baseline', sha(20));
 		});
 		await expect(client.moveBaseline({ force: true })).rejects.toThrow(/does not descend/);
 	});
 
 	it('honors --to when the target is on the base branch, and rejects it otherwise', async () => {
 		const { client, github } = harness({}, (gh) => {
-			gh.tag('pr-baseline', sha(2));
+			gh.baseline('pr-baseline', sha(2));
 			gh.commit(sha(20), [sha(2)]);
 		});
 		const result = await client.moveBaseline({ force: true, to: sha(4) });
 		expect(result.moves[0]).toMatchObject({ moved: true, to: sha(4) });
-		expect(github.tags.get('pr-baseline')?.peeled).toBe(sha(4));
+		expect(github.baselineAt('pr-baseline')).toBe(sha(4));
 		await expect(client.moveBaseline({ force: true, to: sha(20) })).rejects.toThrow(/not on main/);
 	});
 
 	it('restricts to one baseline and rejects an unknown tag', async () => {
-		const { client, github } = harness({ baselines: [{ tag: 'a' }, { tag: 'b' }] });
+		const { client, github } = harness({ baselines: [{ name: 'a' }, { name: 'b' }] });
 		const result = await client.moveBaseline({ force: true, baseline: 'b' });
-		expect(result.moves.map((move) => move.tag)).toEqual(['b']);
-		expect(github.tags.has('a')).toBe(false);
+		expect(result.moves.map((move) => move.name)).toEqual(['b']);
+		expect(github.hasBaseline('a')).toBe(false);
 		await expect(client.moveBaseline({ baseline: 'zzz' })).rejects.toThrow(
 			/No configured baseline/,
 		);
@@ -146,15 +146,15 @@ describe('move-baseline', () => {
 		const { client, github } = harness(
 			{
 				baselines: [
-					{ tag: 'one', label: 'Shared' },
-					{ tag: 'two', label: 'Shared' },
-					{ tag: 'three', label: 'Other' },
+					{ name: 'one', label: 'Shared' },
+					{ name: 'two', label: 'Shared' },
+					{ name: 'three', label: 'Other' },
 				],
 			},
 			(gh) => {
-				gh.tag('one', sha(2));
-				gh.tag('two', sha(3));
-				gh.tag('three', sha(3));
+				gh.baseline('one', sha(2));
+				gh.baseline('two', sha(3));
+				gh.baseline('three', sha(3));
 				gh.pull({
 					number: 1,
 					headSha: sha(4),
@@ -166,7 +166,7 @@ describe('move-baseline', () => {
 			},
 		);
 		const result = await client.moveBaseline();
-		expect(result.moves.map((move) => [move.tag, move.moved])).toEqual([
+		expect(result.moves.map((move) => [move.name, move.moved])).toEqual([
 			['one', true],
 			['two', true],
 			['three', false],
@@ -174,10 +174,10 @@ describe('move-baseline', () => {
 		expect(github.requests(/graphql/)).toHaveLength(2);
 	});
 
-	it('re-evaluates once when another writer moved the tag first', async () => {
-		const { client, github, warnings } = harness({}, (gh) => gh.tag('pr-baseline', sha(3)));
+	it('re-evaluates once when another writer moved the baseline first', async () => {
+		const { client, github, warnings } = harness({}, (gh) => gh.baseline('pr-baseline', sha(3)));
 		github.overrides.push({
-			path: /\/git\/refs\/tags\/pr-baseline/,
+			path: /\/git\/refs\/baselines\/pr-baseline/,
 			method: 'PATCH',
 			status: 422,
 			body: { message: 'Update is not a fast forward' },
@@ -187,7 +187,7 @@ describe('move-baseline', () => {
 			// The rejected PATCH is followed by a re-read that finds the tag moved by someone else.
 			const response = await original(input, init);
 			if (response.status === 422) {
-				github.tag('pr-baseline', sha(4));
+				github.baseline('pr-baseline', sha(4));
 			}
 			return response;
 		};
@@ -197,13 +197,17 @@ describe('move-baseline', () => {
 	});
 
 	it('settles when the other writer already reached the target', async () => {
-		const { client, github } = harness({}, (gh) => gh.tag('pr-baseline', sha(3)));
-		github.overrides.push({ path: /\/git\/refs\/tags\/pr-baseline/, method: 'PATCH', status: 409 });
+		const { client, github } = harness({}, (gh) => gh.baseline('pr-baseline', sha(3)));
+		github.overrides.push({
+			path: /\/git\/refs\/baselines\/pr-baseline/,
+			method: 'PATCH',
+			status: 409,
+		});
 		const original = github.fetch;
 		github.fetch = async (input, init) => {
 			const response = await original(input, init);
 			if (response.status === 409) {
-				github.tag('pr-baseline', sha(5));
+				github.baseline('pr-baseline', sha(5));
 			}
 			return response;
 		};
@@ -216,10 +220,10 @@ describe('move-baseline', () => {
 		expect(result.baselines[0]?.sha).toBe(sha(5));
 	});
 
-	it('treats a rejection with an unmoved tag as terminal', async () => {
-		const { client, github } = harness({}, (gh) => gh.tag('pr-baseline', sha(3)));
+	it('treats a rejection with an unmoved baseline as terminal', async () => {
+		const { client, github } = harness({}, (gh) => gh.baseline('pr-baseline', sha(3)));
 		github.overrides.push({
-			path: /\/git\/refs\/tags\/pr-baseline/,
+			path: /\/git\/refs\/baselines\/pr-baseline/,
 			method: 'PATCH',
 			status: 422,
 			body: { message: 'Update is not a fast forward' },
@@ -230,9 +234,9 @@ describe('move-baseline', () => {
 	});
 
 	it('gives up with a retry hint after a second race', async () => {
-		const { client, github } = harness({}, (gh) => gh.tag('pr-baseline', sha(2)));
+		const { client, github } = harness({}, (gh) => gh.baseline('pr-baseline', sha(2)));
 		github.overrides.push({
-			path: /\/git\/refs\/tags\/pr-baseline/,
+			path: /\/git\/refs\/baselines\/pr-baseline/,
 			method: 'PATCH',
 			status: 409,
 			times: 2,
@@ -242,7 +246,7 @@ describe('move-baseline', () => {
 		github.fetch = async (input, init) => {
 			const response = await original(input, init);
 			if (response.status === 409) {
-				github.tag('pr-baseline', sha(bumps++));
+				github.baseline('pr-baseline', sha(bumps++));
 			}
 			return response;
 		};
@@ -256,7 +260,7 @@ describe('move-baseline', () => {
 		});
 		const result = await client.moveBaseline({ force: true, refreshPrStatuses: true });
 		expect(result.moves[0]).toMatchObject({ moved: true, to: sha(5) });
-		expect(github.tags.has('pr-baseline')).toBe(false);
+		expect(github.hasBaseline('pr-baseline')).toBe(false);
 		expect(result.refresh?.baselines[0]?.sha).toBe(sha(5));
 		expect(result.refresh?.entries[0]?.verdict?.kind).toBe('fail');
 		expect(github.requests(/\/statuses\//, 'POST')).toHaveLength(0);
@@ -269,14 +273,14 @@ describe('move-baseline', () => {
 		await expect(client.moveBaseline({ force: true, refreshPrStatuses: true })).rejects.toThrow(
 			/--creator/,
 		);
-		expect(github.tags.has('pr-baseline')).toBe(false);
+		expect(github.hasBaseline('pr-baseline')).toBe(false);
 	});
 });
 
 describe('move-baseline races and paging', () => {
 	it('pages through the labeled merge scan', async () => {
 		const { client, github } = harness({}, (gh) => {
-			gh.tag('pr-baseline', sha(3));
+			gh.baseline('pr-baseline', sha(3));
 			gh.pageSize = 2;
 			for (let n = 1; n <= 5; n++) {
 				gh.pull({
@@ -294,9 +298,13 @@ describe('move-baseline races and paging', () => {
 		expect(github.requests(/graphql/)).toHaveLength(3);
 	});
 
-	it('treats a 409 with an unmoved tag as terminal', async () => {
-		const { client, github } = harness({}, (gh) => gh.tag('pr-baseline', sha(3)));
-		github.overrides.push({ path: /\/git\/refs\/tags\/pr-baseline/, method: 'PATCH', status: 409 });
+	it('treats a 409 with an unmoved baseline as terminal', async () => {
+		const { client, github } = harness({}, (gh) => gh.baseline('pr-baseline', sha(3)));
+		github.overrides.push({
+			path: /\/git\/refs\/baselines\/pr-baseline/,
+			method: 'PATCH',
+			status: 409,
+		});
 		await expect(client.moveBaseline({ force: true })).rejects.toMatchObject({ kind: 'conflict' });
 	});
 
@@ -312,7 +320,7 @@ describe('move-baseline races and paging', () => {
 		github.fetch = async (input, init) => {
 			const response = await original(input, init);
 			if (response.status === 422) {
-				github.tag('pr-baseline', sha(4));
+				github.baseline('pr-baseline', sha(4));
 			}
 			return response;
 		};
@@ -324,7 +332,7 @@ describe('move-baseline races and paging', () => {
 
 describe('move-baseline label scan', () => {
 	it('skips the label scan for a forced move and for a baseline already at the target', async () => {
-		const { client, github } = harness({}, (gh) => gh.tag('pr-baseline', sha(3)));
+		const { client, github } = harness({}, (gh) => gh.baseline('pr-baseline', sha(3)));
 		await client.moveBaseline({ force: true });
 		expect(github.requests(/graphql/)).toHaveLength(0);
 		await client.moveBaseline();
@@ -343,9 +351,9 @@ describe('move-baseline validation order', () => {
 });
 
 describe('move-baseline after a successful move', () => {
-	it('re-reads the tags so a writer that advanced them afterwards is not undone by the refresh', async () => {
+	it('re-reads the baseline refs so a writer that advanced them afterwards is not undone by the refresh', async () => {
 		const { client, github } = harness({}, (gh) => {
-			gh.tag('pr-baseline', sha(3));
+			gh.baseline('pr-baseline', sha(3));
 			gh.commit(sha(11), [sha(5)]);
 			gh.pull({ number: 1, headSha: sha(11) });
 		});
@@ -356,7 +364,7 @@ describe('move-baseline after a successful move', () => {
 			if ((init?.method ?? '').toUpperCase() === 'PATCH' && response.status === 200) {
 				github.commit(sha(6), [sha(5)]);
 				github.branch('main', sha(6));
-				github.tag('pr-baseline', sha(6));
+				github.baseline('pr-baseline', sha(6));
 			}
 			return response;
 		};
@@ -370,12 +378,14 @@ describe('move-baseline after a successful move', () => {
 
 describe('move-baseline with a tag named @', () => {
 	it('reads, seeds and fast-forwards it through the encoded route', async () => {
-		const { client, github } = harness({ baselines: [{ tag: '@' }] });
+		const { client, github } = harness({ baselines: [{ name: '@' }] });
 		await client.moveBaseline({ force: true, to: sha(4) });
-		expect(github.tags.get('@')?.peeled).toBe(sha(4));
+		expect(github.baselineAt('@')).toBe(sha(4));
 		const result = await client.moveBaseline({ force: true });
 		expect(result.moves[0]).toMatchObject({ moved: true, from: sha(4), to: sha(5) });
-		expect(github.calls.some((call) => call.rawPath.endsWith('/git/refs/tags%2F%40'))).toBe(true);
+		expect(github.calls.some((call) => call.rawPath.endsWith('/git/refs/baselines%2F%40'))).toBe(
+			true,
+		);
 	});
 });
 
@@ -384,13 +394,13 @@ describe('move-baseline with two labels', () => {
 		const { client, github } = harness(
 			{
 				baselines: [
-					{ tag: 'one', label: 'Label One' },
-					{ tag: 'two', label: 'Label Two' },
+					{ name: 'one', label: 'Label One' },
+					{ name: 'two', label: 'Label Two' },
 				],
 			},
 			(gh) => {
-				gh.tag('one', sha(2));
-				gh.tag('two', sha(2));
+				gh.baseline('one', sha(2));
+				gh.baseline('two', sha(2));
 				gh.pull({
 					number: 1,
 					headSha: sha(3),
@@ -410,7 +420,7 @@ describe('move-baseline with two labels', () => {
 			},
 		);
 		const result = await client.moveBaseline();
-		expect(result.moves.map((move) => [move.tag, move.moved, move.reason])).toEqual([
+		expect(result.moves.map((move) => [move.name, move.moved, move.reason])).toEqual([
 			['one', true, 'label'],
 			['two', true, 'label'],
 		]);
@@ -420,7 +430,7 @@ describe('move-baseline with two labels', () => {
 
 describe('move-baseline races, round 7', () => {
 	it('uses the base head it read as the default target even when the base advances meanwhile', async () => {
-		const { client, github } = harness({}, (gh) => gh.tag('pr-baseline', sha(3)));
+		const { client, github } = harness({}, (gh) => gh.baseline('pr-baseline', sha(3)));
 		let reads = 0;
 		const original = github.fetch;
 		github.fetch = async (input, init) => {

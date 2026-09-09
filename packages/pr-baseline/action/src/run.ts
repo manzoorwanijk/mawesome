@@ -383,16 +383,16 @@ function clientOptions(): ClientOptions {
 
 function baselineList(): Baseline[] | undefined {
 	const json = core.getInput('baselines');
-	const tag = core.getInput('tag');
+	const name = core.getInput('name');
 	const label = core.getInput('label');
 	const markers = core
 		.getMultilineInput('markers')
 		.map((line) => line.trim())
 		.filter((line) => line.length > 0);
-	const shorthand = tag.length > 0 || label.length > 0 || markers.length > 0;
+	const shorthand = name.length > 0 || label.length > 0 || markers.length > 0;
 	if (json.length > 0) {
 		if (shorthand) {
-			throw new ConfigError('baselines cannot be combined with tag, label or markers.');
+			throw new ConfigError('baselines cannot be combined with name, label or markers.');
 		}
 		if (json.startsWith('@')) {
 			throw new ConfigError(
@@ -409,7 +409,7 @@ function baselineList(): Baseline[] | undefined {
 		return undefined;
 	}
 	return shorthandBaselines({
-		...(tag.length > 0 ? { tag } : {}),
+		...(name.length > 0 ? { name } : {}),
 		...(label.length > 0 ? { label } : {}),
 		...(markers.length > 0 ? { markers } : {}),
 	});
@@ -448,8 +448,8 @@ function setCommonOutputs(values: Record<string, string | number | boolean>): vo
 	}
 }
 
-function baselinesOutput(baselines: ReadonlyArray<{ tag: string; sha: string | null }>): string {
-	return JSON.stringify(baselines.map((baseline) => ({ tag: baseline.tag, sha: baseline.sha })));
+function baselinesOutput(baselines: ReadonlyArray<{ name: string; sha: string | null }>): string {
+	return JSON.stringify(baselines.map((baseline) => ({ name: baseline.name, sha: baseline.sha })));
 }
 
 async function reportRefreshPrStatus(result: RefreshPrStatusResult): Promise<void> {
@@ -524,8 +524,8 @@ export function boundedSummary(
 	}
 	const { entries, baselines, ...counts } = result;
 	const moves = Array.isArray(extra['moves'])
-		? (extra['moves'] as { tag: string; moved: boolean }[]).map(({ tag, moved }) => ({
-				tag,
+		? (extra['moves'] as { name: string; moved: boolean }[]).map(({ name, moved }) => ({
+				name,
 				moved,
 			}))
 		: undefined;
@@ -603,7 +603,7 @@ async function reportMove(result: MoveBaselineResult, dryRun: boolean): Promise<
 			{ data: 'Reason', header: true },
 		],
 		...result.moves.map((move) => [
-			move.tag,
+			move.name,
 			move.from === null ? 'absent' : move.from.slice(0, 12),
 			move.to.slice(0, 12),
 			move.moved ? 'yes' : 'no',
@@ -621,7 +621,7 @@ async function reportMove(result: MoveBaselineResult, dryRun: boolean): Promise<
 		description:
 			moved.length === 0
 				? 'No baseline moved'
-				: `Moved ${moved.map((move) => move.tag).join(', ')}`,
+				: `Moved ${moved.map((move) => move.name).join(', ')}`,
 		base: result.base,
 		baselines: baselinesOutput(result.baselines),
 		missing: '[]',
@@ -661,7 +661,7 @@ async function reportReport(result: ReportResult): Promise<void> {
 			{ data: 'Binds', header: true },
 		],
 		...result.baselines.map((baseline) => [
-			baseline.tag,
+			baseline.name,
 			baseline.sha === null ? 'absent' : baseline.sha.slice(0, 12),
 			baseline.onBase === null ? '' : baseline.onBase ? 'yes' : 'NO',
 			String(baseline.bound),
@@ -672,7 +672,9 @@ async function reportReport(result: ReportResult): Promise<void> {
 	}
 	await writeSummary();
 	if (result.offBase.length > 0) {
-		core.setFailed(`Baseline ${result.offBase.join(', ')} is not on ${result.base}; fix the tag.`);
+		core.setFailed(
+			`Baseline ${result.offBase.join(', ')} is not on ${result.base}; fix the baseline.`,
+		);
 	}
 }
 

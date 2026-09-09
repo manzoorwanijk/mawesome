@@ -62,7 +62,7 @@ async function run(setup: (github: FakeGitHub) => void, args: string[]) {
 
 /** Two stale PRs against a baseline at commit 4. */
 function twoStalePulls(gh: FakeGitHub): void {
-	gh.tag('pr-baseline', sha(4));
+	gh.baseline('pr-baseline', sha(4));
 	gh.commit(sha(10), [sha(3)]);
 	gh.commit(sha(11), [sha(3)]);
 	gh.pull({ number: 1, headSha: sha(10) });
@@ -73,7 +73,7 @@ describe('cli end to end', () => {
 	it('exits 0 on a passing status and prints the result as JSON', async () => {
 		const { status, json } = await run(
 			(gh) => {
-				gh.tag('pr-baseline', sha(3));
+				gh.baseline('pr-baseline', sha(3));
 				gh.commit(sha(10), [sha(4)]);
 				gh.pull({ number: 1, headSha: sha(10) });
 			},
@@ -86,7 +86,7 @@ describe('cli end to end', () => {
 	it('exits 1 on a failing status', async () => {
 		const { status, github } = await run(
 			(gh) => {
-				gh.tag('pr-baseline', sha(4));
+				gh.baseline('pr-baseline', sha(4));
 				gh.commit(sha(10), [sha(3)]);
 				gh.pull({ number: 1, headSha: sha(10) });
 			},
@@ -109,7 +109,7 @@ describe('cli end to end', () => {
 		const { status, json } = await run(
 			(gh) => {
 				gh.commit(sha(20), [sha(2)]);
-				gh.tag('pr-baseline', sha(20));
+				gh.baseline('pr-baseline', sha(20));
 			},
 			['report'],
 		);
@@ -127,7 +127,7 @@ describe('cli end to end', () => {
 		);
 		expect(status).toBe(0);
 		expect(json()).toMatchObject({ moves: [{ moved: true, to: sha(5) }], refresh: { written: 1 } });
-		expect(github.tags.has('pr-baseline')).toBe(false);
+		expect(github.hasBaseline('pr-baseline')).toBe(false);
 		expect(github.requests(/\/statuses\//, 'POST')).toHaveLength(0);
 	});
 });

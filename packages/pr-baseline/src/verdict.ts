@@ -2,15 +2,15 @@ import type { DescriptionTemplates, StatusPayload, StatusRecord, Verdict } from 
 
 /** GitHub rejects longer status descriptions with a validation error. */
 export const MAX_DESCRIPTION_LENGTH = 140;
-const LISTED_TAGS = 2;
+const LISTED_BASELINES = 2;
 const ELLIPSIS = '…';
 
 export interface VerdictBaseline {
-	tag: string;
+	name: string;
 	sha: string | null;
 	/** Whether the baseline binds the commit; an unscoped baseline always does. */
 	applicable: boolean;
-	/** Whether the commit contains the baseline; null for an absent tag, which counts as satisfied. */
+	/** Whether the commit contains the baseline; null for an absent ref, which counts as satisfied. */
 	contains: boolean | null;
 }
 
@@ -25,21 +25,21 @@ export function computeVerdict(baselines: VerdictBaseline[], context: VerdictCon
 	const applicable = baselines.filter((entry) => entry.applicable);
 	const missing = applicable
 		.filter((entry) => entry.sha !== null && entry.contains === false)
-		.map((entry) => entry.tag);
-	const tags = applicable.map((entry) => entry.tag);
+		.map((entry) => entry.name);
+	const names = applicable.map((entry) => entry.name);
 	if (missing.length === 0) {
 		return {
 			kind: 'pass',
-			status: payload('success', context.descriptions.pass, context, tags),
+			status: payload('success', context.descriptions.pass, context, names),
 			missing,
-			applicable: tags,
+			applicable: names,
 		};
 	}
 	return {
 		kind: 'fail',
 		status: payload('failure', context.descriptions.fail, context, missing),
 		missing,
-		applicable: tags,
+		applicable: names,
 	};
 }
 
@@ -54,29 +54,31 @@ export function notApplicableVerdict(context: VerdictContext): Verdict {
 }
 
 /** A pass that names a baseline no longer on the base branch, so an operator mistake blocks nobody. */
-export function misconfiguredVerdict(tags: string[], context: VerdictContext): Verdict {
+export function misconfiguredVerdict(names: string[], context: VerdictContext): Verdict {
 	return {
 		kind: 'misconfigured',
 		status: payload(
 			'success',
-			'Baseline misconfigured: {tags} not on {base}; ask a maintainer.',
+			'Baseline misconfigured: {baselines} not on {base}; ask a maintainer.',
 			context,
-			tags,
+			names,
 		),
 		missing: [],
-		applicable: tags,
+		applicable: names,
 	};
 }
 
-/** Fills `{base}` and `{tags}` and bounds the result so a long template can never cause an API error. */
+/** Fills `{base}` and `{baselines}` and bounds the result so a long template can never cause an API error. */
 export function renderDescription(
 	template: string,
-	values: { base: string; tags: readonly string[] },
+	values: { base: string; baselines: readonly string[] },
 ): string {
-	const listed = values.tags.slice(0, LISTED_TAGS).join(', ');
-	const rest = values.tags.length - LISTED_TAGS;
-	const tags = rest > 0 ? `${listed} and ${rest} more` : listed;
-	return boundDescription(template.replaceAll('{base}', values.base).replaceAll('{tags}', tags));
+	const listed = values.baselines.slice(0, LISTED_BASELINES).join(', ');
+	const rest = values.baselines.length - LISTED_BASELINES;
+	const baselines = rest > 0 ? `${listed} and ${rest} more` : listed;
+	return boundDescription(
+		template.replaceAll('{base}', values.base).replaceAll('{baselines}', baselines),
+	);
 }
 
 /** Truncates to the API limit by code points, ending with an ellipsis when cut. */
@@ -109,11 +111,11 @@ function payload(
 	state: 'success' | 'failure',
 	template: string,
 	context: VerdictContext,
-	tags: readonly string[],
+	baselines: readonly string[],
 ): StatusPayload {
 	return {
 		state,
-		description: renderDescription(template, { base: context.base, tags }),
+		description: renderDescription(template, { base: context.base, baselines }),
 		targetUrl: context.targetUrl,
 	};
 }

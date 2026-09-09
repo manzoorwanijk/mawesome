@@ -12,7 +12,7 @@ export {
 	DEFAULT_LABEL,
 	DEFAULT_MAX_WRITES_PER_MINUTE,
 	DEFAULT_MAX_WRITES_PER_RUN,
-	DEFAULT_TAG,
+	DEFAULT_NAME,
 	graphqlUrlFor,
 	serverUrlFor,
 	parseBaselines,

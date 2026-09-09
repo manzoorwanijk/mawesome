@@ -9,7 +9,7 @@ const PASS = 'Contains the required main changes.';
 
 /** Baseline at 3; PRs 1 (current), 2 (stale), 3 (stale but already stamped), 4 (current, wrong creator). */
 function populate(gh: FakeGitHub): void {
-	gh.tag('pr-baseline', sha(3));
+	gh.baseline('pr-baseline', sha(3));
 	gh.commit(sha(11), [sha(4)]);
 	gh.commit(sha(12), [sha(2)]);
 	gh.commit(sha(13), [sha(2)]);
@@ -173,7 +173,7 @@ describe('refresh-pr-statuses', () => {
 	it('refuses to refresh when a baseline is not on the base branch', async () => {
 		const { client, github } = harness({}, (gh) => {
 			gh.commit(sha(20), [sha(2)]);
-			gh.tag('pr-baseline', sha(20));
+			gh.baseline('pr-baseline', sha(20));
 			gh.commit(sha(11), [sha(5)]);
 			gh.pull({ number: 1, headSha: sha(11) });
 		});
@@ -205,7 +205,7 @@ describe('refresh-pr-statuses', () => {
 
 	it('pages through the listing', async () => {
 		const { client, github } = harness({}, (gh) => {
-			gh.tag('pr-baseline', sha(3));
+			gh.baseline('pr-baseline', sha(3));
 			gh.pageSize = 2;
 			for (let n = 1; n <= 5; n++) {
 				gh.commit(sha(20 + n), [sha(4)]);
@@ -219,10 +219,10 @@ describe('refresh-pr-statuses', () => {
 
 	it('combines scoped baselines per PR', async () => {
 		const { client } = harness(
-			{ baselines: [{ tag: 'repo' }, { tag: 'pkg-a', scope: ['packages/a/'] }] },
+			{ baselines: [{ name: 'repo' }, { name: 'pkg-a', scope: ['packages/a/'] }] },
 			(gh) => {
-				gh.tag('repo', sha(2));
-				gh.tag('pkg-a', sha(4));
+				gh.baseline('repo', sha(2));
+				gh.baseline('pkg-a', sha(4));
 				gh.commit(sha(11), [sha(3)]);
 				gh.commit(sha(12), [sha(3)]);
 				gh.pull({ number: 1, headSha: sha(11) });
@@ -273,7 +273,7 @@ describe('refresh guards', () => {
 describe('refresh shared heads', () => {
 	it('writes a head shared by two PRs once', async () => {
 		const { client, github } = harness({}, (gh) => {
-			gh.tag('pr-baseline', sha(3));
+			gh.baseline('pr-baseline', sha(3));
 			gh.commit(sha(11), [sha(2)]);
 			gh.pull({ number: 1, headSha: sha(11) });
 			gh.pull({ number: 2, headSha: sha(11) });
@@ -320,7 +320,7 @@ describe('refresh with a custom reporter', () => {
 				},
 			},
 			(gh) => {
-				gh.tag('pr-baseline', sha(3));
+				gh.baseline('pr-baseline', sha(3));
 				gh.commit(sha(11), [sha(4)]);
 				gh.pull({ number: 1, headSha: sha(11) });
 			},
@@ -336,7 +336,7 @@ describe('refresh with a custom reporter', () => {
 describe('refresh round 4', () => {
 	it('records a terminal failure once for a shared head', async () => {
 		const { client, github } = harness({}, (gh) => {
-			gh.tag('pr-baseline', sha(3));
+			gh.baseline('pr-baseline', sha(3));
 			gh.commit(sha(11), [sha(2)]);
 			gh.pull({ number: 1, headSha: sha(11) });
 			gh.pull({ number: 2, headSha: sha(11) });
@@ -362,7 +362,7 @@ describe('refresh round 4', () => {
 				},
 			},
 			(gh) => {
-				gh.tag('pr-baseline', sha(3));
+				gh.baseline('pr-baseline', sha(3));
 				gh.commit(sha(11), [sha(4)]);
 				gh.pull({ number: 1, headSha: sha(11) });
 			},
@@ -373,9 +373,9 @@ describe('refresh round 4', () => {
 
 	it('binds nobody to an absent scoped baseline and matches deleted files by name', async () => {
 		const { client } = harness(
-			{ baselines: [{ tag: 'repo' }, { tag: 'pkg-a', scope: ['packages/a/'] }] },
+			{ baselines: [{ name: 'repo' }, { name: 'pkg-a', scope: ['packages/a/'] }] },
 			(gh) => {
-				gh.tag('repo', sha(2));
+				gh.baseline('repo', sha(2));
 				gh.commit(sha(11), [sha(3)]);
 				gh.pull({ number: 1, headSha: sha(11) });
 				gh.files.set(`${sha(5)}...${sha(11)}`, ['packages/a/removed.ts']);
@@ -413,7 +413,7 @@ describe('refresh write accounting', () => {
 describe('refresh transport retries', () => {
 	it('retries a transient write failure through the budget and succeeds', async () => {
 		const { client, github } = harness({ maxWritesPerRun: 10 }, (gh) => {
-			gh.tag('pr-baseline', sha(3));
+			gh.baseline('pr-baseline', sha(3));
 			gh.commit(sha(11), [sha(2)]);
 			gh.pull({ number: 1, headSha: sha(11) });
 			gh.overrides.push({ path: /\/statuses\//, method: 'POST', status: 500, times: 2 });
@@ -425,7 +425,7 @@ describe('refresh transport retries', () => {
 
 	it('stops at the write cap in the middle of a retry sequence', async () => {
 		const { client, github } = harness({ maxWritesPerRun: 2 }, (gh) => {
-			gh.tag('pr-baseline', sha(3));
+			gh.baseline('pr-baseline', sha(3));
 			gh.commit(sha(11), [sha(2)]);
 			gh.pull({ number: 1, headSha: sha(11) });
 			gh.overrides.push({ path: /\/statuses\//, method: 'POST', status: 500, times: 5 });
@@ -437,7 +437,7 @@ describe('refresh transport retries', () => {
 
 	it('fails the PR after three exhausted server errors', async () => {
 		const { client, github } = harness({}, (gh) => {
-			gh.tag('pr-baseline', sha(3));
+			gh.baseline('pr-baseline', sha(3));
 			gh.commit(sha(11), [sha(2)]);
 			gh.pull({ number: 1, headSha: sha(11) });
 			gh.overrides.push({ path: /\/statuses\//, method: 'POST', status: 502, times: 5 });
@@ -451,13 +451,13 @@ describe('refresh transport retries', () => {
 		const { client } = harness(
 			{
 				baselines: [
-					{ tag: 'pkg-a', scope: ['packages/a/'] },
-					{ tag: 'pkg-b', scope: ['packages/b/'] },
+					{ name: 'pkg-a', scope: ['packages/a/'] },
+					{ name: 'pkg-b', scope: ['packages/b/'] },
 				],
 			},
 			(gh) => {
-				gh.tag('pkg-a', sha(4));
-				gh.tag('pkg-b', sha(2));
+				gh.baseline('pkg-a', sha(4));
+				gh.baseline('pkg-b', sha(2));
 				gh.commit(sha(11), [sha(3)]);
 				gh.pull({ number: 1, headSha: sha(11) });
 				gh.files.set(`${sha(5)}...${sha(11)}`, ['packages/a/x.ts', 'packages/b/y.ts']);
@@ -501,7 +501,7 @@ function strictAdapter(): { adapter: Ancestry; prepared: string[][] } {
 				for (const commit of input.shas) {
 					known.add(commit);
 				}
-				for (const tag of input.tags) {
+				for (const tag of input.refs) {
 					if (tag.sha !== null) {
 						known.add(tag.sha);
 					}
@@ -514,7 +514,7 @@ function strictAdapter(): { adapter: Ancestry; prepared: string[][] } {
 
 /** A baseline at 3, one open PR containing it, and a merged labeled PR at 4. */
 function orderingSetup(gh: FakeGitHub): void {
-	gh.tag('pr-baseline', sha(3));
+	gh.baseline('pr-baseline', sha(3));
 	gh.commit(sha(11), [sha(4)]);
 	gh.pull({ number: 1, headSha: sha(11) });
 	gh.pull({
@@ -566,13 +566,13 @@ describe('prepare ordering', () => {
 });
 
 describe('prepare ordering after a lost race', () => {
-	it('prepares the re-read tag before asking about it', async () => {
+	it('prepares the re-read baseline before asking about it', async () => {
 		const strict = strictAdapter();
 		const { client, github } = harness({ ancestryAdapter: strict.adapter }, (gh) =>
-			gh.tag('pr-baseline', sha(3)),
+			gh.baseline('pr-baseline', sha(3)),
 		);
 		github.overrides.push({
-			path: /\/git\/refs\/tags\/pr-baseline/,
+			path: /\/git\/refs\/baselines\/pr-baseline/,
 			method: 'PATCH',
 			status: 422,
 			body: { message: 'Update is not a fast forward' },
@@ -581,7 +581,7 @@ describe('prepare ordering after a lost race', () => {
 		github.fetch = async (input, init) => {
 			const response = await original(input, init);
 			if (response.status === 422) {
-				github.tag('pr-baseline', sha(4));
+				github.baseline('pr-baseline', sha(4));
 			}
 			return response;
 		};
@@ -604,9 +604,9 @@ describe('git failures after preparation', () => {
 			prepare: () => Promise.resolve({ heads: new Map() }),
 		};
 		const { client, github } = harness(
-			{ ancestryAdapter: adapter, baselines: [{ tag: 'pr-baseline', scope: ['packages/a/'] }] },
+			{ ancestryAdapter: adapter, baselines: [{ name: 'pr-baseline', scope: ['packages/a/'] }] },
 			(gh) => {
-				gh.tag('pr-baseline', sha(3));
+				gh.baseline('pr-baseline', sha(3));
 				gh.commit(sha(11), [sha(2)]);
 				gh.commit(sha(12), [sha(2)]);
 				gh.pull({ number: 1, headSha: sha(11) });

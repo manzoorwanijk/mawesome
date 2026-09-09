@@ -3,7 +3,8 @@ import { ConfigError, resolveConfig, type ResolvedConfig } from './config.ts';
 import { resolveCreator } from './creator.ts';
 import { createApiClient, type ApiClient } from './github/api.ts';
 import { revParse, type GitRepo } from './git/repo.ts';
-import { getDefaultBranch, readTag, resolveCommit } from './github/refs.ts';
+import { getDefaultBranch, readBaselineRef, resolveCommit } from './github/refs.ts';
+import { baselineRef } from './refname.ts';
 import { createDryRunReporter, createStatusReporter } from './reporter/index.ts';
 import type { Ancestry, ClientOptions, Logger, Reporter, ResolvedBaseline } from './types.ts';
 import { defaultSleep } from './util.ts';
@@ -27,13 +28,13 @@ export interface Runtime {
 	reporter(): Promise<Reporter>;
 	/** Whether a caller injected its own reporter, whose `current()` is then the only source of truth. */
 	readonly customReporter: boolean;
-	/** Reads every configured tag, through the API or offline from the clone; absent tags resolve to a null SHA. */
+	/** Reads every configured baseline ref, through the API or offline from the clone; absent refs resolve to a null SHA. */
 	readBaselines(): Promise<ResolvedBaseline[]>;
 }
 
 export function createRuntime(options: ClientOptions): Runtime {
 	const config = resolveConfig(options);
-	// Every online run reads tags and the base head through the API, whichever adapter answers ancestry.
+	// Every online run reads the baseline refs and the base head through the API, whichever adapter answers ancestry.
 	if (!config.offline && config.token === undefined) {
 		throw new ConfigError(
 			'A token is required except for an offline refresh-pr-status: pass --token or set GITHUB_TOKEN.',
@@ -116,8 +117,8 @@ export function createRuntime(options: ClientOptions): Runtime {
 			for (const baseline of config.baselines) {
 				const sha =
 					repo === null
-						? await readTag(api, config.repo, baseline.tag)
-						: await revParse(repo, `refs/tags/${baseline.tag}`);
+						? await readBaselineRef(api, config.repo, baseline.name)
+						: await revParse(repo, baselineRef(baseline.name));
 				resolved.push({ ...baseline, sha });
 			}
 			return resolved;

@@ -21,8 +21,8 @@ describe('computeVerdict', () => {
 	it('passes when every applicable baseline is contained', () => {
 		const verdict = computeVerdict(
 			[
-				{ tag: 'a', sha: 'x', applicable: true, contains: true },
-				{ tag: 'b', sha: 'y', applicable: true, contains: true },
+				{ name: 'a', sha: 'x', applicable: true, contains: true },
+				{ name: 'b', sha: 'y', applicable: true, contains: true },
 			],
 			context,
 		);
@@ -37,7 +37,7 @@ describe('computeVerdict', () => {
 
 	it('treats an absent tag as satisfied', () => {
 		const verdict = computeVerdict(
-			[{ tag: 'a', sha: null, applicable: true, contains: null }],
+			[{ name: 'a', sha: null, applicable: true, contains: null }],
 			context,
 		);
 		expect(verdict.kind).toBe('pass');
@@ -47,8 +47,8 @@ describe('computeVerdict', () => {
 	it('ignores baselines that do not apply', () => {
 		const verdict = computeVerdict(
 			[
-				{ tag: 'a', sha: 'x', applicable: true, contains: true },
-				{ tag: 'b', sha: 'y', applicable: false, contains: null },
+				{ name: 'a', sha: 'x', applicable: true, contains: true },
+				{ name: 'b', sha: 'y', applicable: false, contains: null },
 			],
 			context,
 		);
@@ -59,10 +59,10 @@ describe('computeVerdict', () => {
 	it('fails naming the missing tags, listing two and counting the rest', () => {
 		const verdict = computeVerdict(
 			[
-				{ tag: 'one', sha: 'x', applicable: true, contains: false },
-				{ tag: 'two', sha: 'y', applicable: true, contains: true },
-				{ tag: 'three', sha: 'z', applicable: true, contains: false },
-				{ tag: 'four', sha: 'w', applicable: true, contains: false },
+				{ name: 'one', sha: 'x', applicable: true, contains: false },
+				{ name: 'two', sha: 'y', applicable: true, contains: true },
+				{ name: 'three', sha: 'z', applicable: true, contains: false },
+				{ name: 'four', sha: 'w', applicable: true, contains: false },
 			],
 			context,
 		);
@@ -89,16 +89,16 @@ describe('computeVerdict', () => {
 
 describe('renderDescription', () => {
 	it('bounds a long custom template deterministically', () => {
-		const template = `${'x'.repeat(200)} {tags}`;
-		const rendered = renderDescription(template, { base: 'main', tags: ['t'] });
+		const template = `${'x'.repeat(200)} {baselines}`;
+		const rendered = renderDescription(template, { base: 'main', baselines: ['t'] });
 		expect(Array.from(rendered)).toHaveLength(MAX_DESCRIPTION_LENGTH);
 		expect(rendered.endsWith('…')).toBe(true);
-		expect(renderDescription(template, { base: 'main', tags: ['t'] })).toBe(rendered);
+		expect(renderDescription(template, { base: 'main', baselines: ['t'] })).toBe(rendered);
 	});
 
-	it('bounds long tag names', () => {
-		const tags = ['a'.repeat(100), 'b'.repeat(100)];
-		const rendered = renderDescription(DEFAULT_DESCRIPTIONS.fail, { base: 'main', tags });
+	it('bounds long baseline names', () => {
+		const baselines = ['a'.repeat(100), 'b'.repeat(100)];
+		const rendered = renderDescription(DEFAULT_DESCRIPTIONS.fail, { base: 'main', baselines });
 		expect(Array.from(rendered)).toHaveLength(MAX_DESCRIPTION_LENGTH);
 	});
 

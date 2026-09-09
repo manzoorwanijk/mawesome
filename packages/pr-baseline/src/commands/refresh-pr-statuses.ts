@@ -13,15 +13,15 @@ import type {
 	RefreshStopReason,
 	Verdict,
 } from '../types.ts';
-import { BaselineError, tagSnapshot } from '../util.ts';
+import { BaselineError, refSnapshot } from '../util.ts';
 import { writeWithRetries } from '../reporter/write.ts';
 import { statusMatches, type VerdictContext } from '../verdict.ts';
 
 export interface RefreshPrStatusesInput {
 	/** Baselines already resolved by the caller, as after a move or in a dry run. */
 	baselines?: ResolvedBaseline[];
-	/** What the tags really are right now, when `baselines` is hypothetical (a dry-run move). */
-	verifyTags?: Array<{ tag: string; sha: string | null }>;
+	/** What the refs really are right now, when `baselines` is hypothetical (a dry-run move). */
+	verifyRefs?: Array<{ name: string; sha: string | null }>;
 }
 
 interface Setup {
@@ -103,13 +103,13 @@ export async function runRefreshPrStatuses(
 		const prepared = await ancestry.prepare?.({
 			shas: [baseHead],
 			pulls: inScope.map((pull) => pull.number),
-			tags: input.verifyTags ?? tagSnapshot(baselines),
+			refs: input.verifyRefs ?? refSnapshot(baselines),
 		});
-		// Preparation verified the tags and fetched the commits; only now is any ancestry asked.
+		// Preparation verified the baseline refs and fetched the commits; only now is any ancestry asked.
 		const off = await baselinesOffBase(ancestry, baselines, baseHead);
 		if (off.length > 0) {
 			throw new BaselineError(
-				`Baseline ${off.join(', ')} is not an ancestor of ${base}; fix the tag before refreshing.`,
+				`Baseline ${off.join(', ')} is not an ancestor of ${base}; fix the baseline before refreshing.`,
 			);
 		}
 		if (prepared !== undefined) {
@@ -337,7 +337,7 @@ function describe(baselines: ResolvedBaseline[]): string {
 	return baselines
 		.map(
 			(baseline) =>
-				`${baseline.tag}=${baseline.sha === null ? 'absent' : baseline.sha.slice(0, 12)}`,
+				`${baseline.name}=${baseline.sha === null ? 'absent' : baseline.sha.slice(0, 12)}`,
 		)
 		.join(', ');
 }

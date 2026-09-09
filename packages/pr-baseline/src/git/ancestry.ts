@@ -1,6 +1,7 @@
 import { ConfigError } from '../config.ts';
 import type { Ancestry, Logger, PrepareInput, PrepareResult } from '../types.ts';
 import { BaselineError } from '../util.ts';
+import { baselineRef } from '../refname.ts';
 import {
 	changedFiles,
 	chunks,
@@ -55,7 +56,7 @@ export function createGitAncestry(options: GitAncestryOptions): Ancestry {
 			return changedFiles(repo, from, to);
 		},
 		async prepare(input: PrepareInput): Promise<PrepareResult> {
-			await verifyTags(repo, input.tags);
+			await verifyRefs(repo, input.refs);
 			const heads = input.pulls.length > 0 ? await fetchPullHeads(repo, input.pulls) : new Map();
 			if (input.pulls.length > 0) {
 				logger.info(
@@ -69,26 +70,26 @@ export function createGitAncestry(options: GitAncestryOptions): Ancestry {
 }
 
 /**
- * The API answer is authoritative; the remote's advertised tag, peeled to its commit through `<ref>^{}`, must agree.
- * A disagreement in either direction means the tag moved between the two reads, and the run must start over.
+ * The API answer is authoritative; the remote's advertised baseline ref, peeled to its commit through `<ref>^{}`, must agree.
+ * A disagreement in either direction means the baseline moved between the two reads, and the run must start over.
  */
-async function verifyTags(repo: GitRepo, tags: PrepareInput['tags']): Promise<void> {
-	if (tags.length === 0) {
+async function verifyRefs(repo: GitRepo, refs: PrepareInput['refs']): Promise<void> {
+	if (refs.length === 0) {
 		return;
 	}
 	// The peeled entry is advertised only when asked for by its own `^{}` pattern.
 	const remote = await lsRemote(
 		repo,
-		tags.flatMap((entry) => [`refs/tags/${entry.tag}`, `refs/tags/${entry.tag}^{}`]),
+		refs.flatMap((entry) => [baselineRef(entry.name), `${baselineRef(entry.name)}^{}`]),
 	);
-	const moved = tags.filter((entry) => {
-		const ref = `refs/tags/${entry.tag}`;
+	const moved = refs.filter((entry) => {
+		const ref = baselineRef(entry.name);
 		const advertised = remote.get(`${ref}^{}`) ?? remote.get(ref) ?? null;
 		return advertised !== entry.sha;
 	});
 	if (moved.length > 0) {
 		throw new BaselineError(
-			`Tag ${moved.map((entry) => entry.tag).join(', ')} differs between the API and the remote; it moved during this run, rerun to converge.`,
+			`Baseline ${moved.map((entry) => entry.name).join(', ')} differs between the API and the remote; it moved during this run, rerun to converge.`,
 		);
 	}
 }

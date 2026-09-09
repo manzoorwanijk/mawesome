@@ -24,10 +24,10 @@ inputs:
     description: Base branch; defaults to the repository's default branch.
     required: false
   baselines:
-    description: JSON array of `{ tag, label?, scope?, markers? }`, inline only; cannot be combined with tag, label or markers.
+    description: JSON array of `{ name, label?, scope?, markers? }`, inline only; cannot be combined with name, label or markers.
     required: false
-  tag:
-    description: Shorthand for a single baseline's tag (default `pr-baseline`).
+  name:
+    description: Shorthand for a single baseline's name (default `pr-baseline`).
     required: false
   label:
     description: Shorthand for a single baseline's label (default `Require PR update`).
@@ -36,16 +36,16 @@ inputs:
     description: Shorthand for a single baseline's auto-move patterns, one gitignore pattern per line.
     required: false
   baseline:
-    description: In move-baseline mode, move only the baseline with this tag; blank moves all.
+    description: In move-baseline mode, move only the baseline with this name; blank moves all.
     required: false
   status-context:
     description: Status context (default `PR baseline`).
     required: false
   description-pass:
-    description: Description of a passing status; `{base}` and `{tags}` are replaced.
+    description: Description of a passing status; `{base}` and `{baselines}` are replaced.
     required: false
   description-fail:
-    description: Description of a failing status; `{base}` and `{tags}` are replaced.
+    description: Description of a failing status; `{base}` and `{baselines}` are replaced.
     required: false
   description-not-applicable:
     description: Description written for PRs against other branches when other-bases is pass.
@@ -69,11 +69,11 @@ inputs:
     description: Pace status writes; a positive integer per minute (default 60).
     required: false
   dry-run:
-    description: Log every intended write and tag move instead of making it.
+    description: Log every intended write and baseline move instead of making it.
     required: false
     default: 'false'
   force:
-    description: In move-baseline mode, move by intent alone and seed absent tags.
+    description: In move-baseline mode, move by intent alone and seed absent baselines.
     required: false
     default: 'false'
   refresh-pr-statuses-after-move:
@@ -88,9 +88,9 @@ outputs:
   base:
     description: The base branch the run served.
   baselines:
-    description: JSON array of `{ tag, sha }` for every configured baseline.
+    description: JSON array of `{ name, sha }` for every configured baseline.
   missing:
-    description: JSON array of baseline tags the evaluated commit lacks (refresh-pr-status mode).
+    description: JSON array of baseline names the evaluated commit lacks (refresh-pr-status mode).
   written:
     description: Statuses written.
   skipped:

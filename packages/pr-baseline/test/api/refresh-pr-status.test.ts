@@ -4,7 +4,7 @@ import { harness, sha } from '../helpers/client.ts';
 describe('refresh-pr-status', () => {
 	it('passes a head that contains the baseline and writes the status once', async () => {
 		const { client, github } = harness({}, (gh) => {
-			gh.tag('pr-baseline', sha(3));
+			gh.baseline('pr-baseline', sha(3));
 			gh.commit(sha(10), [sha(4)]);
 		});
 		const first = await client.refreshPrStatus({ sha: sha(10), report: true });
@@ -19,15 +19,15 @@ describe('refresh-pr-status', () => {
 		expect(github.requests(/\/statuses\//, 'POST')).toHaveLength(1);
 	});
 
-	it('fails a stale head and names the missing tags', async () => {
+	it('fails a stale head and names the missing baselines', async () => {
 		const { client, github } = harness(
 			{
-				baselines: [{ tag: 'one' }, { tag: 'two' }],
+				baselines: [{ name: 'one' }, { name: 'two' }],
 				targetUrl: 'https://docs.test/pr',
 			},
 			(gh) => {
-				gh.tag('one', sha(4));
-				gh.tag('two', sha(2));
+				gh.baseline('one', sha(4));
+				gh.baseline('two', sha(2));
 				gh.commit(sha(10), [sha(3)]);
 			},
 		);
@@ -50,7 +50,7 @@ describe('refresh-pr-status', () => {
 
 	it('peels an annotated tag', async () => {
 		const { client } = harness({}, (gh) => {
-			gh.tag('pr-baseline', sha(3), true);
+			gh.baseline('pr-baseline', sha(3), true);
 			gh.commit(sha(10), [sha(2)]);
 		});
 		const result = await client.refreshPrStatus({ sha: sha(10), report: true });
@@ -61,7 +61,7 @@ describe('refresh-pr-status', () => {
 	it('posts a misconfiguration pass when the baseline left the base branch', async () => {
 		const { client, warnings } = harness({}, (gh) => {
 			gh.commit(sha(20), [sha(2)]);
-			gh.tag('pr-baseline', sha(20));
+			gh.baseline('pr-baseline', sha(20));
 			gh.commit(sha(10), [sha(5)]);
 		});
 		const result = await client.refreshPrStatus({ sha: sha(10), report: true });
@@ -72,7 +72,7 @@ describe('refresh-pr-status', () => {
 
 	it('rewrites a status another creator wrote', async () => {
 		const { client } = harness({}, (gh) => {
-			gh.tag('pr-baseline', sha(3));
+			gh.baseline('pr-baseline', sha(3));
 			gh.commit(sha(10), [sha(4)]);
 			gh.status(sha(10), {
 				state: 'success',
@@ -86,7 +86,7 @@ describe('refresh-pr-status', () => {
 
 	it('resolves a PR head and skips PRs against other branches by default', async () => {
 		const { client, github } = harness({}, (gh) => {
-			gh.tag('pr-baseline', sha(3));
+			gh.baseline('pr-baseline', sha(3));
 			gh.commit(sha(10), [sha(4)]);
 			gh.pull({ number: 7, headSha: sha(10) });
 			gh.pull({ number: 8, headSha: sha(10), baseRef: 'release/1.x' });
@@ -113,9 +113,9 @@ describe('refresh-pr-status', () => {
 		);
 	});
 
-	it('re-reads the tags before posting and evaluates against the moved baseline', async () => {
+	it('re-reads the baseline refs before posting and evaluates against the moved baseline', async () => {
 		const { client, github } = harness({}, (gh) => {
-			gh.tag('pr-baseline', sha(2));
+			gh.baseline('pr-baseline', sha(2));
 			gh.commit(sha(10), [sha(3)]);
 		});
 		let reads = 0;
@@ -123,8 +123,8 @@ describe('refresh-pr-status', () => {
 		// The second tag read sees a move; the verdict must be computed against the new commit.
 		github.fetch = async (input, init) => {
 			const url = decodeURIComponent(String(input instanceof Request ? input.url : input));
-			if (url.includes('/git/ref/tags/pr-baseline') && ++reads === 2) {
-				github.tag('pr-baseline', sha(4));
+			if (url.includes('/git/ref/baselines/pr-baseline') && ++reads === 2) {
+				github.baseline('pr-baseline', sha(4));
 			}
 			return original(input, init);
 		};
@@ -136,7 +136,7 @@ describe('refresh-pr-status', () => {
 
 	it('does not write for a bare ref unless asked', async () => {
 		const { client, github } = harness({}, (gh) => {
-			gh.tag('pr-baseline', sha(3));
+			gh.baseline('pr-baseline', sha(3));
 			gh.commit(sha(10), [sha(4)]);
 			gh.branch('feature', sha(10));
 		});
@@ -152,15 +152,15 @@ describe('refresh-pr-status', () => {
 		const { client } = harness(
 			{
 				baselines: [
-					{ tag: 'repo' },
-					{ tag: 'pkg-a', scope: ['packages/a/'] },
-					{ tag: 'pkg-b', scope: ['packages/b/'] },
+					{ name: 'repo' },
+					{ name: 'pkg-a', scope: ['packages/a/'] },
+					{ name: 'pkg-b', scope: ['packages/b/'] },
 				],
 			},
 			(gh) => {
-				gh.tag('repo', sha(2));
-				gh.tag('pkg-a', sha(4));
-				gh.tag('pkg-b', sha(4));
+				gh.baseline('repo', sha(2));
+				gh.baseline('pkg-a', sha(4));
+				gh.baseline('pkg-b', sha(4));
 				gh.commit(sha(10), [sha(3)]);
 				gh.files.set(`${sha(5)}...${sha(10)}`, ['packages/a/index.ts', 'README.md']);
 			},
@@ -172,9 +172,9 @@ describe('refresh-pr-status', () => {
 
 	it('binds every scoped baseline when the diff is indeterminate', async () => {
 		const { client, warnings } = harness(
-			{ baselines: [{ tag: 'pkg-a', scope: ['packages/a/'] }] },
+			{ baselines: [{ name: 'pkg-a', scope: ['packages/a/'] }] },
 			(gh) => {
-				gh.tag('pkg-a', sha(4));
+				gh.baseline('pkg-a', sha(4));
 				gh.commit(sha(10), [sha(3)]);
 				gh.files.set(
 					`${sha(5)}...${sha(10)}`,
@@ -198,7 +198,7 @@ describe('refresh-pr-status guards', () => {
 	it('posts the misconfiguration pass even when the commit contains the off-base baseline', async () => {
 		const { client } = harness({}, (gh) => {
 			gh.commit(sha(20), [sha(2)]);
-			gh.tag('pr-baseline', sha(20));
+			gh.baseline('pr-baseline', sha(20));
 			gh.commit(sha(10), [sha(20)]);
 		});
 		const result = await client.refreshPrStatus({ sha: sha(10), report: true });
@@ -208,20 +208,20 @@ describe('refresh-pr-status guards', () => {
 
 	it('resolves the creator before evaluating anything when reporting', async () => {
 		const { client, github } = harness({ tokenIsWorkflowToken: false }, (gh) => {
-			gh.tag('pr-baseline', sha(3));
+			gh.baseline('pr-baseline', sha(3));
 			gh.commit(sha(10), [sha(4)]);
 			gh.user = null;
 		});
 		await expect(client.refreshPrStatus({ sha: sha(10), report: true })).rejects.toThrow(
 			/--creator/,
 		);
-		// The tags are read for the result, but no ancestry is evaluated before the creator is known.
+		// The baseline refs are read for the result, but no ancestry is evaluated before the creator is known.
 		expect(github.requests(/compare/)).toHaveLength(0);
 	});
 
 	it('fails on a creator mismatch reported by the write', async () => {
 		const { client, github } = harness({ creator: 'expected[bot]' }, (gh) => {
-			gh.tag('pr-baseline', sha(3));
+			gh.baseline('pr-baseline', sha(3));
 			gh.commit(sha(10), [sha(4)]);
 		});
 		await expect(client.refreshPrStatus({ sha: sha(10), report: true })).rejects.toThrow(
@@ -232,7 +232,7 @@ describe('refresh-pr-status guards', () => {
 
 	it('peels a tag that points at another tag object', async () => {
 		const { client } = harness({}, (gh) => {
-			gh.tags.set('pr-baseline', { type: 'tag', sha: 'outer', peeled: sha(3) });
+			gh.refs.set('refs/baselines/pr-baseline', { type: 'tag', sha: 'outer', peeled: sha(3) });
 			gh.nestedTags.set('outer', { type: 'tag', sha: 'inner' });
 			gh.nestedTags.set('inner', { type: 'commit', sha: sha(3) });
 			gh.commit(sha(10), [sha(2)]);
@@ -243,8 +243,8 @@ describe('refresh-pr-status guards', () => {
 	});
 
 	it('counts a renamed file under both names for scope matching', async () => {
-		const { client } = harness({ baselines: [{ tag: 'pkg-a', scope: ['packages/a/'] }] }, (gh) => {
-			gh.tag('pkg-a', sha(4));
+		const { client } = harness({ baselines: [{ name: 'pkg-a', scope: ['packages/a/'] }] }, (gh) => {
+			gh.baseline('pkg-a', sha(4));
 			gh.commit(sha(10), [sha(3)]);
 			gh.renames.set(`${sha(5)}...${sha(10)}`, [['packages/a/old.ts', 'packages/b/new.ts']]);
 		});
@@ -263,7 +263,7 @@ describe('refresh-pr-status guards', () => {
 describe('refresh-pr-status tag objects', () => {
 	it('rejects a tag that resolves to a tree', async () => {
 		const { client } = harness({}, (gh) => {
-			gh.tags.set('pr-baseline', { type: 'tag', sha: 'outer', peeled: sha(3) });
+			gh.refs.set('refs/baselines/pr-baseline', { type: 'tag', sha: 'outer', peeled: sha(3) });
 			gh.nestedTags.set('outer', { type: 'tree' as 'commit', sha: 'treesha' });
 			gh.commit(sha(10), [sha(2)]);
 		});
@@ -276,7 +276,7 @@ describe('refresh-pr-status tag objects', () => {
 describe('refresh-pr-status round 3', () => {
 	it('does not write for a full SHA unless asked', async () => {
 		const { client, github } = harness({}, (gh) => {
-			gh.tag('pr-baseline', sha(3));
+			gh.baseline('pr-baseline', sha(3));
 			gh.commit(sha(10), [sha(4)]);
 		});
 		const result = await client.refreshPrStatus({ sha: sha(10) });
@@ -287,7 +287,7 @@ describe('refresh-pr-status round 3', () => {
 
 	it('judges a baseline that advanced with the base against the new head', async () => {
 		const { client, github } = harness({}, (gh) => {
-			gh.tag('pr-baseline', sha(3));
+			gh.baseline('pr-baseline', sha(3));
 			gh.commit(sha(10), [sha(4)]);
 		});
 		let reads = 0;
@@ -295,10 +295,10 @@ describe('refresh-pr-status round 3', () => {
 		github.fetch = async (input, init) => {
 			const url = decodeURIComponent(String(input instanceof Request ? input.url : input));
 			// Base and baseline both advance to a new commit 6 during the second tag read.
-			if (url.includes('/git/ref/tags/pr-baseline') && ++reads === 2) {
+			if (url.includes('/git/ref/baselines/pr-baseline') && ++reads === 2) {
 				github.commit(sha(6), [sha(5)]);
 				github.branch('main', sha(6));
-				github.tag('pr-baseline', sha(6));
+				github.baseline('pr-baseline', sha(6));
 			}
 			return original(input, init);
 		};
@@ -309,25 +309,25 @@ describe('refresh-pr-status round 3', () => {
 
 	it('returns the resolved baselines for an out-of-scope PR', async () => {
 		const { client } = harness({}, (gh) => {
-			gh.tag('pr-baseline', sha(3));
+			gh.baseline('pr-baseline', sha(3));
 			gh.commit(sha(10), [sha(4)]);
 			gh.pull({ number: 8, headSha: sha(10), baseRef: 'release/1.x' });
 		});
 		const result = await client.refreshPrStatus({ pr: 8 });
 		expect(result.outOfScope).toBe(true);
 		expect(result.baselines).toEqual([
-			{ tag: 'pr-baseline', label: 'Require PR update', sha: sha(3) },
+			{ name: 'pr-baseline', label: 'Require PR update', sha: sha(3) },
 		]);
 	});
 
 	it('requests nested tag refs with the slash percent-encoded', async () => {
-		const { client, github } = harness({ baselines: [{ tag: 'baseline/web' }] }, (gh) => {
-			gh.tag('baseline/web', sha(3));
+		const { client, github } = harness({ baselines: [{ name: 'baseline/web' }] }, (gh) => {
+			gh.baseline('baseline/web', sha(3));
 			gh.commit(sha(10), [sha(4)]);
 		});
 		await client.refreshPrStatus({ sha: sha(10) });
 		expect(
-			github.calls.some((call) => call.rawPath.endsWith('/git/ref/tags%2Fbaseline%2Fweb')),
+			github.calls.some((call) => call.rawPath.endsWith('/git/ref/baselines%2Fbaseline%2Fweb')),
 		).toBe(true);
 	});
 });
@@ -343,7 +343,7 @@ describe('refresh-pr-status validation order', () => {
 
 	it('rejects a cycle of tag objects', async () => {
 		const { client } = harness({}, (gh) => {
-			gh.tags.set('pr-baseline', { type: 'tag', sha: 'outer', peeled: sha(3) });
+			gh.refs.set('refs/baselines/pr-baseline', { type: 'tag', sha: 'outer', peeled: sha(3) });
 			gh.nestedTags.set('outer', { type: 'tag', sha: 'inner' });
 			gh.nestedTags.set('inner', { type: 'tag', sha: 'outer' });
 			gh.commit(sha(10), [sha(2)]);
@@ -355,7 +355,7 @@ describe('refresh-pr-status validation order', () => {
 describe('refresh-pr-status round 7', () => {
 	it('judges a move landing between the tag read and the head read against the new refs', async () => {
 		const { client, github } = harness({}, (gh) => {
-			gh.tag('pr-baseline', sha(3));
+			gh.baseline('pr-baseline', sha(3));
 			gh.commit(sha(10), [sha(4)]);
 		});
 		let tagReads = 0;
@@ -364,10 +364,10 @@ describe('refresh-pr-status round 7', () => {
 			const url = decodeURIComponent(String(input instanceof Request ? input.url : input));
 			const response = await original(input, init);
 			// The second tag read has answered with commit 3; both refs then advance before the head read.
-			if (url.includes('/git/ref/tags/pr-baseline') && ++tagReads === 2) {
+			if (url.includes('/git/ref/baselines/pr-baseline') && ++tagReads === 2) {
 				github.commit(sha(6), [sha(5)]);
 				github.branch('main', sha(6));
-				github.tag('pr-baseline', sha(6));
+				github.baseline('pr-baseline', sha(6));
 			}
 			return response;
 		};
@@ -390,7 +390,7 @@ describe('refresh-pr-status round 7', () => {
 
 	it('retries a transient failure of the status write', async () => {
 		const { client, github } = harness({}, (gh) => {
-			gh.tag('pr-baseline', sha(3));
+			gh.baseline('pr-baseline', sha(3));
 			gh.commit(sha(10), [sha(4)]);
 			gh.overrides.push({ path: /\/statuses\//, method: 'POST', status: 503, times: 2 });
 		});

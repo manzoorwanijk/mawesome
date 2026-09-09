@@ -1,7 +1,12 @@
 import { ConfigError } from '../config.ts';
 import { isGitHubError } from '../github/errors.ts';
 import { listLabeledMergeCommits } from '../github/pulls.ts';
-import { createTag, fastForwardTag, readTag, resolveCommit } from '../github/refs.ts';
+import {
+	createBaselineRef,
+	readBaselineRef,
+	resolveCommit,
+	updateBaselineRef,
+} from '../github/refs.ts';
 import { createMatcher } from '../paths.ts';
 import type { Runtime } from '../runtime.ts';
 import type {
@@ -12,7 +17,7 @@ import type {
 	MoveReason,
 	ResolvedBaseline,
 } from '../types.ts';
-import { BaselineError, tagSnapshot, shortSha } from '../util.ts';
+import { BaselineError, refSnapshot, shortSha } from '../util.ts';
 import { runRefreshPrStatuses } from './refresh-pr-statuses.ts';
 
 type Decision = { reason: MoveReason } | { note: string };
@@ -32,9 +37,9 @@ export async function runMoveBaseline(
 	if (
 		options.baseline !== undefined &&
 		options.baseline !== '' &&
-		!config.baselines.some((baseline) => baseline.tag === options.baseline)
+		!config.baselines.some((baseline) => baseline.name === options.baseline)
 	) {
-		throw new ConfigError(`No configured baseline has the tag "${options.baseline}".`);
+		throw new ConfigError(`No configured baseline is named "${options.baseline}".`);
 	}
 	const base = await runtime.base();
 	if (options.refreshPrStatuses) {
@@ -42,7 +47,7 @@ export async function runMoveBaseline(
 		await runtime.creator();
 	}
 	const baselines = await runtime.readBaselines();
-	const before = tagSnapshot(baselines);
+	const before = refSnapshot(baselines);
 	const selected = select(baselines, options.baseline);
 	const head = await runtime.head();
 	// One base-head read per run: a `--to` is resolved separately, the default target is that same head.
@@ -51,8 +56,8 @@ export async function runMoveBaseline(
 			? head
 			: await resolveCommit(runtime.api, runtime.config.repo, options.to);
 	const prepare = (shas: string[]) =>
-		ancestry.prepare?.({ shas, pulls: [], tags: tagSnapshot(baselines) });
-	// Preparation verifies the tags and fetches the commits before any ancestry question is asked.
+		ancestry.prepare?.({ shas, pulls: [], refs: refSnapshot(baselines) });
+	// Preparation verifies the baseline refs and fetches the commits before any ancestry question is asked.
 	await prepare([head, target]);
 	if (target !== head && !(await ancestry.isAncestor(target, head))) {
 		throw new BaselineError(
@@ -78,7 +83,7 @@ export async function runMoveBaseline(
 	}
 
 	/*
-	 * Another writer may have advanced a tag between this run's successful update and now.
+	 * Another writer may have advanced a baseline between this run's successful update and now.
 	 * The refs are re-read so the result and the refresh see the authoritative SHAs; a dry run keeps its intended ones.
 	 */
 	const authoritative = config.dryRun ? baselines : await runtime.readBaselines();
@@ -90,10 +95,10 @@ export async function runMoveBaseline(
 		dryRun: config.dryRun,
 	};
 	if (options.refreshPrStatuses) {
-		// A dry-run refresh evaluates statuses against the intended positions while the adapter still verifies the real, unmoved tags.
+		// A dry-run refresh evaluates statuses against the intended positions while the adapter still verifies the real, unmoved refs.
 		result.refresh = await runRefreshPrStatuses(runtime, {
 			baselines: authoritative,
-			...(config.dryRun ? { verifyTags: before } : {}),
+			...(config.dryRun ? { verifyRefs: before } : {}),
 		});
 	}
 	return result;
@@ -108,7 +113,7 @@ export async function runMoveBaseline(
 		for (let attempt = 1; ; attempt++) {
 			if (current === to) {
 				return {
-					tag: baseline.tag,
+					name: baseline.name,
 					from: current,
 					to,
 					moved: false,
@@ -117,39 +122,39 @@ export async function runMoveBaseline(
 			}
 			const decision = await decide(ancestry, baseline, current, to, merges, forced);
 			if ('note' in decision) {
-				return { tag: baseline.tag, from: current, to, moved: false, note: decision.note };
+				return { name: baseline.name, from: current, to, moved: false, note: decision.note };
 			}
 			if (current !== null && !(await ancestry.isAncestor(current, to))) {
 				throw new BaselineError(
-					`Refusing to move ${baseline.tag}: ${shortSha(to)} does not descend from ${shortSha(current)}.`,
+					`Refusing to move ${baseline.name}: ${shortSha(to)} does not descend from ${shortSha(current)}.`,
 				);
 			}
 			if (config.dryRun) {
-				return { tag: baseline.tag, from: current, to, moved: true, reason: decision.reason };
+				return { name: baseline.name, from: current, to, moved: true, reason: decision.reason };
 			}
 			try {
 				if (current === null) {
-					await createTag(api, config.repo, baseline.tag, to);
+					await createBaselineRef(api, config.repo, baseline.name, to);
 				} else {
-					await fastForwardTag(api, config.repo, baseline.tag, to);
+					await updateBaselineRef(api, config.repo, baseline.name, to);
 				}
-				return { tag: baseline.tag, from: current, to, moved: true, reason: decision.reason };
+				return { name: baseline.name, from: current, to, moved: true, reason: decision.reason };
 			} catch (error) {
 				if (!isGitHubError(error, 'conflict') && !isGitHubError(error, 'validation')) {
 					throw error;
 				}
-				// A rejected update means either another writer moved the tag or the request was invalid.
-				const latest = await readTag(api, config.repo, baseline.tag);
+				// A rejected update means either another writer moved the baseline or the request was invalid.
+				const latest = await readBaselineRef(api, config.repo, baseline.name);
 				if (latest === current) {
 					throw error;
 				}
 				if (attempt > 1) {
 					throw new BaselineError(
-						`${baseline.tag} moved twice during this run (now ${latest === null ? 'absent' : shortSha(latest)}); rerun to converge.`,
+						`${baseline.name} moved twice during this run (now ${latest === null ? 'absent' : shortSha(latest)}); rerun to converge.`,
 					);
 				}
 				logger.warn(
-					`${baseline.tag} moved to ${latest === null ? 'absent' : shortSha(latest)} while this run was deciding; re-evaluating once.`,
+					`${baseline.name} moved to ${latest === null ? 'absent' : shortSha(latest)} while this run was deciding; re-evaluating once.`,
 				);
 				current = latest;
 				// The re-read commit is new to the adapter and must be prepared before any question about it.
@@ -175,7 +180,7 @@ async function decide(
 		return { reason: 'forced' };
 	}
 	if (current === null) {
-		return { note: 'tag is absent; seed it with --force' };
+		return { note: 'absent; seed it with --force' };
 	}
 	if (baseline.label !== undefined) {
 		for (const oid of merges.get(baseline.label) ?? []) {
@@ -222,13 +227,13 @@ async function labeledMerges(
 	return merges;
 }
 
-function select(baselines: ResolvedBaseline[], tag: string | undefined): ResolvedBaseline[] {
-	if (tag === undefined || tag === '') {
+function select(baselines: ResolvedBaseline[], name: string | undefined): ResolvedBaseline[] {
+	if (name === undefined || name === '') {
 		return baselines;
 	}
-	const match = baselines.filter((baseline) => baseline.tag === tag);
+	const match = baselines.filter((baseline) => baseline.name === name);
 	if (match.length === 0) {
-		throw new ConfigError(`No configured baseline has the tag "${tag}".`);
+		throw new ConfigError(`No configured baseline is named "${name}".`);
 	}
 	return match;
 }
@@ -236,7 +241,7 @@ function select(baselines: ResolvedBaseline[], tag: string | undefined): Resolve
 function describe(move: MoveEntry): string {
 	const from = move.from === null ? 'absent' : shortSha(move.from);
 	if (move.moved) {
-		return `${move.tag}: ${from} -> ${shortSha(move.to)} (${move.reason}).`;
+		return `${move.name}: ${from} -> ${shortSha(move.to)} (${move.reason}).`;
 	}
-	return `${move.tag}: unchanged at ${from}; ${move.note}.`;
+	return `${move.name}: unchanged at ${from}; ${move.note}.`;
 }

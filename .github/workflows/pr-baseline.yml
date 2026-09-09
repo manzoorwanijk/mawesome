@@ -20,10 +20,10 @@ on:
       baseline:
         type: string
         default: ''
-        description: Tag of one baseline to move; blank moves all
+        description: Name of one baseline to move; blank moves all
 permissions: {}
 env:
-  PR_BASELINES: '[{"tag":"pr-baseline","label":"Require PR update","markers":["pnpm-lock.yaml","pnpm-workspace.yaml",".github/workflows/verify.yml"]}]'
+  PR_BASELINES: '[{"name":"pr-baseline","label":"Require PR update","markers":["pnpm-lock.yaml","pnpm-workspace.yaml",".github/workflows/verify.yml"]}]'
 jobs:
   refresh-pr-status:
     name: Refresh the PR status against the baseline

@@ -94,7 +94,7 @@ beforeEach(() => {
 	const github = new FakeGitHub();
 	github.chain(1, 5);
 	github.branch('main', sha(5));
-	github.tag('pr-baseline', sha(3));
+	github.baseline('pr-baseline', sha(3));
 	github.commit(sha(11), [sha(4)]);
 	github.commit(sha(12), [sha(2)]);
 	world = {
@@ -166,7 +166,7 @@ describe('action mode: auto', () => {
 		});
 		await run();
 		const out = allOutputs();
-		expect(world.github.tags.get('pr-baseline')?.peeled).toBe(sha(5));
+		expect(world.github.baselineAt('pr-baseline')).toBe(sha(5));
 		expect(out['written']).toBe('1');
 		expect(out['incomplete']).toBe('false');
 		expect(out['results-file']).toContain('pr-baseline-refresh');
@@ -323,7 +323,7 @@ describe('action mode: auto', () => {
 			inputs: { markers: '.nvmrc\n' },
 		});
 		await run();
-		expect(world.github.tags.get('pr-baseline')?.peeled).toBe(sha(5));
+		expect(world.github.baselineAt('pr-baseline')).toBe(sha(5));
 		expect(outputs()['written']).toBe('1');
 		runner({ event: 'push', payload: { ref: 'refs/heads/feature' }, inputs: { base: 'main' } });
 		await run();
@@ -355,7 +355,7 @@ describe('action mode: auto', () => {
 			payload: { inputs: { mode: 'report', baseline: 'ignored' } },
 		});
 		await run();
-		expect(world.github.tags.get('pr-baseline')?.peeled).toBe(sha(3));
+		expect(world.github.baselineAt('pr-baseline')).toBe(sha(3));
 		expect(outputs()['written']).toBe('1');
 	});
 
@@ -373,7 +373,7 @@ describe('action mode: auto', () => {
 
 	it('evaluates the two-baseline configuration of the consumer template', async () => {
 		world.github.commit(sha(14), [sha(1)]);
-		world.github.tag('pr-baseline-docs', sha(4));
+		world.github.baseline('pr-baseline-docs', sha(4));
 		world.github.files.set(`${sha(5)}...${sha(12)}`, ['docs/guide.md']);
 		world.github.files.set(`${sha(5)}...${sha(14)}`, ['src/index.ts']);
 		// The template's own list plus a scoped baseline, the way a monorepo consumer would extend it.
@@ -386,7 +386,7 @@ describe('action mode: auto', () => {
 		) as unknown[];
 		const baselines = JSON.stringify([
 			...configured,
-			{ tag: 'pr-baseline-docs', scope: ['docs/**'] },
+			{ name: 'pr-baseline-docs', scope: ['docs/**'] },
 		]);
 		runner({ event: 'pull_request_target', payload: pullPayload(sha(12)), inputs: { baselines } });
 		await run();
@@ -402,7 +402,7 @@ describe('action mode: auto', () => {
 		runner({ event: 'schedule', payload: {} });
 		await run();
 		expect(outputs()['written']).toBe('1');
-		expect(world.github.tags.get('pr-baseline')?.peeled).toBe(sha(3));
+		expect(world.github.baselineAt('pr-baseline')).toBe(sha(3));
 		runner({ event: 'workflow_dispatch', payload: {}, inputs: { mode: 'refresh-pr-statuses' } });
 		await run();
 		expect(outputs()['skipped']).toBe('1');
@@ -412,7 +412,7 @@ describe('action mode: auto', () => {
 			inputs: { mode: 'move-baseline', force: 'true' },
 		});
 		await run();
-		expect(world.github.tags.get('pr-baseline')?.peeled).toBe(sha(5));
+		expect(world.github.baselineAt('pr-baseline')).toBe(sha(5));
 		// The failure written earlier reads the same after the move, so nothing is rewritten.
 		expect(outputs()['skipped']).toBe('1');
 	});
@@ -425,7 +425,7 @@ describe('action explicit modes and errors', () => {
 		expect(allOutputs()['state']).toBe('success');
 		expect(summary()).toContain('PR baseline report');
 		world.github.commit(sha(20), [sha(2)]);
-		world.github.tag('pr-baseline', sha(20));
+		world.github.baseline('pr-baseline', sha(20));
 		runner({ event: 'workflow_dispatch', payload: {}, inputs: { mode: 'report' } });
 		await run();
 		expect(process.exitCode).toBe(1);
@@ -563,7 +563,7 @@ describe('action explicit modes and errors', () => {
 		expect(tiny).toMatchObject({ truncated: true, entriesOmitted: 200 });
 		expect(boundedSummary(result, {}, 100).length).toBeLessThan(400);
 		const moves = Array.from({ length: 50 }, (_, index) => ({
-			tag: `baseline-${index}`,
+			name: `baseline-${index}`,
 			from: null,
 			to: sha(index),
 			moved: index === 0,
@@ -571,11 +571,11 @@ describe('action explicit modes and errors', () => {
 		}));
 		const withMoves = JSON.parse(boundedSummary({ ...result, entries: [] }, { moves }, 5_000)) as {
 			truncated: boolean;
-			moves: { tag: string; moved: boolean; note?: string }[];
+			moves: { name: string; moved: boolean; note?: string }[];
 		};
 		expect(withMoves.truncated).toBe(true);
 		expect(withMoves.moves).toHaveLength(50);
-		expect(withMoves.moves[0]).toEqual({ tag: 'baseline-0', moved: true });
+		expect(withMoves.moves[0]).toEqual({ name: 'baseline-0', moved: true });
 	});
 
 	it('rejects an unknown mode and a refresh-pr-status without a sha', async () => {

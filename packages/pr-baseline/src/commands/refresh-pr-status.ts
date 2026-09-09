@@ -13,7 +13,7 @@ import type {
 	Verdict,
 } from '../types.ts';
 import { writeWithRetries } from '../reporter/write.ts';
-import { isFullSha, tagSnapshot } from '../util.ts';
+import { isFullSha, refSnapshot } from '../util.ts';
 import {
 	misconfiguredVerdict,
 	notApplicableVerdict,
@@ -86,7 +86,7 @@ export async function runRefreshPrStatus(
 		ancestry.prepare?.({
 			shas: [head, target.sha],
 			pulls: [],
-			tags: config.offline ? [] : tagSnapshot(list),
+			refs: config.offline ? [] : refSnapshot(list),
 		});
 	await prepare(baselines, baseHead);
 	const evaluate = (list: ResolvedBaseline[], head: string) =>
@@ -104,8 +104,8 @@ export async function runRefreshPrStatus(
 	}
 
 	/*
-	 * Before posting, the tags and then the base head are read again until two consecutive snapshots agree.
-	 * A move that lands between a tag read and a head read would otherwise pair an old baseline with a new head.
+	 * Before posting, the baseline refs and then the base head are read again until two consecutive snapshots agree.
+	 * A move that lands between a ref read and a head read would otherwise pair an old baseline with a new head.
 	 */
 	for (let round = 1; round <= SNAPSHOT_ROUNDS; round++) {
 		const latest = await runtime.readBaselines();

@@ -1,4 +1,4 @@
-import { isValidTagName } from './refname.ts';
+import { isValidRefName } from './refname.ts';
 import type {
 	AncestryMode,
 	Baseline,
@@ -7,7 +7,7 @@ import type {
 	OtherBases,
 } from './types.ts';
 
-export const DEFAULT_TAG = 'pr-baseline';
+export const DEFAULT_NAME = 'pr-baseline';
 export const DEFAULT_LABEL = 'Require PR update';
 export const DEFAULT_CONTEXT = 'PR baseline';
 export const DEFAULT_API_URL = 'https://api.github.com';
@@ -16,13 +16,13 @@ export const DEFAULT_MAX_WRITES_PER_MINUTE = 60;
 export const DEFAULT_RETRY_BASE_MS = 1000;
 export const DEFAULT_DESCRIPTIONS: DescriptionTemplates = {
 	pass: 'Contains the required {base} changes.',
-	fail: 'Merge or rebase {base} to include: {tags}',
+	fail: 'Merge or rebase {base} to include: {baselines}',
 	notApplicable: 'Baseline applies to {base} only.',
 };
 
 const ANCESTRY_MODES = new Set<AncestryMode>(['auto', 'git', 'api']);
 const OTHER_BASES = new Set<OtherBases>(['skip', 'pass']);
-const BASELINE_KEYS = new Set(['tag', 'label', 'scope', 'markers']);
+const BASELINE_KEYS = new Set(['name', 'label', 'scope', 'markers']);
 
 /** A configuration problem; reported before any evaluation and never retried. */
 export class ConfigError extends Error {
@@ -124,14 +124,14 @@ export function resolveConfig(options: ClientOptions): ResolvedConfig {
 	};
 }
 
-/** Builds the one-entry list the `--tag`, `--label` and `--markers` shorthand describes. */
+/** Builds the one-entry list the `--name`, `--label` and `--markers` shorthand describes. */
 export function shorthandBaselines(input: {
-	tag?: string | undefined;
+	name?: string | undefined;
 	label?: string | undefined;
 	markers?: string[] | undefined;
 }): Baseline[] {
 	const baseline: Baseline = {
-		tag: input.tag ?? DEFAULT_TAG,
+		name: input.name ?? DEFAULT_NAME,
 		label: input.label ?? DEFAULT_LABEL,
 	};
 	if (input.markers !== undefined) {
@@ -155,7 +155,7 @@ export function parseBaselines(json: string, readFile: (path: string) => string)
 /** Validates the baseline list against the full schema; every problem is fatal. */
 export function validateBaselines(value: unknown): Baseline[] {
 	if (!Array.isArray(value)) {
-		throw new ConfigError('Baselines must be a JSON array of { tag, label?, scope?, markers? }.');
+		throw new ConfigError('Baselines must be a JSON array of { name, label?, scope?, markers? }.');
 	}
 	if (value.length === 0) {
 		throw new ConfigError('Baselines must contain at least one entry.');
@@ -172,15 +172,15 @@ export function validateBaselines(value: unknown): Baseline[] {
 				throw new ConfigError(`${where} has an unknown field "${key}".`);
 			}
 		}
-		const tag = record['tag'];
-		if (typeof tag !== 'string' || !isValidTagName(tag)) {
-			throw new ConfigError(`${where} needs a valid tag name (git check-ref-format rules).`);
+		const name = record['name'];
+		if (typeof name !== 'string' || !isValidRefName(name)) {
+			throw new ConfigError(`${where} needs a valid name (git check-ref-format rules).`);
 		}
-		if (seen.has(tag)) {
-			throw new ConfigError(`Baseline tag "${tag}" is listed more than once.`);
+		if (seen.has(name)) {
+			throw new ConfigError(`Baseline "${name}" is listed more than once.`);
 		}
-		seen.add(tag);
-		const baseline: Baseline = { tag };
+		seen.add(name);
+		const baseline: Baseline = { name };
 		if (record['label'] !== undefined) {
 			const label = record['label'];
 			if (typeof label !== 'string' || label.trim().length === 0) {

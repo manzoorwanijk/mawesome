@@ -2,7 +2,7 @@
 
 > Keep open pull requests current with a movable baseline on the base branch.
 
-A repository-wide change lands on `main` (a toolchain bump, a lint rule, a CI fix) and every open PR that was branched before it keeps passing CI on stale code. `pr-baseline` marks that commit with a lightweight tag, the **baseline**, and stamps every open PR with a commit status: `success` when the PR's head contains the baseline, `failure` when it does not. Require the status in the base branch's ruleset and stale PRs must merge or rebase before they can land.
+A repository-wide change lands on `main` (a toolchain bump, a lint rule, a CI fix) and every open PR that was branched before it keeps passing CI on stale code. `pr-baseline` marks that commit with a git ref under `refs/baselines/`, the **baseline**, and stamps every open PR with a commit status: `success` when the PR's head contains the baseline, `failure` when it does not. Require the status in the base branch's ruleset and stale PRs must merge or rebase before they can land.
 
 The baseline moves forward only by intent: a workflow dispatch, a merged PR carrying a label, or a push touching marker paths. When it moves, a **refresh** re-evaluates every open PR and writes only the statuses that changed.
 
@@ -38,12 +38,12 @@ pr-baseline report
 
 Exit codes: `0` pass or complete, `1` fail or incomplete, `2` error.
 
-Several baselines, each with its own tag, label, PR scope and auto-move markers, are configured with `--baselines`:
+Several baselines, each with its own name, label, PR scope and auto-move markers, are configured with `--baselines`:
 
 ```sh
 pr-baseline refresh-pr-statuses --baselines '[
-  { "tag": "pr-baseline", "label": "Require PR update", "markers": [".nvmrc"] },
-  { "tag": "baseline/web", "scope": ["apps/web/"], "markers": ["apps/web/package.json"] }
+  { "name": "pr-baseline", "label": "Require PR update", "markers": [".nvmrc"] },
+  { "name": "web", "scope": ["apps/web/"], "markers": ["apps/web/package.json"] }
 ]'
 ```
 

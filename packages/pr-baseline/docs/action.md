@@ -19,7 +19,7 @@ The action is one root action, `manzoorwanijk/pr-baseline-action`, with a `mode`
 
 ## Inputs and outputs
 
-Inputs mirror the [CLI](./cli.md), except that `baselines` is inline JSON only: `token`, `mode`, `sha`, `base`, `baselines`, the shorthand `tag`, `label`, `markers` (multiline), `baseline`, `status-context`, the three `description-*` texts, `target-url`, `other-bases`, `creator`, `ancestry`, `max-writes-per-run`, `max-writes-per-minute`, `dry-run`, `force`, `refresh-pr-statuses-after-move`. The API, GraphQL and server URLs come from the runner's environment, so GitHub Enterprise Server needs no extra input.
+Inputs mirror the [CLI](./cli.md), except that `baselines` is inline JSON only: `token`, `mode`, `sha`, `base`, `baselines`, the shorthand `name`, `label`, `markers` (multiline), `baseline`, `status-context`, the three `description-*` texts, `target-url`, `other-bases`, `creator`, `ancestry`, `max-writes-per-run`, `max-writes-per-minute`, `dry-run`, `force`, `refresh-pr-statuses-after-move`. The API, GraphQL and server URLs come from the runner's environment, so GitHub Enterprise Server needs no extra input.
 
 A hidden `github-token-probe` input, defaulting to `${{ github.token }}` like `token`, lets the action prove whether `token` is the workflow's own token: when the two are equal the status creator is `github-actions[bot]` without any request; an App token never matches and must come with `creator`.
 

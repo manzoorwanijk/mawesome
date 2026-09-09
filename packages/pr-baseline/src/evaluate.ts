@@ -46,7 +46,7 @@ export async function evaluateCommit(input: EvaluateInput): Promise<Verdict> {
 			contains = await input.ancestry.isAncestor(baseline.sha, input.sha);
 		}
 		answers.push({
-			tag: baseline.tag,
+			name: baseline.name,
 			sha: baseline.sha,
 			applicable: baseline.applicable,
 			contains,
@@ -55,7 +55,7 @@ export async function evaluateCommit(input: EvaluateInput): Promise<Verdict> {
 	return computeVerdict(answers, input.context);
 }
 
-/** Tags whose commit is not on the base branch; such a baseline can never be satisfied by merging. */
+/** Baselines whose commit is not on the base branch; such a baseline can never be satisfied by merging. */
 export async function baselinesOffBase(
 	ancestry: Ancestry,
 	baselines: ResolvedBaseline[],
@@ -64,7 +64,7 @@ export async function baselinesOffBase(
 	const off: string[] = [];
 	for (const baseline of baselines) {
 		if (baseline.sha !== null && !(await ancestry.isAncestor(baseline.sha, baseHead))) {
-			off.push(baseline.tag);
+			off.push(baseline.name);
 		}
 	}
 	return off;

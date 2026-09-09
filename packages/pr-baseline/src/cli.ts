@@ -39,14 +39,14 @@ Repository (flags win over env):
   --base <branch>        Base branch (default: the repository's default branch)
 
 Baselines (either the JSON list or the shorthand):
-  --baselines <json>     JSON array of { tag, label?, scope?, markers? }; @path reads a file
-  --tag <name>           Shorthand tag (default pr-baseline)
+  --baselines <json>     JSON array of { name, label?, scope?, markers? }; @path reads a file
+  --name <name>          Shorthand baseline name (default pr-baseline)
   --label <name>         Shorthand label (default "Require PR update")
   --markers <pattern>    Shorthand auto-move pattern, repeatable
 
 Status:
   --context <name>       Status context (default "PR baseline")
-  --description-pass <text>            {base} and {tags} placeholders
+  --description-pass <text>            {base} and {baselines} placeholders
   --description-fail <text>
   --description-not-applicable <text>
   --target-url <url>
@@ -56,7 +56,7 @@ Status:
 Behavior:
   --ancestry auto|git|api  Ancestry source (default auto)
   --git-dir <path>       Local repository for git ancestry and ref resolution
-  --offline              Trust the local clone's tags without a token
+  --offline              Trust the baseline refs in the local clone without a token
   --max-writes-per-run <n>      Positive integer, default 450
   --max-writes-per-minute <n>   Positive integer, default 60
   --dry-run              Log writes instead of making them
@@ -66,8 +66,8 @@ refresh-pr-status:
             --pr <n>  Evaluate the PR's head; --report / --no-report  Write the status
             (reporting defaults on for --pr and off for any commit given directly).
 move-baseline:
-            --force  Move by intent alone, seeding absent tags; --to <sha>  Target commit;
-            --baseline <tag>  Only this baseline; --refresh-pr-statuses  Refresh every open PR's status afterwards.
+            --force  Move by intent alone, seeding absent baselines; --to <sha>  Target commit;
+            --baseline <name>  Only this baseline; --refresh-pr-statuses  Refresh every open PR's status afterwards.
 
 Exit codes: 0 pass or complete, 1 fail or incomplete, 2 error.`;
 
@@ -169,7 +169,7 @@ function parse(argv: string[]) {
 			'server-url': { type: 'string' },
 			base: { type: 'string' },
 			baselines: { type: 'string' },
-			tag: { type: 'string' },
+			name: { type: 'string' },
 			label: { type: 'string' },
 			markers: { type: 'string', multiple: true },
 			baseline: { type: 'string' },
@@ -258,17 +258,17 @@ function clientOptions(values: Values): ClientOptions {
 
 function baselineList(values: Values): Baseline[] | undefined {
 	const shorthand =
-		values.tag !== undefined || values.label !== undefined || values.markers !== undefined;
+		values.name !== undefined || values.label !== undefined || values.markers !== undefined;
 	if (values.baselines !== undefined) {
 		if (shorthand) {
-			throw new ConfigError('--baselines cannot be combined with --tag, --label or --markers.');
+			throw new ConfigError('--baselines cannot be combined with --name, --label or --markers.');
 		}
 		return parseBaselines(values.baselines, (path) => readFileSync(path, 'utf8'));
 	}
 	if (!shorthand) {
 		return undefined;
 	}
-	return shorthandBaselines({ tag: values.tag, label: values.label, markers: values.markers });
+	return shorthandBaselines({ name: values.name, label: values.label, markers: values.markers });
 }
 
 function assign<T extends object, K extends keyof T>(
@@ -313,8 +313,8 @@ function describeMove(result: MoveBaselineResult): string {
 	const lines = result.moves.map((move) => {
 		const from = move.from === null ? 'absent' : shortSha(move.from);
 		return move.moved
-			? `${move.tag}: ${from} -> ${shortSha(move.to)} (${move.reason})`
-			: `${move.tag}: unchanged at ${from} (${move.note})`;
+			? `${move.name}: ${from} -> ${shortSha(move.to)} (${move.reason})`
+			: `${move.name}: unchanged at ${from} (${move.note})`;
 	});
 	if (result.refresh) {
 		lines.push(describeRefreshPrStatuses(result.refresh));
@@ -327,14 +327,14 @@ function describeReport(result: ReportResult): string {
 	for (const baseline of result.baselines) {
 		const where = baseline.sha === null ? 'absent' : shortSha(baseline.sha);
 		const onBase = baseline.onBase === null ? '' : baseline.onBase ? ', on base' : ', NOT on base';
-		lines.push(`${baseline.tag}: ${where}${onBase}; binds ${baseline.bound} open PRs.`);
+		lines.push(`${baseline.name}: ${where}${onBase}; binds ${baseline.bound} open PRs.`);
 	}
 	if (result.stale !== undefined && result.current !== undefined) {
 		lines.push(`${result.current} PRs current, ${result.stale} stale.`);
 	}
 	if (result.offBase.length > 0) {
 		lines.push(
-			`Baseline ${result.offBase.join(', ')} is not on ${result.base}; fix the tag before refreshing.`,
+			`Baseline ${result.offBase.join(', ')} is not on ${result.base}; fix the baseline before refreshing.`,
 		);
 	}
 	return lines.join('\n');

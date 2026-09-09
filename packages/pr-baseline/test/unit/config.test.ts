@@ -3,7 +3,7 @@ import {
 	ConfigError,
 	DEFAULT_DESCRIPTIONS,
 	DEFAULT_LABEL,
-	DEFAULT_TAG,
+	DEFAULT_NAME,
 	graphqlUrlFor,
 	parseBaselines,
 	resolveConfig,
@@ -26,7 +26,7 @@ describe('resolveConfig', () => {
 		expect(config.token).toBe('env-token');
 		expect(config.apiUrl).toBe('https://ghe.test/api/v3');
 		expect(config.base).toBeUndefined();
-		expect(config.baselines).toEqual([{ tag: DEFAULT_TAG, label: DEFAULT_LABEL }]);
+		expect(config.baselines).toEqual([{ name: DEFAULT_NAME, label: DEFAULT_LABEL }]);
 		expect(config.context).toBe('PR baseline');
 		expect(config.descriptions).toEqual(DEFAULT_DESCRIPTIONS);
 		expect(config.otherBases).toBe('skip');
@@ -40,9 +40,9 @@ describe('resolveConfig', () => {
 		const config = resolveConfig({
 			repo: 'a/b',
 			env: {},
-			descriptions: { fail: 'Nope: {tags}', pass: '' },
+			descriptions: { fail: 'Nope: {baselines}', pass: '' },
 		});
-		expect(config.descriptions).toEqual({ ...DEFAULT_DESCRIPTIONS, fail: 'Nope: {tags}' });
+		expect(config.descriptions).toEqual({ ...DEFAULT_DESCRIPTIONS, fail: 'Nope: {baselines}' });
 	});
 
 	it('rejects a missing or malformed repository before anything else', () => {
@@ -74,12 +74,12 @@ describe('validateBaselines', () => {
 	it('accepts the full schema', () => {
 		expect(
 			validateBaselines([
-				{ tag: 'repo', label: ' Require PR update ', markers: ['.nvmrc'] },
-				{ tag: 'pkg/a', scope: ['packages/a/'] },
+				{ name: 'repo', label: ' Require PR update ', markers: ['.nvmrc'] },
+				{ name: 'pkg/a', scope: ['packages/a/'] },
 			]),
 		).toEqual([
-			{ tag: 'repo', label: 'Require PR update', markers: ['.nvmrc'] },
-			{ tag: 'pkg/a', scope: ['packages/a/'] },
+			{ name: 'repo', label: 'Require PR update', markers: ['.nvmrc'] },
+			{ name: 'pkg/a', scope: ['packages/a/'] },
 		]);
 	});
 
@@ -87,14 +87,14 @@ describe('validateBaselines', () => {
 		['not an array', {}],
 		['an empty list', []],
 		['a non-object entry', ['x']],
-		['an unknown field', [{ tag: 'a', paths: [] }]],
+		['an unknown field', [{ name: 'a', paths: [] }]],
 		['a missing tag', [{ label: 'x' }]],
-		['an invalid tag', [{ tag: 'bad..name' }]],
-		['a duplicate tag', [{ tag: 'a' }, { tag: 'a' }]],
-		['an empty label', [{ tag: 'a', label: '  ' }]],
-		['an empty scope', [{ tag: 'a', scope: [] }]],
-		['an empty marker pattern', [{ tag: 'a', markers: [''] }]],
-		['a non-string pattern', [{ tag: 'a', markers: [1] }]],
+		['an invalid tag', [{ name: 'bad..name' }]],
+		['a duplicate tag', [{ name: 'a' }, { name: 'a' }]],
+		['an empty label', [{ name: 'a', label: '  ' }]],
+		['an empty scope', [{ name: 'a', scope: [] }]],
+		['an empty marker pattern', [{ name: 'a', markers: [''] }]],
+		['a non-string pattern', [{ name: 'a', markers: [1] }]],
 	])('rejects %s', (_name, value) => {
 		expect(() => validateBaselines(value)).toThrow(ConfigError);
 	});
@@ -102,18 +102,18 @@ describe('validateBaselines', () => {
 
 describe('shorthandBaselines', () => {
 	it('builds one unscoped entry with defaults', () => {
-		expect(shorthandBaselines({})).toEqual([{ tag: DEFAULT_TAG, label: DEFAULT_LABEL }]);
-		expect(shorthandBaselines({ tag: 'x', label: 'L', markers: ['a'] })).toEqual([
-			{ tag: 'x', label: 'L', markers: ['a'] },
+		expect(shorthandBaselines({})).toEqual([{ name: DEFAULT_NAME, label: DEFAULT_LABEL }]);
+		expect(shorthandBaselines({ name: 'x', label: 'L', markers: ['a'] })).toEqual([
+			{ name: 'x', label: 'L', markers: ['a'] },
 		]);
 	});
 });
 
 describe('parseBaselines', () => {
 	it('parses inline JSON and @file references', () => {
-		const files: Record<string, string> = { '/tmp/b.json': '[{"tag":"file"}]' };
-		expect(parseBaselines('[{"tag":"inline"}]', () => '')).toEqual([{ tag: 'inline' }]);
-		expect(parseBaselines('@/tmp/b.json', (path) => files[path] ?? '')).toEqual([{ tag: 'file' }]);
+		const files: Record<string, string> = { '/tmp/b.json': '[{"name":"file"}]' };
+		expect(parseBaselines('[{"name":"inline"}]', () => '')).toEqual([{ name: 'inline' }]);
+		expect(parseBaselines('@/tmp/b.json', (path) => files[path] ?? '')).toEqual([{ name: 'file' }]);
 	});
 
 	it('reports invalid JSON as a configuration error', () => {

@@ -75,7 +75,7 @@ beforeEach(async () => {
 	github = new FakeGitHub();
 	github.chain(1, 5);
 	github.branch('main', sha(5));
-	github.tag('pr-baseline', sha(3));
+	github.baseline('pr-baseline', sha(3));
 	github.commit(sha(11), [sha(4)]);
 	github.commit(sha(12), [sha(2)]);
 	server = await serve(github);
@@ -123,7 +123,7 @@ describe('built action bundle', () => {
 		});
 		let result = await runBundle({ event: 'pull_request_target', payload: merged });
 		expect(result.code).toBe(0);
-		expect(github.tags.get('pr-baseline')?.peeled).toBe(sha(5));
+		expect(github.baselineAt('pr-baseline')).toBe(sha(5));
 		expect(result.outputs['written']).toBe('1');
 		result = await runBundle({
 			event: 'push',

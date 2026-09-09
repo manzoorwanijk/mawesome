@@ -129,7 +129,7 @@ export async function selectAncestry(
 
 /**
  * Delegates to git until a git command fails while preparing, then to the API for the rest of the run.
- * Integrity refusals (a tag disagreement, a configuration error) are not git failures and still end the run.
+ * Integrity refusals (a baseline ref disagreement, a configuration error) are not git failures and still end the run.
  */
 function withApiFallback(git: Ancestry, api: Ancestry, logger: Logger): Ancestry {
 	let active = git;

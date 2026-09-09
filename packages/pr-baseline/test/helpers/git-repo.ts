@@ -105,6 +105,17 @@ export class GitFixture {
 		this.push(`refs/tags/${name}`, `refs/tags/${name}`);
 	}
 
+	/** Points the remote's baseline ref at a commit, or at a tag object peeling to it, as the tool or an operator would. */
+	baseline(name: string, sha: string, annotated = false): void {
+		if (!annotated) {
+			this.push(sha, `refs/baselines/${name}`);
+			return;
+		}
+		const local = `baseline-object-${name.replace(/[^\w.-]/g, '_')}`;
+		this.git(this.workDir, ['tag', '--force', '-a', '-m', name, local, sha]);
+		this.push(`refs/tags/${local}`, `refs/baselines/${name}`);
+	}
+
 	/** Creates the treeless clone the adapter works in; call after the remote has its branches. */
 	clone(): string {
 		rmSync(this.cloneDir, { recursive: true, force: true });

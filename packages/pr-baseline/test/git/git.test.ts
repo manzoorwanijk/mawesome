@@ -23,13 +23,13 @@ function build(): World {
 	const c3 = fixture.commit('three', { '.nvmrc': '24' });
 	const c4 = fixture.commit('four', { 'docs/guide.md': 'g' });
 	fixture.push('main', 'refs/heads/main');
-	fixture.tag('pr-baseline', c3);
+	fixture.baseline('pr-baseline', c3);
 	fixture.clone();
 	const github = new FakeGitHub();
 	fixture.mirror(github);
-	github.tag('pr-baseline', c3);
-	// The API and the remote are one server in reality; a tag written through the API shows up on the remote.
-	github.onTagWrite = (name, sha) => fixture.tag(name, sha);
+	github.baseline('pr-baseline', c3);
+	// The API and the remote are one server in reality; a ref written through the API shows up on the remote.
+	github.onRefWrite = (ref, sha) => fixture.push(sha, ref);
 	return { fixture, github, logs: [], warnings: [], c: [c1, c2, c3, c4] };
 }
 
@@ -175,10 +175,10 @@ describe('git ancestry', () => {
 		expect(world.github.latestStatus(merged, 'PR baseline')?.state).toBe('success');
 	});
 
-	it('refuses when the remote tag disagrees with the API', async () => {
+	it('refuses when the remote baseline ref disagrees with the API', async () => {
 		const [, c2, , c4] = world.c;
 		openPull(1, c2 as string, { 'x.txt': 'x' });
-		world.github.tag('pr-baseline', c4 as string);
+		world.github.baseline('pr-baseline', c4 as string);
 		await expect(client().refreshPrStatuses()).rejects.toThrow(
 			/differs between the API and the remote/,
 		);
@@ -194,9 +194,9 @@ describe('git ancestry', () => {
 		});
 		const result = await client({
 			baselines: [
-				{ tag: 'pr-baseline', scope: ['packages/a/'] },
-				{ tag: 'absent', scope: ['docs/'] },
-				{ tag: 'untouched', scope: ['apps/'] },
+				{ name: 'pr-baseline', scope: ['packages/a/'] },
+				{ name: 'absent', scope: ['docs/'] },
+				{ name: 'untouched', scope: ['apps/'] },
 			],
 		}).refreshPrStatus({ sha: head });
 		expect(result.ancestry).toBe('git');
@@ -207,11 +207,11 @@ describe('git ancestry', () => {
 
 	it('moves on a marker change detected through git and refreshes', async () => {
 		const [, c2, , c4] = world.c;
-		world.github.tag('pr-baseline', c2 as string);
-		world.fixture.tag('pr-baseline', c2 as string);
+		world.github.baseline('pr-baseline', c2 as string);
+		world.fixture.baseline('pr-baseline', c2 as string);
 		const head = openPull(1, c2 as string, { 'x.txt': 'x' });
 		const result = await client({
-			baselines: [{ tag: 'pr-baseline', markers: ['.nvmrc'] }],
+			baselines: [{ name: 'pr-baseline', markers: ['.nvmrc'] }],
 		}).moveBaseline({ refreshPrStatuses: true });
 		expect(result.moves[0]).toMatchObject({ moved: true, from: c2, to: c4, reason: 'markers' });
 		expect(result.refresh).toMatchObject({ written: 1 });
@@ -230,17 +230,19 @@ describe('git ancestry', () => {
 		expect(result).toMatchObject({ ancestry: 'git', openPulls: 2, stale: 1, current: 1 });
 	});
 
-	it("evaluates a local commit offline against the clone's tags", async () => {
+	it("evaluates a local commit offline against the clone's baseline refs", async () => {
 		const [, c2] = world.c;
 		world.fixture.checkout(c2 as string, 'local');
 		const head = world.fixture.commit('local work', { 'z.txt': 'z' });
 		world.fixture.checkout('main');
 		world.fixture.push('local', 'refs/heads/local');
+		// A clone never fetches the baseline namespace by itself; offline use needs this explicit refspec.
 		world.fixture.git(world.fixture.cloneDir, [
 			'fetch',
 			'--quiet',
 			'origin',
 			'refs/heads/local:refs/heads/local',
+			'+refs/baselines/*:refs/baselines/*',
 		]);
 		const offline = createClient({
 			repo: 'acme/widgets',
@@ -267,24 +269,24 @@ describe('git ancestry review round 2', () => {
 		await expect(client({ ancestry: 'git' }).report()).rejects.toThrow(/fetch-depth: 0/);
 	});
 
-	it('accepts an annotated tag whose peeled commit matches the API', async () => {
+	it('accepts a baseline ref pointing at a tag object whose peeled commit matches the API', async () => {
 		const [, c2, c3] = world.c;
-		world.fixture.tag('pr-baseline', c3 as string, true);
+		world.fixture.baseline('pr-baseline', c3 as string, true);
 		const head = openPull(1, c2 as string, { 'x.txt': 'x' });
 		const result = await client().refreshPrStatuses();
 		expect(result).toMatchObject({ written: 1, failed: 0 });
 		expect(world.github.latestStatus(head, 'PR baseline')?.state).toBe('failure');
 	});
 
-	it('refuses when the API knows a tag the remote lacks, and the other way round', async () => {
+	it('refuses when the API knows a baseline the remote lacks, and the other way round', async () => {
 		const [, c2, c3] = world.c;
 		openPull(1, c2 as string, { 'x.txt': 'x' });
-		world.github.tag('extra', c3 as string);
+		world.github.baseline('extra', c3 as string);
 		await expect(
-			client({ baselines: [{ tag: 'pr-baseline' }, { tag: 'extra' }] }).refreshPrStatuses(),
-		).rejects.toThrow(/Tag extra differs/);
-		world.github.tags.delete('pr-baseline');
-		await expect(client().refreshPrStatuses()).rejects.toThrow(/Tag pr-baseline differs/);
+			client({ baselines: [{ name: 'pr-baseline' }, { name: 'extra' }] }).refreshPrStatuses(),
+		).rejects.toThrow(/Baseline extra differs/);
+		world.github.refs.delete('refs/baselines/pr-baseline');
+		await expect(client().refreshPrStatuses()).rejects.toThrow(/Baseline pr-baseline differs/);
 	});
 
 	it("stamps a reconciled new head instead of trusting the old head's status", async () => {
@@ -316,7 +318,7 @@ describe('git ancestry review round 2', () => {
 		expect(world.github.latestStatus(rebased, 'PR baseline')?.state).toBe('success');
 	});
 
-	it('runs a dry-run move and refresh of a present tag against the real, unmoved tag', async () => {
+	it('runs a dry-run move and refresh of a present baseline against the real, unmoved ref', async () => {
 		const [, c2, c3, c4] = world.c;
 		const head = openPull(1, c2 as string, { 'x.txt': 'x' });
 		const result = await client({ dryRun: true }).moveBaseline({
@@ -325,7 +327,7 @@ describe('git ancestry review round 2', () => {
 		});
 		expect(result.moves[0]).toMatchObject({ moved: true, from: c3, to: c4 });
 		expect(result.refresh).toMatchObject({ written: 1, dryRun: true });
-		expect(world.github.tags.get('pr-baseline')?.peeled).toBe(c3);
+		expect(world.github.baselineAt('pr-baseline')).toBe(c3);
 		expect(world.github.latestStatus(head, 'PR baseline')).toBeNull();
 	});
 
@@ -347,11 +349,11 @@ describe('git ancestry review round 2', () => {
 		expect(world.github.requests(new RegExp(`/statuses/${shared}`), 'POST')).toHaveLength(1);
 	});
 
-	it('ignores a stale local tag when the API and the remote agree on a newer one', async () => {
+	it('ignores a stale local baseline ref when the API and the remote agree on a newer one', async () => {
 		const [, c2, , c4] = world.c;
 		world.fixture.git(world.fixture.cloneDir, ['tag', '--force', 'pr-baseline', c2 as string]);
-		world.fixture.tag('pr-baseline', c4 as string);
-		world.github.tag('pr-baseline', c4 as string);
+		world.fixture.baseline('pr-baseline', c4 as string);
+		world.github.baseline('pr-baseline', c4 as string);
 		const head = openPull(1, c2 as string, { 'x.txt': 'x' });
 		const result = await client().refreshPrStatus({ sha: head, report: true });
 		expect(result.baselines[0]?.sha).toBe(c4);
@@ -362,7 +364,7 @@ describe('git ancestry review round 2', () => {
 		const [, c2] = world.c;
 		const head = openPull(1, c2 as string, { 'docs/odd\nname.md': 'n' });
 		const result = await client({
-			baselines: [{ tag: 'pr-baseline', scope: ['docs/'] }],
+			baselines: [{ name: 'pr-baseline', scope: ['docs/'] }],
 		}).refreshPrStatus({
 			sha: head,
 		});
@@ -447,11 +449,11 @@ describe('git ancestry review round 3', () => {
 		void old;
 		const result = await client({
 			baselines: [
-				{ tag: 'pr-baseline', scope: ['packages/a/'] },
-				{ tag: 'docs', scope: ['docs/'] },
+				{ name: 'pr-baseline', scope: ['packages/a/'] },
+				{ name: 'docs', scope: ['docs/'] },
 			],
 		}).report();
-		expect(result.baselines.map((baseline) => [baseline.tag, baseline.bound])).toEqual([
+		expect(result.baselines.map((baseline) => [baseline.name, baseline.bound])).toEqual([
 			['pr-baseline', 0],
 			['docs', 1],
 		]);
@@ -467,7 +469,7 @@ describe('git ancestry review round 3', () => {
 		world.github.commit(orphan, []);
 		world.github.pull({ number: 1, headSha: orphan });
 		const result = await client({
-			baselines: [{ tag: 'pr-baseline', scope: ['packages/a/'] }],
+			baselines: [{ name: 'pr-baseline', scope: ['packages/a/'] }],
 		}).refreshPrStatuses();
 		expect(result.entries[0]?.verdict).toMatchObject({ applicable: ['pr-baseline'], kind: 'fail' });
 		expect(world.warnings.join('\n')).toContain('indeterminate');
@@ -498,17 +500,17 @@ describe('git ancestry review round 3', () => {
 });
 
 describe('git ancestry review round 4', () => {
-	it('fails offline on a local tag that is not a commit instead of passing it as absent', async () => {
+	it('fails offline on a local baseline ref that is not a commit instead of passing it as absent', async () => {
 		const [, c2] = world.c;
 		// A tag pointing at a tree, pushed from the work tree; the treeless clone gets the ref but not the object.
 		const tree = world.fixture.git(world.fixture.workDir, ['rev-parse', `${c2}^{tree}`]).trim();
-		world.fixture.tag('pr-baseline', tree);
+		world.fixture.baseline('pr-baseline', tree);
 		world.fixture.git(world.fixture.cloneDir, [
 			'fetch',
 			'--quiet',
 			'--filter=tree:0',
 			'origin',
-			'+refs/tags/pr-baseline:refs/tags/pr-baseline',
+			'+refs/baselines/pr-baseline:refs/baselines/pr-baseline',
 		]);
 		const offline = createClient({
 			repo: 'acme/widgets',
@@ -530,7 +532,7 @@ describe('git ancestry review round 5', () => {
 			repo: 'acme/widgets',
 			offline: true,
 			base: 'main',
-			baselines: [{ tag: 'absent' }],
+			baselines: [{ name: 'absent' }],
 			gitDir: world.fixture.cloneDir,
 			env: {},
 			logger: { info() {}, warn() {} },
@@ -777,7 +779,7 @@ describe('git ancestry review round 12', () => {
 		openPull(1, c2 as string, { 'packages/a/x.ts': 'x' });
 		world.fixture.deletePull(1);
 		const result = await client({
-			baselines: [{ tag: 'pr-baseline' }, { tag: 'pkg-a', scope: ['packages/a/'] }],
+			baselines: [{ name: 'pr-baseline' }, { name: 'pkg-a', scope: ['packages/a/'] }],
 		}).report();
 		expect(result.baselines.map((baseline) => baseline.bound)).toEqual([1, 1]);
 		expect(result.stale).toBe(1);
@@ -1033,12 +1035,12 @@ describe('git ancestry review round 22', () => {
 });
 
 describe('git ancestry review round 23', () => {
-	it('refuses, without falling back, a remote tag that no longer peels to a commit', async () => {
+	it('refuses, without falling back, a remote baseline ref that no longer peels to a commit', async () => {
 		const [, c2] = world.c;
 		openPull(1, c2 as string, { 'x.txt': 'x' });
 		// The API still reports the commit; on the remote the tag now points at a tree.
 		const tree = world.fixture.git(world.fixture.workDir, ['rev-parse', `${c2}^{tree}`]).trim();
-		world.fixture.tag('pr-baseline', tree);
+		world.fixture.baseline('pr-baseline', tree);
 		await expect(client().refreshPrStatuses()).rejects.toThrow(
 			/differs between the API and the remote/,
 		);
@@ -1067,20 +1069,21 @@ describe('git ancestry review round 24', () => {
 
 	it('keeps working when a baseline is renamed from foo to foo/bar between runs', async () => {
 		const [, c2, c3] = world.c;
-		world.fixture.tag('foo', c3 as string);
-		world.github.tag('foo', c3 as string);
+		world.fixture.baseline('foo', c3 as string);
+		world.github.baseline('foo', c3 as string);
 		const head = openPull(1, c2 as string, { 'x.txt': 'x' });
 		expect(
-			(await client({ baselines: [{ tag: 'foo' }] }).refreshPrStatus({ sha: head })).verdict
+			(await client({ baselines: [{ name: 'foo' }] }).refreshPrStatus({ sha: head })).verdict
 				.missing,
 		).toEqual(['foo']);
-		// Git itself cannot hold `foo` and `foo/bar` at once, so the rename deletes the old tag first.
-		world.fixture.git(world.fixture.workDir, ['tag', '-d', 'foo']);
-		world.fixture.git(world.fixture.workDir, ['push', '--quiet', 'origin', ':refs/tags/foo']);
-		world.fixture.tag('foo/bar', c3 as string);
-		world.github.tags.delete('foo');
-		world.github.tag('foo/bar', c3 as string);
-		const result = await client({ baselines: [{ tag: 'foo/bar' }] }).refreshPrStatus({ sha: head });
+		// Git itself cannot hold `foo` and `foo/bar` at once, so the rename deletes the old ref first.
+		world.fixture.git(world.fixture.workDir, ['push', '--quiet', 'origin', ':refs/baselines/foo']);
+		world.fixture.baseline('foo/bar', c3 as string);
+		world.github.refs.delete('refs/baselines/foo');
+		world.github.baseline('foo/bar', c3 as string);
+		const result = await client({ baselines: [{ name: 'foo/bar' }] }).refreshPrStatus({
+			sha: head,
+		});
 		expect(result.ancestry).toBe('git');
 		expect(result.verdict.missing).toEqual(['foo/bar']);
 	});

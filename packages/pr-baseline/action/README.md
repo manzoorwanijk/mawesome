@@ -4,7 +4,7 @@
 
 **This repository is generated.** It mirrors the `action/` directory of [`@mawesome/pr-baseline`](https://github.com/manzoorwanijk/mawesome/tree/main/packages/pr-baseline) with the bundled `dist/` and a `release.json` naming the release added; open issues and pull requests there. Full documentation lives in the package's [docs](https://github.com/manzoorwanijk/mawesome/tree/main/packages/pr-baseline/docs).
 
-A repository-wide change lands on the base branch and every open PR branched before it keeps passing CI on stale code. This action marks that commit with a lightweight tag, the **baseline**, and stamps every open PR with a commit status: `success` when the PR's head contains the baseline, `failure` when it does not. Require the status in the base branch's ruleset and stale PRs must merge or rebase before they can land. The baseline moves forward only by intent: a workflow dispatch, a merged PR carrying a label, or a push touching marker paths.
+A repository-wide change lands on the base branch and every open PR branched before it keeps passing CI on stale code. This action marks that commit with a git ref under `refs/baselines/`, the **baseline**, and stamps every open PR with a commit status: `success` when the PR's head contains the baseline, `failure` when it does not. Require the status in the base branch's ruleset and stale PRs must merge or rebase before they can land. The baseline moves forward only by intent: a workflow dispatch, a merged PR carrying a label, or a push touching marker paths.
 
 ## Usage
 
@@ -34,11 +34,11 @@ on:
       baseline:
         type: string
         default: ''
-        description: Tag of one baseline to move; blank moves all
+        description: Name of one baseline to move; blank moves all
 permissions: {}
 env:
   # One source of truth for both jobs. Omit to use the single default baseline.
-  PR_BASELINES: '[{"tag":"pr-baseline","label":"Require PR update","markers":[".nvmrc"]}]'
+  PR_BASELINES: '[{"name":"pr-baseline","label":"Require PR update","markers":[".nvmrc"]}]'
 jobs:
   refresh-pr-status:
     name: Refresh the PR status against the baseline
@@ -125,30 +125,30 @@ Explicit modes (`refresh-pr-status`, `refresh-pr-statuses`, `move-baseline`, `re
 
 <!-- inputs:start -->
 
-| Input                            | Description                                                                                                    | Default               |
-| -------------------------------- | -------------------------------------------------------------------------------------------------------------- | --------------------- |
-| `token`                          | Token used for every read and write; defaults to the workflow's own token.                                     | `${{ github.token }}` |
-| `mode`                           | What to do: auto (from the event), refresh-pr-status, refresh-pr-statuses, move-baseline or report.            | `auto`                |
-| `sha`                            | Commit to evaluate in refresh-pr-status mode; auto takes it from the event.                                    |                       |
-| `base`                           | Base branch; defaults to the repository's default branch.                                                      |                       |
-| `baselines`                      | JSON array of `{ tag, label?, scope?, markers? }`, inline only; cannot be combined with tag, label or markers. |                       |
-| `tag`                            | Shorthand for a single baseline's tag (default `pr-baseline`).                                                 |                       |
-| `label`                          | Shorthand for a single baseline's label (default `Require PR update`).                                         |                       |
-| `markers`                        | Shorthand for a single baseline's auto-move patterns, one gitignore pattern per line.                          |                       |
-| `baseline`                       | In move-baseline mode, move only the baseline with this tag; blank moves all.                                  |                       |
-| `status-context`                 | Status context (default `PR baseline`).                                                                        |                       |
-| `description-pass`               | Description of a passing status; `{base}` and `{tags}` are replaced.                                           |                       |
-| `description-fail`               | Description of a failing status; `{base}` and `{tags}` are replaced.                                           |                       |
-| `description-not-applicable`     | Description written for PRs against other branches when other-bases is pass.                                   |                       |
-| `target-url`                     | Link attached to the status.                                                                                   |                       |
-| `other-bases`                    | PRs against other branches: skip (default) or pass.                                                            |                       |
-| `creator`                        | Login the token writes statuses as; required for a GitHub App token.                                           |                       |
-| `ancestry`                       | Ancestry source: auto (default), git or api.                                                                   |                       |
-| `max-writes-per-run`             | Stop a refresh after this many status writes; a positive integer (default 450).                                |                       |
-| `max-writes-per-minute`          | Pace status writes; a positive integer per minute (default 60).                                                |                       |
-| `dry-run`                        | Log every intended write and tag move instead of making it.                                                    | `false`               |
-| `force`                          | In move-baseline mode, move by intent alone and seed absent tags.                                              | `false`               |
-| `refresh-pr-statuses-after-move` | In move-baseline mode, refresh every open PR's status afterwards (default true).                               | `true`                |
+| Input                            | Description                                                                                                      | Default               |
+| -------------------------------- | ---------------------------------------------------------------------------------------------------------------- | --------------------- |
+| `token`                          | Token used for every read and write; defaults to the workflow's own token.                                       | `${{ github.token }}` |
+| `mode`                           | What to do: auto (from the event), refresh-pr-status, refresh-pr-statuses, move-baseline or report.              | `auto`                |
+| `sha`                            | Commit to evaluate in refresh-pr-status mode; auto takes it from the event.                                      |                       |
+| `base`                           | Base branch; defaults to the repository's default branch.                                                        |                       |
+| `baselines`                      | JSON array of `{ name, label?, scope?, markers? }`, inline only; cannot be combined with name, label or markers. |                       |
+| `name`                           | Shorthand for a single baseline's name (default `pr-baseline`).                                                  |                       |
+| `label`                          | Shorthand for a single baseline's label (default `Require PR update`).                                           |                       |
+| `markers`                        | Shorthand for a single baseline's auto-move patterns, one gitignore pattern per line.                            |                       |
+| `baseline`                       | In move-baseline mode, move only the baseline with this name; blank moves all.                                   |                       |
+| `status-context`                 | Status context (default `PR baseline`).                                                                          |                       |
+| `description-pass`               | Description of a passing status; `{base}` and `{baselines}` are replaced.                                        |                       |
+| `description-fail`               | Description of a failing status; `{base}` and `{baselines}` are replaced.                                        |                       |
+| `description-not-applicable`     | Description written for PRs against other branches when other-bases is pass.                                     |                       |
+| `target-url`                     | Link attached to the status.                                                                                     |                       |
+| `other-bases`                    | PRs against other branches: skip (default) or pass.                                                              |                       |
+| `creator`                        | Login the token writes statuses as; required for a GitHub App token.                                             |                       |
+| `ancestry`                       | Ancestry source: auto (default), git or api.                                                                     |                       |
+| `max-writes-per-run`             | Stop a refresh after this many status writes; a positive integer (default 450).                                  |                       |
+| `max-writes-per-minute`          | Pace status writes; a positive integer per minute (default 60).                                                  |                       |
+| `dry-run`                        | Log every intended write and baseline move instead of making it.                                                 | `false`               |
+| `force`                          | In move-baseline mode, move by intent alone and seed absent baselines.                                           | `false`               |
+| `refresh-pr-statuses-after-move` | In move-baseline mode, refresh every open PR's status afterwards (default true).                                 | `true`                |
 
 <!-- inputs:end -->
 
@@ -163,8 +163,8 @@ Explicit modes (`refresh-pr-status`, `refresh-pr-statuses`, `move-baseline`, `re
 | `state`        | Status state of the checked commit (`success` or `failure`), or of the run (`success`, `failure`, `skipped` or `error`). |
 | `description`  | Status description of the checked commit.                                                                                |
 | `base`         | The base branch the run served.                                                                                          |
-| `baselines`    | JSON array of `{ tag, sha }` for every configured baseline.                                                              |
-| `missing`      | JSON array of baseline tags the evaluated commit lacks (refresh-pr-status mode).                                         |
+| `baselines`    | JSON array of `{ name, sha }` for every configured baseline.                                                             |
+| `missing`      | JSON array of baseline names the evaluated commit lacks (refresh-pr-status mode).                                        |
 | `written`      | Statuses written.                                                                                                        |
 | `skipped`      | PRs whose status was already current.                                                                                    |
 | `closed`       | PRs that closed while the refresh ran.                                                                                   |
@@ -185,7 +185,7 @@ Every run, including a skip or an error, sets every output and writes a step sum
 | `refresh-pr-status`   | read       | write      |                 |
 | `refresh-pr-statuses` | write      | write      | read            |
 
-Require the status context (`PR baseline` by default) in the base branch's ruleset only, with the source matching the token, and protect the baseline tags with a tag ruleset whose bypass list names the actor that moves them: an App installed on the repository, or a team or role holding a PAT's owner. GitHub does not accept the GitHub Actions app there, so `GITHUB_TOKEN` cannot move a protected tag. The package docs cover [permissions](https://github.com/manzoorwanijk/mawesome/blob/main/packages/pr-baseline/docs/permissions.md), [rate limits](https://github.com/manzoorwanijk/mawesome/blob/main/packages/pr-baseline/docs/rate-limits.md), [edge cases](https://github.com/manzoorwanijk/mawesome/blob/main/packages/pr-baseline/docs/edge-cases.md) and the [runbook](https://github.com/manzoorwanijk/mawesome/blob/main/packages/pr-baseline/docs/runbook.md).
+Require the status context (`PR baseline` by default) in the base branch's ruleset only, with the source matching the token. The baseline refs live under `refs/baselines/`, which no clone fetches and no ruleset covers: whoever has `contents: write` can move them, and the tool only ever fast-forwards them. The package docs cover [permissions](https://github.com/manzoorwanijk/mawesome/blob/main/packages/pr-baseline/docs/permissions.md), [rate limits](https://github.com/manzoorwanijk/mawesome/blob/main/packages/pr-baseline/docs/rate-limits.md), [edge cases](https://github.com/manzoorwanijk/mawesome/blob/main/packages/pr-baseline/docs/edge-cases.md) and the [runbook](https://github.com/manzoorwanijk/mawesome/blob/main/packages/pr-baseline/docs/runbook.md).
 
 ## Support
 

@@ -68,7 +68,8 @@ export class FakeGitHub {
 	readonly defaultBranch: string;
 	readonly commits: Map<string, string[]> = new Map();
 	readonly branches: Map<string, string> = new Map();
-	readonly tags: Map<string, { type: 'commit' | 'tag'; sha: string; peeled: string }> = new Map();
+	/** Every ref outside `refs/heads/`, by full name, as GitHub's refs API serves it. */
+	readonly refs: Map<string, { type: 'commit' | 'tag'; sha: string; peeled: string }> = new Map();
 	readonly pulls: Map<number, FakePull> = new Map();
 	readonly statuses: Map<string, FakeStatus[]> = new Map();
 	/** Changed files for `from...to`; unknown pairs yield an empty list. */
@@ -78,7 +79,7 @@ export class FakeGitHub {
 	user: string | null;
 	creator: string;
 	/** Mirrors ref writes made through the API into a real remote, when a test pairs the fake with one. */
-	onTagWrite: ((name: string, sha: string) => void) | undefined;
+	onRefWrite: ((ref: string, sha: string) => void) | undefined;
 	rateLimitRemaining: number;
 	readonly restPrefix: string;
 	readonly graphqlPath: string;
@@ -120,12 +121,29 @@ export class FakeGitHub {
 	}
 
 	tag(name: string, target: string, annotated = false): void {
+		this.setRef(`refs/tags/${name}`, target, annotated);
+	}
+
+	/** Points the baseline ref at a commit, or at a tag object peeling to it. */
+	baseline(name: string, target: string, annotated = false): void {
+		this.setRef(`refs/baselines/${name}`, target, annotated);
+	}
+
+	baselineAt(name: string): string | undefined {
+		return this.refs.get(`refs/baselines/${name}`)?.peeled;
+	}
+
+	hasBaseline(name: string): boolean {
+		return this.refs.has(`refs/baselines/${name}`);
+	}
+
+	private setRef(ref: string, target: string, annotated: boolean): void {
 		if (annotated) {
 			const objectSha = `t${target.slice(1)}`;
-			this.tags.set(name, { type: 'tag', sha: objectSha, peeled: target });
+			this.refs.set(ref, { type: 'tag', sha: objectSha, peeled: target });
 			return;
 		}
-		this.tags.set(name, { type: 'commit', sha: target, peeled: target });
+		this.refs.set(ref, { type: 'commit', sha: target, peeled: target });
 	}
 
 	pull(input: Partial<FakePull> & { number: number; headSha: string }): FakePull {
@@ -163,6 +181,22 @@ export class FakeGitHub {
 			}
 		}
 		return null;
+	}
+
+	/** The commit a full ref points at, branches included; undefined when absent. */
+	private refAt(ref: string): string | undefined {
+		return ref.startsWith('refs/heads/')
+			? this.branches.get(ref.slice('refs/heads/'.length))
+			: this.refs.get(ref)?.peeled;
+	}
+
+	private writeRef(ref: string, target: string): void {
+		if (ref.startsWith('refs/heads/')) {
+			this.branches.set(ref.slice('refs/heads/'.length), target);
+		} else {
+			this.setRef(ref, target, false);
+		}
+		this.onRefWrite?.(ref, target);
 	}
 
 	isAncestor(ancestor: string, descendant: string): boolean {
@@ -261,51 +295,50 @@ export class FakeGitHub {
 		if (rest === '' && method === 'GET') {
 			return this.respond(200, { default_branch: this.defaultBranch });
 		}
-		if ((match = rest.match(/^\/git\/ref\/tags\/(.+)$/)) && method === 'GET') {
-			const tag = this.tags.get(decodeURIComponent(match[1] as string));
-			return tag === undefined
+		if ((match = rest.match(/^\/git\/ref\/(.+)$/)) && method === 'GET') {
+			const ref = `refs/${decodeURIComponent(match[1] as string)}`;
+			const entry = this.refs.get(ref);
+			return entry === undefined
 				? this.respond(404, { message: 'Not Found' })
-				: this.respond(200, { object: { type: tag.type, sha: tag.sha } });
+				: this.respond(200, { ref, object: { type: entry.type, sha: entry.sha } });
 		}
 		if ((match = rest.match(/^\/git\/tags\/(.+)$/)) && method === 'GET') {
 			const nested = this.nestedTags.get(match[1] as string);
 			if (nested !== undefined) {
 				return this.respond(200, { object: nested });
 			}
-			const tag = [...this.tags.values()].find((entry) => entry.sha === match?.[1]);
-			return tag === undefined
+			const entry = [...this.refs.values()].find((candidate) => candidate.sha === match?.[1]);
+			return entry === undefined
 				? this.respond(404, { message: 'Not Found' })
-				: this.respond(200, { object: { type: 'commit', sha: tag.peeled } });
+				: this.respond(200, { object: { type: 'commit', sha: entry.peeled } });
 		}
 		if (rest === '/git/refs' && method === 'POST') {
 			const { ref, sha: target } = body as { ref: string; sha: string };
-			const name = ref.replace(/^refs\/tags\//, '');
-			if (this.tags.has(name)) {
+			if (this.refs.has(ref) || this.branches.has(ref.replace(/^refs\/heads\//, ''))) {
 				return this.respond(422, { message: 'Reference already exists' });
 			}
-			this.tag(name, target);
-			this.onTagWrite?.(name, target);
+			this.writeRef(ref, target);
 			return this.respond(201, { ref, object: { type: 'commit', sha: target } });
 		}
-		if ((match = rest.match(/^\/git\/refs\/tags\/(.+)$/)) && method === 'PATCH') {
-			const name = decodeURIComponent(match[1] as string);
-			const tag = this.tags.get(name);
+		if ((match = rest.match(/^\/git\/refs\/(.+)$/)) && method === 'PATCH') {
+			const ref = `refs/${decodeURIComponent(match[1] as string)}`;
+			const current = this.refAt(ref);
 			const { sha: target, force } = body as { sha: string; force: boolean };
-			if (tag === undefined) {
+			if (current === undefined) {
 				return this.respond(422, { message: 'Reference does not exist' });
 			}
-			if (!force && !this.isAncestor(tag.peeled, target)) {
+			// Every namespace is held to a fast-forward here; GitHub does that for branches only, which the move path handles itself.
+			if (!force && !this.isAncestor(current, target)) {
 				return this.respond(422, { message: 'Update is not a fast forward' });
 			}
-			this.tag(name, target);
-			this.onTagWrite?.(name, target);
-			return this.respond(200, { object: { type: 'commit', sha: target } });
+			this.writeRef(ref, target);
+			return this.respond(200, { ref, object: { type: 'commit', sha: target } });
 		}
 		if ((match = rest.match(/^\/commits\/(.+)$/)) && method === 'GET') {
 			const ref = decodeURIComponent(match[1] as string);
 			const target =
 				this.branches.get(ref) ??
-				this.tags.get(ref)?.peeled ??
+				this.refs.get(`refs/tags/${ref}`)?.peeled ??
 				(this.commits.has(ref) ? ref : undefined);
 			return target === undefined
 				? this.respond(422, { message: `No commit found for SHA: ${ref}` })

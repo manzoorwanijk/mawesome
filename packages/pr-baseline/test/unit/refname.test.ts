@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { isValidTagName } from '../../src/refname.ts';
+import { isValidRefName } from '../../src/refname.ts';
 
-describe('isValidTagName', () => {
+describe('isValidRefName', () => {
 	it.each(['pr-baseline', 'baseline/packages/a', 'v1.2.3', 'a.b-c_d', 'UPPER', '@'])(
 		'accepts %s',
 		(name) => {
-			expect(isValidTagName(name)).toBe(true);
+			expect(isValidRefName(name)).toBe(true);
 		},
 	);
 
@@ -32,6 +32,6 @@ describe('isValidTagName', () => {
 		'ctrl',
 		'del',
 	])('rejects %j', (name) => {
-		expect(isValidTagName(name)).toBe(false);
+		expect(isValidRefName(name)).toBe(false);
 	});
 });

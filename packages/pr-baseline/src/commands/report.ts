@@ -2,7 +2,7 @@ import { applicableBaselines, evaluateCommit } from '../evaluate.ts';
 import { ConfigError } from '../config.ts';
 import type { OpenPull } from '../github/pulls.ts';
 import type { Ancestry, ResolvedBaseline } from '../types.ts';
-import { tagSnapshot } from '../util.ts';
+import { refSnapshot } from '../util.ts';
 import { statusMatches } from '../verdict.ts';
 import { listOpenPulls } from '../github/pulls.ts';
 import type { Runtime } from '../runtime.ts';
@@ -24,16 +24,16 @@ export async function runReport(runtime: Runtime): Promise<ReportResult> {
 	const prepared = await ancestry.prepare?.({
 		shas: [head],
 		pulls: pulls.map((pull) => pull.number),
-		tags: tagSnapshot(baselines),
+		refs: refSnapshot(baselines),
 	});
 
-	const bound = new Map<string, number>(baselines.map((baseline) => [baseline.tag, 0]));
+	const bound = new Map<string, number>(baselines.map((baseline) => [baseline.name, 0]));
 	for (const pull of pulls) {
 		// The head the adapter fetched is the one that can be judged; without one, every baseline is assumed to bind.
 		const fetched = prepared?.heads.get(pull.number);
 		if (fetched === null) {
 			for (const baseline of baselines) {
-				bound.set(baseline.tag, (bound.get(baseline.tag) ?? 0) + 1);
+				bound.set(baseline.name, (bound.get(baseline.name) ?? 0) + 1);
 			}
 			continue;
 		}
@@ -46,7 +46,7 @@ export async function runReport(runtime: Runtime): Promise<ReportResult> {
 		});
 		for (const baseline of applicable) {
 			if (baseline.applicable) {
-				bound.set(baseline.tag, (bound.get(baseline.tag) ?? 0) + 1);
+				bound.set(baseline.name, (bound.get(baseline.name) ?? 0) + 1);
 			}
 		}
 	}
@@ -56,10 +56,10 @@ export async function runReport(runtime: Runtime): Promise<ReportResult> {
 		report.push({
 			...baseline,
 			onBase: baseline.sha === null ? null : await ancestry.isAncestor(baseline.sha, head),
-			bound: bound.get(baseline.tag) ?? 0,
+			bound: bound.get(baseline.name) ?? 0,
 		});
 	}
-	const offBase = report.filter((baseline) => baseline.onBase === false).map((b) => b.tag);
+	const offBase = report.filter((baseline) => baseline.onBase === false).map((b) => b.name);
 	if (offBase.length > 0) {
 		logger.warn(
 			`Baseline ${offBase.join(', ')} is not on ${base}; refreshes refuse to run until it is fixed.`,

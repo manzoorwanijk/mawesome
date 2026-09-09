@@ -87,7 +87,7 @@ describe('cli', () => {
 			'x',
 			'--baselines',
 			'[{"tag":"a"}]',
-			'--tag',
+			'--name',
 			'b',
 		]);
 		expect(mixed.status).toBe(2);

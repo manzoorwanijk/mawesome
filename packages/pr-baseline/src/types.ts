@@ -2,10 +2,10 @@
  * Public types for @mawesome/pr-baseline.
  */
 
-/** One baseline: a movable tag, optionally bound to a label, a PR path scope and auto-move markers. */
+/** One baseline: a movable ref, optionally bound to a label, a PR path scope and auto-move markers. */
 export interface Baseline {
-	/** Lightweight tag on the base branch that marks the required commit. */
-	tag: string;
+	/** Name under `refs/baselines/` of the ref that marks the required commit on the base branch. */
+	name: string;
 	/** A merged PR carrying this label moves the baseline to its merge commit. */
 	label?: string;
 	/** gitignore-style patterns; when present the baseline binds only PRs whose diff touches them. */
@@ -14,7 +14,7 @@ export interface Baseline {
 	markers?: string[];
 }
 
-/** A baseline with its current commit; `sha` is null when the tag does not exist. */
+/** A baseline with its current commit; `sha` is null when the ref does not exist. */
 export interface ResolvedBaseline extends Baseline {
 	sha: string | null;
 }
@@ -41,9 +41,9 @@ export type VerdictKind = 'pass' | 'fail' | 'not-applicable' | 'misconfigured';
 export interface Verdict {
 	kind: VerdictKind;
 	status: StatusPayload;
-	/** Tags of applicable baselines the commit does not contain. */
+	/** Names of applicable baselines the commit does not contain. */
 	missing: string[];
-	/** Tags of the baselines that bind the commit. */
+	/** Names of the baselines that bind the commit. */
 	applicable: string[];
 }
 
@@ -51,14 +51,14 @@ export type AncestryMode = 'auto' | 'git' | 'api';
 
 export type OtherBases = 'skip' | 'pass';
 
-/** What a command is about to ask, so an adapter can fetch in batches and verify the tags first. */
+/** What a command is about to ask, so an adapter can fetch in batches and verify the baseline refs first. */
 export interface PrepareInput {
 	/** Commits the run will ask about, such as the base head. */
 	shas: string[];
 	/** Open PRs whose heads the run will evaluate. */
 	pulls: number[];
-	/** Every baseline tag with the SHA the API reported, null when absent; an adapter with its own view must agree. */
-	tags: Array<{ tag: string; sha: string | null }>;
+	/** Every baseline with the SHA the API reported, null when absent; an adapter with its own view must agree. */
+	refs: Array<{ name: string; sha: string | null }>;
 }
 
 export interface PrepareResult {
@@ -114,7 +114,7 @@ export interface ClientOptions {
 	serverUrl?: string;
 	/** Base branch; defaults to the repository's default branch. */
 	base?: string;
-	/** Baselines; defaults to one unscoped baseline with the default tag and label. */
+	/** Baselines; defaults to one unscoped baseline with the default name and label. */
 	baselines?: Baseline[];
 	/** Status context; defaults to `PR baseline`. */
 	context?: string;
@@ -127,7 +127,7 @@ export interface ClientOptions {
 	creator?: string;
 	/** Set when the token is provably the workflow's own `github.token`. */
 	tokenIsWorkflowToken?: boolean;
-	/** Trust the local clone's tags when no token can confirm them. */
+	/** Trust the baseline refs in the local clone when no token can confirm them. */
 	offline?: boolean;
 	maxWritesPerRun?: number;
 	maxWritesPerMinute?: number;
@@ -213,11 +213,11 @@ export interface RefreshPrStatusesResult {
 }
 
 export interface MoveBaselineOptions {
-	/** Move by intent alone, seeding absent tags; never a ref force. */
+	/** Move by intent alone, seeding absent baselines; never a ref force. */
 	force?: boolean;
 	/** Target commit; defaults to base HEAD. */
 	to?: string;
-	/** Restrict to one baseline by tag. */
+	/** Restrict to one baseline by name. */
 	baseline?: string;
 	/** Refresh every open PR's status afterwards, also when nothing moved. */
 	refreshPrStatuses?: boolean;
@@ -226,7 +226,7 @@ export interface MoveBaselineOptions {
 export type MoveReason = 'forced' | 'label' | 'markers';
 
 export interface MoveEntry {
-	tag: string;
+	name: string;
 	from: string | null;
 	to: string;
 	moved: boolean;
@@ -246,7 +246,7 @@ export interface MoveBaselineResult {
 }
 
 export interface ReportBaseline extends ResolvedBaseline {
-	/** Whether the tag's commit is an ancestor of base HEAD; null when the tag is absent. */
+	/** Whether the baseline's commit is an ancestor of base HEAD; null when the ref is absent. */
 	onBase: boolean | null;
 	/** Open PRs the baseline binds. */
 	bound: number;
@@ -256,7 +256,7 @@ export interface ReportResult {
 	base: string;
 	head: string;
 	baselines: ReportBaseline[];
-	/** Tags whose commit is not on the base branch; the CLI exits 2 when non-empty. */
+	/** Baselines whose commit is not on the base branch; the CLI exits 2 when non-empty. */
 	offBase: string[];
 	openPulls: number;
 	/** PRs whose status is not current; only computed with the git adapter. */

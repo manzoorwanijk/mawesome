@@ -1,14 +1,19 @@
 import { repoParts, type ApiClient } from './api.ts';
 import { GitHubError, isGitHubError } from './errors.ts';
+import { baselineRef, baselineRefPath } from '../refname.ts';
 
-/** Reads the commit a tag points at, peeling annotated tags; null when the tag does not exist. */
-export async function readTag(api: ApiClient, repo: string, tag: string): Promise<string | null> {
+/** Reads the commit a baseline ref points at, peeling tag objects; null when the ref does not exist. */
+export async function readBaselineRef(
+	api: ApiClient,
+	repo: string,
+	name: string,
+): Promise<string | null> {
 	const parts = repoParts(repo);
 	let object: { type: string; sha: string };
 	try {
 		const ref = await api.request('GET /repos/{owner}/{repo}/git/ref/{ref}', {
 			...parts,
-			ref: `tags/${tag}`,
+			ref: baselineRefPath(name),
 		});
 		object = ref.data.object;
 	} catch (error) {
@@ -17,14 +22,14 @@ export async function readTag(api: ApiClient, repo: string, tag: string): Promis
 		}
 		throw error;
 	}
-	// A tag may point at another tag; peel until a commit, remembering each object so a cycle cannot hang the run.
+	// A ref may point at a tag object; peel until a commit, remembering each object so a cycle cannot hang the run.
 	const seen = new Set<string>();
 	while (object.type === 'tag') {
 		if (seen.has(object.sha)) {
 			throw new GitHubError(
 				'other',
 				`GET /repos/${repo}/git/tags/${object.sha}`,
-				`Tag ${tag} points at a cycle of tag objects.`,
+				`Baseline ${name} points at a cycle of tag objects.`,
 			);
 		}
 		seen.add(object.sha);
@@ -37,37 +42,40 @@ export async function readTag(api: ApiClient, repo: string, tag: string): Promis
 	if (object.type !== 'commit') {
 		throw new GitHubError(
 			'other',
-			`GET /repos/${repo}/git/ref/tags/${tag}`,
-			`Tag ${tag} points at a ${object.type}, not a commit.`,
+			`GET /repos/${repo}/git/ref/${baselineRefPath(name)}`,
+			`Baseline ${name} points at a ${object.type}, not a commit.`,
 		);
 	}
 	return object.sha;
 }
 
-/** Creates a lightweight tag; a 422 means the ref already exists. */
-export async function createTag(
+/** Creates the baseline ref; a 422 means it already exists. */
+export async function createBaselineRef(
 	api: ApiClient,
 	repo: string,
-	tag: string,
+	name: string,
 	sha: string,
 ): Promise<void> {
 	await api.request('POST /repos/{owner}/{repo}/git/refs', {
 		...repoParts(repo),
-		ref: `refs/tags/${tag}`,
+		ref: baselineRef(name),
 		sha,
 	});
 }
 
-/** Moves a tag with `force: false`, so the server rejects anything but a fast-forward. */
-export async function fastForwardTag(
+/**
+ * Moves the baseline ref with `force: false`.
+ * GitHub enforces a fast-forward only for branches, so the caller must check ancestry first and re-read afterwards.
+ */
+export async function updateBaselineRef(
 	api: ApiClient,
 	repo: string,
-	tag: string,
+	name: string,
 	sha: string,
 ): Promise<void> {
 	await api.request('PATCH /repos/{owner}/{repo}/git/refs/{ref}', {
 		...repoParts(repo),
-		ref: `tags/${tag}`,
+		ref: baselineRefPath(name),
 		sha,
 		force: false,
 	});

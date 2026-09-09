@@ -19,11 +19,11 @@ on:
       baseline:
         type: string
         default: ''
-        description: Tag of one baseline to move; blank moves all
+        description: Name of one baseline to move; blank moves all
 permissions: {}
 env:
   # One source of truth for both jobs. Omit to use the single default baseline.
-  PR_BASELINES: '[{"tag":"pr-baseline","label":"Require PR update","markers":[".nvmrc"]}]'
+  PR_BASELINES: '[{"name":"pr-baseline","label":"Require PR update","markers":[".nvmrc"]}]'
 jobs:
   refresh-pr-status:
     name: Refresh the PR status against the baseline

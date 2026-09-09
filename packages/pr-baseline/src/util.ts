@@ -15,9 +15,9 @@ export class BaselineError extends Error {
 	override name = 'BaselineError';
 }
 
-/** Every baseline as `{ tag, sha }`, absent tags included, for adapters that verify them against their own view. */
-export function tagSnapshot(
-	baselines: ReadonlyArray<{ tag: string; sha: string | null }>,
-): Array<{ tag: string; sha: string | null }> {
-	return baselines.map((baseline) => ({ tag: baseline.tag, sha: baseline.sha }));
+/** Every baseline as `{ name, sha }`, absent ones included, for adapters that verify them against their own view. */
+export function refSnapshot(
+	baselines: ReadonlyArray<{ name: string; sha: string | null }>,
+): Array<{ name: string; sha: string | null }> {
+	return baselines.map((baseline) => ({ name: baseline.name, sha: baseline.sha }));
 }
