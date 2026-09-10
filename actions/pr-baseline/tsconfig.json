@@ -5,8 +5,8 @@
 		"allowImportingTsExtensions": true,
 		"types": ["node"],
 		"paths": {
-			"@mawesome/pr-baseline": ["./src/index.ts"]
+			"@mawesome/pr-baseline": ["../../packages/pr-baseline/src/index.ts"]
 		}
 	},
-	"include": ["src", "test"]
+	"include": ["src", "test", "scripts"]
 }

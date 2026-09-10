@@ -3,7 +3,7 @@ import { GitError } from '../../src/git/repo.ts';
 import { GitHubError } from '../../src/github/errors.ts';
 import type { Ancestry } from '../../src/index.ts';
 import { harness, sha } from '../helpers/client.ts';
-import type { FakeGitHub } from '../helpers/fake-github.ts';
+import type { FakeGitHub } from '@mawesome/github-fake';
 
 const PASS = 'Contains the required main changes.';
 

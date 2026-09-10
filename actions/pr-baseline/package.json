@@ -1,0 +1,37 @@
+{
+	"name": "@mawesome/pr-baseline-action",
+	"version": "0.0.0",
+	"private": true,
+	"description": "GitHub Action that keeps open pull requests current with a movable baseline on the base branch",
+	"license": "MIT",
+	"author": "Manzoor Ahmad Wani",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/mawesomedev/mawesome.git",
+		"directory": "actions/pr-baseline"
+	},
+	"type": "module",
+	"scripts": {
+		"build": "tsdown",
+		"typecheck": "tsgo",
+		"test": "vitest run",
+		"readme": "node scripts/generate-readme.ts",
+		"lint:workflow": "node scripts/lint-workflow-template.ts"
+	},
+	"dependencies": {
+		"@actions/core": "^3.0.1",
+		"@mawesome/pr-baseline": "workspace:*"
+	},
+	"devDependencies": {
+		"@mawesome/github-fake": "workspace:*",
+		"@mawesome/tsconfig": "workspace:*",
+		"@types/node": "^24.13.2",
+		"@typescript/native-preview": "7.0.0-dev.20260527.2",
+		"rollup-plugin-license": "^3.7.1",
+		"tsdown": "^0.22.2",
+		"vitest": "^4.1.7"
+	},
+	"mirror": {
+		"repo": "mawesomedev/pr-baseline-action"
+	}
+}

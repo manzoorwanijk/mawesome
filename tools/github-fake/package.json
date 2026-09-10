@@ -1,0 +1,25 @@
+{
+	"name": "@mawesome/github-fake",
+	"version": "0.0.0",
+	"private": true,
+	"description": "In-memory GitHub double shared by the pr-baseline tests and the action tests",
+	"type": "module",
+	"exports": {
+		".": {
+			"types": "./src/fake-github.ts",
+			"default": "./src/fake-github.ts"
+		},
+		"./server": {
+			"types": "./src/server.ts",
+			"default": "./src/server.ts"
+		}
+	},
+	"scripts": {
+		"typecheck": "tsgo"
+	},
+	"devDependencies": {
+		"@mawesome/tsconfig": "workspace:*",
+		"@types/node": "^24.13.2",
+		"@typescript/native-preview": "7.0.0-dev.20260527.2"
+	}
+}

@@ -49,7 +49,7 @@ pr-baseline refresh-pr-statuses --baselines '[
 
 ## GitHub Action
 
-The same tool runs as a GitHub Action, published to [`mawesomedev/pr-baseline-action`](https://github.com/mawesomedev/pr-baseline-action) from this package's [`action/`](./action/) directory on every release. One workflow with two jobs covers PR checks, labeled merges, marker pushes, an hourly recovery refresh and manual dispatches:
+The same tool runs as a GitHub Action, published to [`mawesomedev/pr-baseline-action`](https://github.com/mawesomedev/pr-baseline-action) from the [`actions/pr-baseline`](https://github.com/mawesomedev/mawesome/tree/main/actions/pr-baseline) workspace on every release. One workflow with two jobs covers PR checks, labeled merges, marker pushes, an hourly recovery refresh and manual dispatches:
 
 ```yaml
 - uses: mawesomedev/pr-baseline-action@<sha> # vX.Y.Z
@@ -57,7 +57,7 @@ The same tool runs as a GitHub Action, published to [`mawesomedev/pr-baseline-ac
     base: main
 ```
 
-Copy the full workflow from the action's [README](./action/README.md); [docs/action.md](./docs/action.md) explains how events map to commands, the permissions each job needs and how releases reach the mirror.
+Copy the full workflow from the action's [README](https://github.com/mawesomedev/mawesome/tree/main/actions/pr-baseline#usage); [docs/action.md](./docs/action.md) explains how events map to commands, the permissions each job needs and how releases reach the mirror.
 
 ## Programmatic API
 

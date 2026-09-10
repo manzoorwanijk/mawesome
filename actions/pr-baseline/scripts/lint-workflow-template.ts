@@ -9,7 +9,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const template = join(here, '..', 'action', 'workflow-template.yml');
+const template = join(here, '..', 'workflow-template.yml');
 
 /** actionlint's schema lags behind GitHub's `concurrency.queue`, which is generally available since May 2026. */
 const ACTIONLINT_IGNORES = ['unexpected key "queue" for "concurrency" section'];

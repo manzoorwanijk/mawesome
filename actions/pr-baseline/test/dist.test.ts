@@ -3,11 +3,11 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { FakeGitHub, sha } from '../helpers/fake-github.ts';
-import { serve } from '../helpers/server.ts';
+import { FakeGitHub, sha } from '@mawesome/github-fake';
+import { serve } from '@mawesome/github-fake/server';
 
-const root = join(import.meta.dirname, '..', '..');
-const bundle = join(root, 'action', 'dist', 'index.js');
+const root = join(import.meta.dirname, '..');
+const bundle = join(root, 'dist', 'index.js');
 const dir = mkdtempSync(join(tmpdir(), 'pr-baseline-dist-'));
 let github: FakeGitHub;
 let server: Awaited<ReturnType<typeof serve>> | undefined;
@@ -63,7 +63,7 @@ async function runBundle(input: {
 
 beforeAll(() => {
 	// The bundle under test is the one the mirror ships; build it here so a stale dist cannot pass.
-	execFileSync('pnpm', ['exec', 'tsdown', '-c', 'tsdown.action.config.ts'], {
+	execFileSync('pnpm', ['exec', 'tsdown'], {
 		cwd: root,
 		stdio: 'ignore',
 	});

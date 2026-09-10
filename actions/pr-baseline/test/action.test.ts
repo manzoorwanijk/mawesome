@@ -2,9 +2,9 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { boundedSummary, run } from '../../action/src/run.ts';
-import type { RefreshPrStatusesResult } from '../../src/index.ts';
-import { FakeGitHub, sha } from '../helpers/fake-github.ts';
+import { boundedSummary, run } from '../src/run.ts';
+import type { RefreshPrStatusesResult } from '@mawesome/pr-baseline';
+import { FakeGitHub, sha } from '@mawesome/github-fake';
 
 interface World {
 	dir: string;
@@ -402,10 +402,7 @@ describe('action mode: auto', () => {
 		world.github.files.set(`${sha(5)}...${sha(12)}`, ['docs/guide.md']);
 		world.github.files.set(`${sha(5)}...${sha(14)}`, ['src/index.ts']);
 		// The template's own list plus a scoped baseline, the way a monorepo consumer would extend it.
-		const template = readFileSync(
-			join(import.meta.dirname, '..', '..', 'action', 'workflow-template.yml'),
-			'utf8',
-		);
+		const template = readFileSync(join(import.meta.dirname, '..', 'workflow-template.yml'), 'utf8');
 		const configured = JSON.parse(
 			/^  PR_BASELINES: '(.*)'$/m.exec(template)?.[1] ?? '[]',
 		) as unknown[];

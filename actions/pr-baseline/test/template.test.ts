@@ -2,10 +2,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-const template = readFileSync(
-	join(import.meta.dirname, '..', '..', 'action', 'workflow-template.yml'),
-	'utf8',
-);
+const template = readFileSync(join(import.meta.dirname, '..', 'workflow-template.yml'), 'utf8');
 
 /** The `pull_request_target` trigger is safe only while the refresh-pr-status job never checks out or runs PR code. */
 describe('consumer workflow template', () => {

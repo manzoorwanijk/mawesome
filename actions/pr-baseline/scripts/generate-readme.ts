@@ -1,6 +1,6 @@
 /**
- * Regenerates the inputs, outputs and workflow sections of `action/README.md` and `docs/action.md` from `action.yml` and the template.
- * Run with `pnpm readme:action`; `--check` fails when either file is stale, for CI.
+ * Regenerates the inputs, outputs and workflow sections of this action's README and of the library's `docs/action.md`.
+ * Run with `pnpm readme`; `--check` fails when either file is stale, for CI.
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
@@ -8,15 +8,15 @@ import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const packageDir = join(here, '..');
-const actionDir = join(packageDir, 'action');
+const actionDir = join(here, '..');
+const docsDir = join(actionDir, '..', '..', 'packages', 'pr-baseline', 'docs');
 
 type Marker = 'inputs' | 'outputs' | 'workflow';
 
 /** Every file carrying generated blocks: the mirror's README and the documentation page. */
 const TARGETS: { file: string; markers: Marker[] }[] = [
 	{ file: join(actionDir, 'README.md'), markers: ['inputs', 'outputs', 'workflow'] },
-	{ file: join(packageDir, 'docs', 'action.md'), markers: ['workflow', 'inputs', 'outputs'] },
+	{ file: join(docsDir, 'action.md'), markers: ['workflow', 'inputs', 'outputs'] },
 ];
 
 interface Input {
@@ -113,7 +113,7 @@ function render(text: string, marker: Marker, body: string, file: string): strin
 	const from = text.indexOf(start);
 	const to = text.indexOf(end);
 	if (from === -1 || to === -1 || to < from) {
-		throw new Error(`${relative(packageDir, file)} is missing the ${marker} markers.`);
+		throw new Error(`${relative(actionDir, file)} is missing the ${marker} markers.`);
 	}
 	// A blank line on each side is what the formatter leaves around a block, so the result is stable under it.
 	return `${text.slice(0, from + start.length)}\n\n${body}\n\n${text.slice(to)}`;
@@ -152,10 +152,10 @@ export function generate(): { file: string; current: string; next: string }[] {
 if (import.meta.main) {
 	const { values } = parseArgs({ options: { check: { type: 'boolean', default: false } } });
 	const stale = generate().filter(({ current, next }) => current !== next);
-	const names = stale.map(({ file }) => relative(packageDir, file)).join(', ');
+	const names = stale.map(({ file }) => relative(actionDir, file)).join(', ');
 	if (values.check) {
 		if (stale.length > 0) {
-			console.error(`${names} stale; run \`pnpm readme:action\`.`);
+			console.error(`${names} stale; run \`pnpm readme\`.`);
 			process.exit(1);
 		}
 		console.log('the generated action docs are current.');

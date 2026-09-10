@@ -3,10 +3,7 @@
 	"compilerOptions": {
 		"noEmit": true,
 		"allowImportingTsExtensions": true,
-		"types": ["node"],
-		"paths": {
-			"@mawesome/pr-baseline": ["./src/index.ts"]
-		}
+		"types": ["node"]
 	},
-	"include": ["src", "test"]
+	"include": ["src"]
 }

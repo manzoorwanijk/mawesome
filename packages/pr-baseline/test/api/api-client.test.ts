@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createApiClient } from '../../src/github/api.ts';
 import { GitHubError, isGitHubError } from '../../src/github/errors.ts';
-import { FakeGitHub } from '../helpers/fake-github.ts';
+import { FakeGitHub } from '@mawesome/github-fake';
 
 const REPO = { owner: 'acme', repo: 'widgets' };
 

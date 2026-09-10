@@ -4,6 +4,7 @@ export default {
 	source: [
 		'package.json',
 		'packages/*/package.json',
+		'actions/*/package.json',
 		'tools/*/package.json',
 		'apps/*/package.json',
 	],

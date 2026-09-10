@@ -11,7 +11,7 @@ export default defineConfig({
 	overrides: [
 		{
 			// pr-baseline talks to a rate-limited API; its sequential awaits are the pacing, not an oversight.
-			files: ['**/packages/pr-baseline/**'],
+			files: ['**/packages/pr-baseline/**', '**/actions/pr-baseline/**'],
 			rules: { 'no-await-in-loop': 'off' },
 		},
 	],
