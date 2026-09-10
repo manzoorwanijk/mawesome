@@ -1,10 +1,10 @@
-import { defineConfig } from 'tsdown';
+import { defineConfig, type UserConfig } from 'tsdown';
 
 /*
  * The library is dual ESM/CJS with per-format declarations.
  * The CLI is ESM-only without declarations: it is executed through `bin`, never imported.
  */
-export default defineConfig([
+const config: UserConfig[] = defineConfig([
 	{
 		entry: ['src/index.ts'],
 		format: ['esm', 'cjs'],
@@ -26,3 +26,5 @@ export default defineConfig([
 		clean: false,
 	},
 ]);
+
+export default config;
