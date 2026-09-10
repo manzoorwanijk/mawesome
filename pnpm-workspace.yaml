@@ -5,7 +5,7 @@ packages:
   - 'apps/*'
 
 # --- toolchain reproducibility ---
-packageManagerStrictVersion: true # pnpm 10 setting (pnpm 11 renames it to `pmOnFail`)
+pmOnFail: error # fail when the running pnpm doesn't match the `packageManager` pin (replaces pnpm 10's `packageManagerStrictVersion`)
 
 # --- security / supply-chain ---
 minimumReleaseAge: 4320 # 3 days; defers any release younger than this at resolution time
@@ -22,8 +22,7 @@ verifyDepsBeforeRun: error # node_modules must match the lockfile before any `pn
 # Security overrides: force transitive deps onto patched versions flagged by `pnpm audit`.
 # Drop an entry once every dependent's own range has moved past the vulnerable window.
 overrides:
-  esbuild@<0.28.1: '^0.28.1' # GHSA-gv7w-rqvm-qjhr (via astro/vite + vitest)
-  form-data@<4.0.6: '^4.0.6' # GHSA-hmw2-7cc7-3qxx (via @types/pacote)
+  esbuild@<0.28.1: '^0.28.1' # GHSA-gv7w-rqvm-qjhr (via vite, whose own range stops at ^0.27.0)
 
 # --- no hoisting: a workspace may import only what it declares (pairs with no-root-deps) ---
 nodeLinker: isolated

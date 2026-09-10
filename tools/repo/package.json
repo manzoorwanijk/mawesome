@@ -11,8 +11,8 @@
 		"deps:lint": "cd ../.. && syncpack lint --config tools/repo/syncpack.config.ts",
 		"format": "cd ../.. && oxfmt --config tools/repo/oxfmt.config.ts .",
 		"format:check": "cd ../.. && oxfmt --check --config tools/repo/oxfmt.config.ts .",
-		"lint": "cd ../.. && oxlint --config tools/repo/oxlint.config.ts .",
-		"lint:fix": "cd ../.. && oxlint --fix --config tools/repo/oxlint.config.ts .",
+		"lint": "cd ../.. && oxlint --config tools/repo/oxlint.config.ts --ignore-path .oxlintignore .",
+		"lint:fix": "cd ../.. && oxlint --fix --config tools/repo/oxlint.config.ts --ignore-path .oxlintignore .",
 		"test": "vitest run",
 		"typecheck": "tsgo"
 	},
