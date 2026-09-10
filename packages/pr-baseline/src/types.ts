@@ -198,6 +198,8 @@ export interface RefreshPrStatusesResult {
 	base: string;
 	baselines: ResolvedBaseline[];
 	openPulls: number;
+	/** Baselines that are no longer on the base branch; every PR then carries the misconfiguration pass. */
+	misconfigured: string[];
 	written: number;
 	skipped: number;
 	closed: number;

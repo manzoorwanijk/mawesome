@@ -113,12 +113,28 @@ describe('move-baseline', () => {
 		expect(result.refresh).toMatchObject({ written: 1 });
 	});
 
-	it('refuses a target that does not descend from the current baseline', async () => {
-		const { client } = harness({}, (gh) => {
+	it('refuses a rewind to an older commit on the base branch', async () => {
+		const { client } = harness({}, (gh) => gh.baseline('pr-baseline', sha(5)));
+		await expect(client.moveBaseline({ force: true, to: sha(3) })).rejects.toThrow(
+			/does not descend/,
+		);
+	});
+
+	it('reports a baseline that left the base branch, and repairs it when forced', async () => {
+		const { client, github } = harness({}, (gh) => {
 			gh.commit(sha(20), [sha(2)]);
 			gh.baseline('pr-baseline', sha(20));
 		});
-		await expect(client.moveBaseline({ force: true })).rejects.toThrow(/does not descend/);
+		const quiet = await client.moveBaseline();
+		expect(quiet.moves[0]).toMatchObject({
+			moved: false,
+			from: sha(20),
+			note: expect.stringContaining('not on the base branch'),
+		});
+		expect(github.baselineAt('pr-baseline')).toBe(sha(20));
+		const forced = await client.moveBaseline({ force: true });
+		expect(forced.moves[0]).toMatchObject({ moved: true, from: sha(20), to: sha(5) });
+		expect(github.baselineAt('pr-baseline')).toBe(sha(5));
 	});
 
 	it('honors --to when the target is on the base branch, and rejects it otherwise', async () => {

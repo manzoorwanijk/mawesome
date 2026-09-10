@@ -306,7 +306,13 @@ function describeRefreshPrStatus(result: RefreshPrStatusResult): string {
 
 function describeRefreshPrStatuses(result: RefreshPrStatusesResult): string {
 	const line = `Refreshed statuses of ${result.openPulls} open PRs against ${result.base}: ${result.written} written, ${result.skipped} skipped, ${result.closed} closed, ${result.deferred} deferred, ${result.outOfScope} out of scope, ${result.failed} failed.`;
-	return result.incomplete ? `${line} Incomplete (${result.reason}). ${RETRY_HINT}` : line;
+	const misconfigured =
+		result.misconfigured.length === 0
+			? ''
+			: ` Baseline ${result.misconfigured.join(', ')} is not on ${result.base}; every PR passes until a forced move puts it back.`;
+	return result.incomplete
+		? `${line}${misconfigured} Incomplete (${result.reason}). ${RETRY_HINT}`
+		: `${line}${misconfigured}`;
 }
 
 function describeMove(result: MoveBaselineResult): string {

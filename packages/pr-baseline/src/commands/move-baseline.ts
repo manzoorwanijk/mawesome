@@ -146,13 +146,20 @@ export async function runMoveBaseline(
 					note: 'another writer moved it past the target',
 				};
 			}
-			const decision = await decide(ancestry, baseline, current, to, merges, forced);
+			// A baseline off the base branch is unsatisfiable, so a forced move onto it repairs rather than rewinds.
+			const onBase = current === null || (await ancestry.isAncestor(current, head));
+			const decision = await decide(ancestry, baseline, current, to, merges, forced, onBase);
 			if ('note' in decision) {
 				return { name: baseline.name, from: current, to, moved: false, note: decision.note };
 			}
 			if (current !== null && !(await ancestry.isAncestor(current, to))) {
-				throw new BaselineError(
-					`Refusing to move ${baseline.name}: ${shortSha(to)} does not descend from ${shortSha(current)}.`,
+				if (onBase) {
+					throw new BaselineError(
+						`Refusing to move ${baseline.name}: ${shortSha(to)} does not descend from ${shortSha(current)}.`,
+					);
+				}
+				logger.warn(
+					`${baseline.name} was not on ${base} at ${shortSha(current)}; the forced move puts it back.`,
 				);
 			}
 			if (config.dryRun) {
@@ -196,12 +203,18 @@ async function decide(
 	target: string,
 	merges: Map<string, string[]>,
 	force: boolean,
+	onBase: boolean,
 ): Promise<Decision> {
 	if (force) {
 		return { reason: 'forced' };
 	}
 	if (current === null) {
 		return { note: 'absent; seed it with --force' };
+	}
+	if (!onBase) {
+		/* The label and marker scans below compare against the base branch, which this baseline left,
+		 * so their answer would be meaningless; only an operator can say where the baseline belongs. */
+		return { note: 'not on the base branch; repair it with a forced move' };
 	}
 	if (baseline.label !== undefined) {
 		for (const oid of merges.get(baseline.label) ?? []) {

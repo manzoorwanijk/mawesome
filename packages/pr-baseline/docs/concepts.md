@@ -24,7 +24,7 @@ A branch is worse in different ways: a `refs/heads/` ref triggers workflows on e
 
 For a commit, the verdict is `pass` when every applicable baseline is an ancestor of it and `fail` otherwise. An absent baseline counts as satisfied, so a repository can adopt the tool before seeding anything. One commit status carries the combined verdict; the failing description names the missing baselines.
 
-Two other passes exist: **not applicable**, written only with `--other-bases pass` for a PR targeting another branch, and **misconfigured**, written by `refresh-pr-status` when a baseline is no longer on the base branch, so an operator mistake never blocks an author. In that state `refresh-pr-statuses` refuses to write anything and `report` prints the problem; both exit 2.
+Two other passes exist: **not applicable**, written only with `--other-bases pass` for a PR targeting another branch, and **misconfigured**, written by `refresh-pr-status` when a baseline is no longer on the base branch, so an operator mistake never blocks an author. `refresh-pr-statuses` writes that same pass to every open PR and warns, so a scheduled sweep neither blocks anyone nor turns red every hour; `report` prints the problem and exits 2. A forced move onto a commit on the base branch repairs it.
 
 ## Scope
 

@@ -60,7 +60,7 @@ The summary reports `written`, `skipped` (already current), `closed` (gone since
 
 A permission or authentication failure on the first write stops the refresh, since it would repeat for every PR. A commit that already carries 1,000 statuses for the context fails for that PR only.
 
-Before evaluating anything, the refresh resolves the status creator and verifies every present baseline is an ancestor of the base branch head; either failure is exit `2` and nothing is written.
+Before evaluating anything, the refresh resolves the status creator, which is exit `2` when it fails, and checks that every present baseline is an ancestor of the base branch head. A baseline that is not gets a warning and the misconfiguration pass for every PR, since such a baseline can never be satisfied by merging and a refusal would only leave stale statuses behind.
 
 Exit codes: `0` complete, `1` incomplete, `2` error.
 
@@ -72,7 +72,7 @@ For each selected baseline decides whether it should move, and to where:
 - Otherwise a merged PR against the base carrying the baseline's label moves it when the merge commit is not the current baseline, descends from it, and is an ancestor of the target. Every merged PR with the label is scanned, newest first, with no date cutoff.
 - Otherwise a change to one of the baseline's `markers` between the current baseline and the target moves it. When the compare API returns 300 files the answer is indeterminate; the tool warns and does not move automatically.
 
-`--to <sha>` sets the target instead of the base branch head; it must be reachable from the base branch. The target must descend from the current baseline. The ref is written with `git push --force-with-lease`, tried first from the clone with git ancestry, then from a temporary repository, so a concurrent move is refused by the server; when both fail, and always with `--ancestry api`, the refs API is used and the ref re-read. Each completed move reports `via` (`git` or `api`); a dry run reports none. A lost race re-evaluates the decision once from the ref's new commit; a rejected write with the ref unmoved is terminal.
+`--to <sha>` sets the target instead of the base branch head; it must be reachable from the base branch. The target must descend from the current baseline, unless that baseline is no longer on the base branch, where a forced move is the documented repair. The ref is written with `git push --force-with-lease`, tried first from the clone with git ancestry, then from a temporary repository, so a concurrent move is refused by the server; when both fail, and always with `--ancestry api`, the refs API is used and the ref re-read. Each completed move reports `via` (`git` or `api`); a dry run reports none. A lost race re-evaluates the decision once from the ref's new commit; a rejected write with the ref unmoved is terminal.
 
 `--refresh-pr-statuses` runs a refresh afterwards, also when nothing moved, so a re-dispatch is a safe retry. In a dry run the refresh is evaluated against the intended, unwritten baseline positions.
 

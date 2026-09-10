@@ -13,9 +13,9 @@ import type {
 	RefreshStopReason,
 	Verdict,
 } from '../types.ts';
-import { BaselineError, refSnapshot } from '../util.ts';
+import { refSnapshot } from '../util.ts';
 import { writeWithRetries } from '../reporter/write.ts';
-import { statusMatches, type VerdictContext } from '../verdict.ts';
+import { misconfiguredVerdict, statusMatches, type VerdictContext } from '../verdict.ts';
 
 export interface RefreshPrStatusesInput {
 	/** Baselines already resolved by the caller, as after a move or in a dry run. */
@@ -55,6 +55,8 @@ export async function runRefreshPrStatuses(
 	const entries: RefreshEntry[] = [];
 	const counts = { written: 0, skipped: 0, closed: 0, deferred: 0, outOfScope: 0, failed: 0 };
 	let reason: RefreshStopReason | undefined;
+	/** Baselines that left the base branch; every PR then gets the misconfiguration pass. */
+	let offBase: string[] = [];
 	const finish = (
 		base: string,
 		baselines: ResolvedBaseline[],
@@ -71,6 +73,7 @@ export async function runRefreshPrStatuses(
 			base,
 			baselines,
 			openPulls,
+			misconfigured: offBase,
 			...counts,
 			incomplete,
 			...(reason === undefined ? {} : { reason }),
@@ -106,10 +109,12 @@ export async function runRefreshPrStatuses(
 			refs: input.verifyRefs ?? refSnapshot(baselines),
 		});
 		// Preparation verified the baseline refs and fetched the commits; only now is any ancestry asked.
-		const off = await baselinesOffBase(ancestry, baselines, baseHead);
-		if (off.length > 0) {
-			throw new BaselineError(
-				`Baseline ${off.join(', ')} is not an ancestor of ${base}; fix the baseline before refreshing.`,
+		offBase = await baselinesOffBase(ancestry, baselines, baseHead);
+		if (offBase.length > 0) {
+			/* Refusing here would leave every PR on a stale status and a scheduled sweep permanently red.
+			 * The single-PR path already posts a pass in this state, so the sweep matches it. */
+			logger.warn(
+				`Baseline ${offBase.join(', ')} is not on ${base}; posting passes instead of blocking. Repair it with a forced move to a commit on ${base}.`,
 			);
 		}
 		if (prepared !== undefined) {
@@ -153,6 +158,8 @@ export async function runRefreshPrStatuses(
 		targetUrl: config.targetUrl,
 		repoUrl: repoUrl(config),
 	};
+	/* One verdict serves every PR: the baseline is unsatisfiable, so no head is worth an ancestry question. */
+	const misconfigured = offBase.length > 0 ? misconfiguredVerdict(offBase, context) : undefined;
 	const inScope = setup.pulls;
 	logger.info(
 		`Base ${base} at ${baseHead.slice(0, 12)}; ${inScope.length} open PRs; ${describe(baselines)}.`,
@@ -207,14 +214,16 @@ export async function runRefreshPrStatuses(
 		let verdict: Verdict;
 		let current;
 		try {
-			verdict = await evaluateCommit({
-				ancestry,
-				baselines,
-				sha: pull.headSha,
-				baseHead,
-				context,
-				logger,
-			});
+			verdict =
+				misconfigured ??
+				(await evaluateCommit({
+					ancestry,
+					baselines,
+					sha: pull.headSha,
+					baseHead,
+					context,
+					logger,
+				}));
 			// The listing already carries the commit status the built-in reporter would read; a custom reporter is asked.
 			current =
 				runtime.customReporter || reconciled ? await reporter.current(pull.headSha) : pull.status;

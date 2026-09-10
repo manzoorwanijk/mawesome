@@ -70,7 +70,7 @@ A custom reporter can post a comment, create a check run or forward to a hosted 
 ## Errors
 
 - `ConfigError`: invalid or missing configuration, including an unresolvable creator or a write that came back under another login. Exit code 2 in the CLI.
-- `BaselineError`: a repository state the tool refuses to act on, such as a baseline that is not on the base branch or a target that does not descend from the current baseline. Exit code 2.
+- `BaselineError`: a repository state the tool refuses to act on, such as a target that does not descend from the current baseline. Exit code 2.
 - `GitHubError`: a failed request, with `kind` in `rate-limit`, `auth`, `permission`, `not-found`, `conflict`, `status-cap`, `validation`, `server` (any 5xx after the retries), `network`, `other`, plus `status`, `path`, `body` and `retryAfterMs`. `isGitHubError(error, kind?)` narrows it.
 
 ## Pure helpers

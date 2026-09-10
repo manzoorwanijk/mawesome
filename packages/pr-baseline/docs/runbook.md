@@ -18,6 +18,7 @@
 
 ## Rollback
 
+- **A baseline that left the base branch** (a force push or a hand-edited ref): every PR carries the misconfiguration pass and the sweep warns, so nothing is blocked and nothing is red; repair it with `pr-baseline move-baseline --force --refresh-pr-statuses`, or the dispatch with mode `move-baseline`.
 - **A move that should not have happened:** delete the ref (`git push origin :refs/baselines/<name>`, or the refs API), then seed it again at the right commit with `--force --to <sha> --refresh-pr-statuses`. The tool never rewinds a baseline itself. Until the refresh runs, PRs keep the statuses from the wrong move.
 - **Stop blocking without removing anything:** make the status context optional in the ruleset. Statuses keep being written and can be required again later.
 - **Retire the tool:** remove the context from the ruleset, delete the workflow, delete the refs under `refs/baselines/`. Old statuses stay on their commits and stop mattering.

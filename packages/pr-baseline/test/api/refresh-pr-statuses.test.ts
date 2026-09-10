@@ -171,15 +171,26 @@ describe('refresh-pr-statuses', () => {
 		expect(github.requests(/\/statuses\//, 'POST')).toHaveLength(1);
 	});
 
-	it('refuses to refresh when a baseline is not on the base branch', async () => {
+	it('passes every PR when a baseline is not on the base branch, instead of refusing', async () => {
 		const { client, github } = harness({}, (gh) => {
 			gh.commit(sha(20), [sha(2)]);
 			gh.baseline('pr-baseline', sha(20));
 			gh.commit(sha(11), [sha(5)]);
 			gh.pull({ number: 1, headSha: sha(11) });
+			gh.pull({ number: 2, headSha: sha(2) });
 		});
-		await expect(client.refreshPrStatuses()).rejects.toThrow(/not an ancestor of main/);
-		expect(github.requests(/\/statuses\//, 'POST')).toHaveLength(0);
+		const result = await client.refreshPrStatuses();
+		expect(result).toMatchObject({
+			misconfigured: ['pr-baseline'],
+			written: 2,
+			failed: 0,
+			incomplete: false,
+		});
+		expect(github.requests(/\/statuses\//, 'POST')).toHaveLength(2);
+		expect(github.latestStatus(sha(11), 'PR baseline')).toMatchObject({
+			state: 'success',
+			description: 'Baseline misconfigured: pr-baseline not on main; ask a maintainer.',
+		});
 	});
 
 	it('recognises its own statuses under an App bot creator, which GraphQL names without the [bot] suffix', async () => {
