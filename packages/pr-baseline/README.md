@@ -73,4 +73,4 @@ See [docs/api.md](./docs/api.md) for the ports that let you swap the ancestry so
 
 ## License
 
-[MIT](../../LICENSE) © 2026 Manzoor Ahmad Wani
+[MIT](../../LICENSE)
