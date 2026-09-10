@@ -548,9 +548,19 @@ async function reportRefreshPrStatuses(
 		`pr-baseline-refresh-${Date.now()}.json`,
 	);
 	writeFileSync(file, JSON.stringify({ ...extra, ...result }, null, 2));
+	/* A baseline off the base branch is an operator problem the refresh cannot fix, so it warns instead
+	 * of failing: every PR carries the misconfiguration pass and a red schedule every hour helps nobody. */
+	const misconfigured =
+		result.misconfigured.length === 0
+			? undefined
+			: `Baseline ${result.misconfigured.join(', ')} is not on ${result.base}; every PR passes until a forced move puts it back.`;
 	emit({
 		state: result.incomplete ? 'failure' : 'success',
-		description: result.incomplete ? `Refresh incomplete (${result.reason})` : 'Refresh complete',
+		description: result.incomplete
+			? `Refresh incomplete (${result.reason})`
+			: misconfigured === undefined
+				? 'Refresh complete'
+				: `Baseline ${result.misconfigured.join(', ')} is not on ${result.base}`,
 		base: result.base,
 		baselines: baselinesOutput(result.baselines),
 		missing: '[]',
@@ -586,7 +596,13 @@ async function reportRefreshPrStatuses(
 	if (result.incomplete) {
 		core.summary.addRaw(`\nIncomplete: ${result.reason}. Dispatch the workflow to continue.\n`);
 	}
+	if (misconfigured !== undefined) {
+		core.summary.addRaw(`\n${misconfigured}\n`);
+	}
 	await writeSummary();
+	if (misconfigured !== undefined) {
+		core.warning(misconfigured);
+	}
 	if (result.incomplete) {
 		core.setFailed(`Refresh incomplete (${result.reason}); dispatch the workflow to continue.`);
 	}

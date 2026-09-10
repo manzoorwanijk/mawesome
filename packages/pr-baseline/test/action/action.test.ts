@@ -371,6 +371,24 @@ describe('action mode: auto', () => {
 		process.exitCode = 0;
 	});
 
+	it('warns without failing when the baseline left the base branch', async () => {
+		world.github.commit(sha(20), [sha(2)]);
+		world.github.baseline('pr-baseline', sha(20));
+		world.github.pull({ number: 1, headSha: sha(11) });
+		runner({ event: 'schedule', payload: {} });
+		await run();
+		const out = outputs();
+		expect(out['state']).toBe('success');
+		expect(out['description']).toContain('is not on main');
+		expect(out['written']).toBe('1');
+		expect(world.github.latestStatus(sha(11), 'PR baseline')).toMatchObject({
+			state: 'success',
+			description: 'Baseline misconfigured: pr-baseline not on main; ask a maintainer.',
+		});
+		expect(summary()).toContain('every PR passes until a forced move puts it back');
+		expect(process.exitCode ?? 0).toBe(0);
+	});
+
 	it('evaluates the two-baseline configuration of the consumer template', async () => {
 		world.github.commit(sha(14), [sha(1)]);
 		world.github.baseline('pr-baseline-docs', sha(4));
@@ -535,6 +553,7 @@ describe('action explicit modes and errors', () => {
 			base: 'main',
 			baselines: [],
 			openPulls: 200,
+			misconfigured: [],
 			written: 0,
 			skipped: 0,
 			closed: 0,
