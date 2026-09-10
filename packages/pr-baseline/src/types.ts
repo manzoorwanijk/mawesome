@@ -292,8 +292,18 @@ export interface ReportResult {
 	/** Baselines whose commit is not on the base branch; the CLI exits 2 when non-empty. */
 	offBase: string[];
 	openPulls: number;
-	/** PRs whose status is not current; only computed with the git adapter. */
+	/** Open PRs whose status on the context is green. */
+	passing: number;
+	/** Open PRs whose status on the context is a failure. */
+	failing: number;
+	/** Open PRs carrying an `error` or `pending` status, which blocks a merge and which only `--scope all` reaches. */
+	other: number;
+	/** Open PRs with no status on the context, which a required check blocks with "Expected". */
+	unstamped: number;
+	/** PRs whose status differs materially from the intended one; only computed with the git adapter. */
 	stale?: number;
+	/** PRs differing only in description or link, which a refresh deliberately leaves alone. */
+	cosmetic?: number;
 	current?: number;
 	ancestry: 'git' | 'api';
 }

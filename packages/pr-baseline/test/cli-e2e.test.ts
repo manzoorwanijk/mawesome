@@ -180,6 +180,12 @@ describe('cli end to end', () => {
 		expect(failing.json()).toMatchObject({ refresh: { failed: 2, paused: false } });
 	});
 
+	it('prints the readiness breakdown in the report', async () => {
+		const { status, json } = await run(twoCorrectablePulls, ['report']);
+		expect(status).toBe(0);
+		expect(json()).toMatchObject({ openPulls: 2, passing: 2, failing: 0, other: 0, unstamped: 0 });
+	});
+
 	it('exits 2 when report finds a baseline off the base branch', async () => {
 		const { status, json } = await run(
 			(gh) => {

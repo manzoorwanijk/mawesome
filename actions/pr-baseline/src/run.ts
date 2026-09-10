@@ -726,8 +726,13 @@ async function reportReport(result: ReportResult): Promise<void> {
 			String(baseline.bound),
 		]),
 	]);
+	core.summary.addRaw(
+		`\n${result.passing} passing, ${result.failing} failing, ${result.other} other, ${result.unstamped} unstamped.\n`,
+	);
 	if (result.stale !== undefined && result.current !== undefined) {
-		core.summary.addRaw(`\n${result.current} PRs current, ${result.stale} stale.\n`);
+		core.summary.addRaw(
+			`\n${result.current} PRs current, ${result.stale} stale, ${result.cosmetic ?? 0} differing only in wording.\n`,
+		);
 	}
 	await writeSummary();
 	if (result.offBase.length > 0) {

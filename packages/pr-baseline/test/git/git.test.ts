@@ -239,6 +239,18 @@ describe('git ancestry', () => {
 		expect(result).toMatchObject({ ancestry: 'git', openPulls: 2, stale: 1, current: 1 });
 	});
 
+	it('counts a wording-only difference as cosmetic rather than stale', async () => {
+		const [, c2] = world.c;
+		const head = openPull(1, c2 as string, { 'x.txt': 'x' });
+		world.github.status(head, {
+			state: 'failure',
+			description: 'wording from an older release',
+			targetUrl: `https://github.com/acme/widgets/compare/${head}...main`,
+		});
+		// The refresh skips it on purpose, so counting it stale would mean the number never reaches zero.
+		expect(await client().report()).toMatchObject({ stale: 0, cosmetic: 1, current: 0 });
+	});
+
 	it('counts a failing status with the default link as current, and the refresh skips it', async () => {
 		const [, c2] = world.c;
 		const head = openPull(1, c2 as string, { 'x.txt': 'x' });

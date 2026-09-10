@@ -339,14 +339,18 @@ function describeMove(result: MoveBaselineResult): string {
 }
 
 function describeReport(result: ReportResult): string {
-	const lines = [`${result.base} at ${shortSha(result.head)}; ${result.openPulls} open PRs.`];
+	const lines = [
+		`${result.base} at ${shortSha(result.head)}; ${result.openPulls} open PRs: ${result.passing} passing, ${result.failing} failing, ${result.other} other, ${result.unstamped} unstamped.`,
+	];
 	for (const baseline of result.baselines) {
 		const where = baseline.sha === null ? 'absent' : shortSha(baseline.sha);
 		const onBase = baseline.onBase === null ? '' : baseline.onBase ? ', on base' : ', NOT on base';
 		lines.push(`${baseline.name}: ${where}${onBase}; binds ${baseline.bound} open PRs.`);
 	}
 	if (result.stale !== undefined && result.current !== undefined) {
-		lines.push(`${result.current} PRs current, ${result.stale} stale.`);
+		lines.push(
+			`${result.current} PRs current, ${result.stale} stale, ${result.cosmetic ?? 0} differing only in wording.`,
+		);
 	}
 	if (result.offBase.length > 0) {
 		lines.push(

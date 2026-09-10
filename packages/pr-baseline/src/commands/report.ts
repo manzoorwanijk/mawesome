@@ -71,6 +71,8 @@ export async function runReport(runtime: Runtime): Promise<ReportResult> {
 		baselines: report,
 		offBase,
 		openPulls: pulls.length,
+		// From the listing alone, so they cost nothing and exist whatever the adapter and the baseline state.
+		...breakdown(pulls),
 		ancestry: ancestry.name,
 	};
 	// Only the git adapter can afford a verdict per PR without spending API quota.
@@ -83,7 +85,29 @@ export async function runReport(runtime: Runtime): Promise<ReportResult> {
 	return result;
 }
 
-/** Counts PRs whose status is current versus stale; skipped with a warning when the creator cannot be resolved. */
+/** How the open PRs stand on the context, which is what says whether the check can be made required. */
+function breakdown(pulls: OpenPull[]): {
+	passing: number;
+	failing: number;
+	other: number;
+	unstamped: number;
+} {
+	const counts = { passing: 0, failing: 0, other: 0, unstamped: 0 };
+	for (const pull of pulls) {
+		if (pull.status === null) {
+			counts.unstamped++;
+		} else if (pull.status.state === 'success') {
+			counts.passing++;
+		} else if (pull.status.state === 'failure') {
+			counts.failing++;
+		} else {
+			counts.other++;
+		}
+	}
+	return counts;
+}
+
+/** Counts PRs whose status is current, materially stale or cosmetically stale; skipped when the creator cannot be resolved. */
 async function staleness(
 	runtime: Runtime,
 	ancestry: Ancestry,
@@ -92,7 +116,7 @@ async function staleness(
 	pulls: OpenPull[],
 	base: string,
 	heads: Map<number, string | null> | undefined,
-): Promise<{ stale?: number; current?: number }> {
+): Promise<{ stale?: number; cosmetic?: number; current?: number }> {
 	let creator: string;
 	try {
 		creator = await runtime.creator();
@@ -111,6 +135,7 @@ async function staleness(
 		repoUrl: repoUrl(config),
 	};
 	let stale = 0;
+	let cosmetic = 0;
 	let current = 0;
 	for (const pull of pulls) {
 		// A head that moved or vanished since the listing cannot be judged current; it is counted stale.
@@ -127,11 +152,16 @@ async function staleness(
 			context,
 			logger,
 		});
-		if (compareStatus(pull.status, verdict.status, creator) === 'current') {
+		/* Cosmetic differences are counted apart because the refresh skips them on purpose:
+		 * folding them into `stale` would mean the count could never reach zero. */
+		const difference = compareStatus(pull.status, verdict.status, creator);
+		if (difference === 'current') {
 			current++;
+		} else if (difference === 'cosmetic') {
+			cosmetic++;
 		} else {
 			stale++;
 		}
 	}
-	return { stale, current };
+	return { stale, cosmetic, current };
 }
