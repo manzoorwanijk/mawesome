@@ -1,5 +1,5 @@
 import { createServer } from 'node:http';
-import type { FakeGitHub } from './fake-github.ts';
+import type { FakeGitHub } from './fake.ts';
 
 /** Serves the fake over HTTP so the CLI can be exercised end to end in a subprocess. */
 export async function serve(github: FakeGitHub): Promise<{ url: string; close(): Promise<void> }> {

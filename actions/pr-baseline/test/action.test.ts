@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { boundedSummary, run } from '../src/run.ts';
 import type { RefreshPrStatusesResult } from '@mawesome/pr-baseline';
-import { FakeGitHub, sha } from '@mawesome/github-fake';
+import { FakeGitHub, sha } from '@mawesome/testing/github';
 
 interface World {
 	dir: string;

@@ -61,7 +61,7 @@
 	},
 	"devDependencies": {
 		"@arethetypeswrong/cli": "^0.18.3",
-		"@mawesome/github-fake": "workspace:*",
+		"@mawesome/testing": "workspace:*",
 		"@mawesome/tsconfig": "workspace:*",
 		"@types/node": "^24.13.2",
 		"@typescript/native-preview": "7.0.0-dev.20260527.2",

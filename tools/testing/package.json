@@ -1,0 +1,25 @@
+{
+	"name": "@mawesome/testing",
+	"version": "0.0.0",
+	"private": true,
+	"description": "Test doubles and helpers shared across workspaces",
+	"type": "module",
+	"exports": {
+		"./github": {
+			"types": "./src/github/fake.ts",
+			"default": "./src/github/fake.ts"
+		},
+		"./github/server": {
+			"types": "./src/github/server.ts",
+			"default": "./src/github/server.ts"
+		}
+	},
+	"scripts": {
+		"typecheck": "tsgo"
+	},
+	"devDependencies": {
+		"@mawesome/tsconfig": "workspace:*",
+		"@types/node": "^24.13.2",
+		"@typescript/native-preview": "7.0.0-dev.20260527.2"
+	}
+}

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { resolveConfig } from '../../src/config.ts';
 import { resolveCreator } from '../../src/creator.ts';
 import { createApiClient } from '../../src/github/api.ts';
-import { FakeGitHub } from '@mawesome/github-fake';
+import { FakeGitHub } from '@mawesome/testing/github';
 
 function setup(options: Parameters<typeof resolveConfig>[0], github = new FakeGitHub()) {
 	const config = resolveConfig({ repo: github.repo, token: 'token', env: {}, ...options });

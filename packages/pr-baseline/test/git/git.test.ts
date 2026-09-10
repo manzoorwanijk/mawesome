@@ -4,7 +4,7 @@ import { openRepo, type GitRepo } from '../../src/git/repo.ts';
 import { createApiClient } from '../../src/github/api.ts';
 import { createClient, type Client, type ClientOptions } from '../../src/index.ts';
 import { createLeaseRefWriter } from '../../src/ref-writer.ts';
-import { FakeGitHub } from '@mawesome/github-fake';
+import { FakeGitHub } from '@mawesome/testing/github';
 import { GitFixture } from '../helpers/git-repo.ts';
 
 interface World {

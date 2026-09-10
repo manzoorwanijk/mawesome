@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import type { FakeGitHub } from '@mawesome/github-fake';
+import type { FakeGitHub } from '@mawesome/testing/github';
 
 const GIT_ENV = {
 	...process.env,

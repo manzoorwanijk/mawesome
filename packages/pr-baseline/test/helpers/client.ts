@@ -1,5 +1,5 @@
 import { createClient, type Client, type ClientOptions } from '../../src/index.ts';
-import { FakeGitHub, sha } from '@mawesome/github-fake';
+import { FakeGitHub, sha } from '@mawesome/testing/github';
 
 export interface Harness {
 	github: FakeGitHub;

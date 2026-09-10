@@ -3,8 +3,8 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { FakeGitHub, sha } from '@mawesome/github-fake';
-import { serve } from '@mawesome/github-fake/server';
+import { FakeGitHub, sha } from '@mawesome/testing/github';
+import { serve } from '@mawesome/testing/github/server';
 
 const root = join(import.meta.dirname, '..');
 const bundle = join(root, 'dist', 'index.js');

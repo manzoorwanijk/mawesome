@@ -2,8 +2,8 @@ import { spawn } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
-import { FakeGitHub, sha } from '@mawesome/github-fake';
-import { serve } from '@mawesome/github-fake/server';
+import { FakeGitHub, sha } from '@mawesome/testing/github';
+import { serve } from '@mawesome/testing/github/server';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const cli = join(here, '..', 'src', 'cli.ts');

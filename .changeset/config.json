@@ -12,7 +12,7 @@
 	"access": "public",
 	"baseBranch": "main",
 	"updateInternalDependencies": "patch",
-	"ignore": ["@mawesome/site", "@mawesome/repo", "@mawesome/tsconfig", "@mawesome/github-fake"],
+	"ignore": ["@mawesome/site", "@mawesome/repo", "@mawesome/tsconfig", "@mawesome/testing"],
 	"privatePackages": {
 		"version": true,
 		"tag": true

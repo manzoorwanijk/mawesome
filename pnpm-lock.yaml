@@ -227,9 +227,9 @@ importers:
         specifier: workspace:*
         version: link:../../packages/pr-baseline
     devDependencies:
-      '@mawesome/github-fake':
+      '@mawesome/testing':
         specifier: workspace:*
-        version: link:../../tools/github-fake
+        version: link:../../tools/testing
       '@mawesome/tsconfig':
         specifier: workspace:*
         version: link:../../tools/tsconfig
@@ -338,9 +338,9 @@ importers:
       '@arethetypeswrong/cli':
         specifier: ^0.18.3
         version: 0.18.3
-      '@mawesome/github-fake':
+      '@mawesome/testing':
         specifier: workspace:*
-        version: link:../../tools/github-fake
+        version: link:../../tools/testing
       '@mawesome/tsconfig':
         specifier: workspace:*
         version: link:../../tools/tsconfig
@@ -359,18 +359,6 @@ importers:
       vitest:
         specifier: ^4.1.7
         version: 4.1.8(@types/node@24.13.2)(esbuild@0.28.1)(yaml@2.9.0)
-
-  tools/github-fake:
-    devDependencies:
-      '@mawesome/tsconfig':
-        specifier: workspace:*
-        version: link:../tsconfig
-      '@types/node':
-        specifier: ^24.13.2
-        version: 24.13.2
-      '@typescript/native-preview':
-        specifier: 7.0.0-dev.20260527.2
-        version: 7.0.0-dev.20260527.2
 
   tools/repo:
     devDependencies:
@@ -395,6 +383,18 @@ importers:
       vitest:
         specifier: ^4.1.7
         version: 4.1.8(@types/node@24.13.2)(esbuild@0.28.1)(yaml@2.9.0)
+
+  tools/testing:
+    devDependencies:
+      '@mawesome/tsconfig':
+        specifier: workspace:*
+        version: link:../tsconfig
+      '@types/node':
+        specifier: ^24.13.2
+        version: 24.13.2
+      '@typescript/native-preview':
+        specifier: 7.0.0-dev.20260527.2
+        version: 7.0.0-dev.20260527.2
 
   tools/tsconfig:
     dependencies:
