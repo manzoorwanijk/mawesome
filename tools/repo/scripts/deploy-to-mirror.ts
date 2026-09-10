@@ -127,7 +127,8 @@ export function stage(
 				`${join(workspace.dir, file)} is missing; it is listed in mirror.files.`,
 			);
 		}
-		cpSync(source, join(out, file), { recursive: true });
+		// verbatimSymlinks, or a relative link is resolved to an absolute runner path on the way in.
+		cpSync(source, join(out, file), { recursive: true, verbatimSymlinks: true });
 	}
 	// The mirror is a checkout rather than a package, but Node still has to read its `src/` as ESM.
 	writeFileSync(join(out, 'package.json'), '{\n  "private": true,\n  "type": "module"\n}\n');
@@ -166,10 +167,8 @@ export function publish(options: PublishOptions): string {
 	const released = revision(git, tag);
 	let release: string;
 	if (released !== undefined) {
-		if (git(['rev-parse', `${released}^{tree}`]) !== tree) {
-			throw new MirrorError(
-				`v${options.version} already exists on the mirror with other contents.`,
-			);
+		if (!isReleaseCommit(git, released, tree, options)) {
+			throw new MirrorError(`v${options.version} already exists on the mirror but is not it.`);
 		}
 		if (!isAncestor(git, released, main)) {
 			throw new MirrorError(
@@ -177,7 +176,7 @@ export function publish(options: PublishOptions): string {
 			);
 		}
 		release = released;
-	} else if (git(['rev-parse', `${main}^{tree}`]) === tree) {
+	} else if (isReleaseCommit(git, main, tree, options)) {
 		// The release commit landed but its tag did not, or was deleted since; retag what is already there.
 		release = main;
 	} else {
@@ -219,40 +218,72 @@ function appendMajor(
 	flags: string[],
 ): void {
 	const major = `refs/tags/v${version.major}`;
-	const current = revision(git, major);
-	if (current === undefined) {
+	const tag = advertised(git, major);
+	if (tag === undefined) {
 		refspecs.push(`${release}:${major}`);
 		flags.push(`--force-with-lease=${major}:`);
 		return;
 	}
-	if (current === release) {
+	if (tag.commit === release) {
 		return;
 	}
-	if (isAncestor(git, release, current)) {
-		/* A rerun of a release that vX has already moved past; the newer release keeps the tag.
-		 * It only counts as newer if it is on main, which is the only place a release can land. */
-		if (!isAncestor(git, current, main)) {
+	if (isAncestor(git, release, tag.commit)) {
+		// A rerun of a release that vX has already moved past; the newer release keeps the tag.
+		if (!isSupersedingRelease(git, version, tag.commit, main)) {
 			throw new MirrorError(
-				`v${version.major} points past v${options.version} but is not on main; fix it by hand.`,
+				`v${version.major} points past v${options.version} but is not a newer release of it; fix it by hand.`,
 			);
 		}
 		console.log(`v${version.major} already points past v${options.version}; leaving it.`);
 		return;
 	}
-	if (!isAncestor(git, current, release)) {
+	if (!isAncestor(git, tag.commit, release)) {
 		throw new MirrorError(
 			`v${version.major} points at a commit unrelated to v${options.version}; fix it by hand.`,
 		);
 	}
-	const released = releasedVersion(git, current);
+	const released = releasedVersion(git, tag.commit);
 	if (released !== undefined && !isNewer(version, released.version)) {
 		throw new MirrorError(
 			`v${version.major} already points at v${released.text}, which is not older than v${options.version}.`,
 		);
 	}
-	// No `+` on the refspec: a forced refspec makes git skip the lease, while the lease alone allows the non-fast-forward.
+	/* Leased on the advertised value, which for an annotated tag is the tag object rather than its commit.
+	 * No `+` on the refspec either: a forced refspec makes git skip the lease, while the lease alone allows the non-fast-forward. */
 	refspecs.push(`${release}:${major}`);
-	flags.push(`--force-with-lease=${major}:${current}`);
+	flags.push(`--force-with-lease=${major}:${tag.value}`);
+}
+
+/** vX may only sit past a release on a newer, single-parent release of the same major whose own tag points there. */
+function isSupersedingRelease(git: Git, version: Version, current: string, main: string): boolean {
+	const newer = releasedVersion(git, current);
+	if (
+		!isAncestor(git, current, main) ||
+		newer === undefined ||
+		newer.version.major !== version.major ||
+		!isNewer(newer.version, version) ||
+		parents(git, current).length !== 1
+	) {
+		return false;
+	}
+	// The subject alone proves nothing; the newer release's own tag has to point at this commit.
+	return revision(git, `refs/tags/v${newer.text}`) === current;
+}
+
+/** A commit is a release only if it carries its exact tree, its message, and a single parent. */
+function isReleaseCommit(git: Git, sha: string, tree: string, options: PublishOptions): boolean {
+	if (git(['rev-parse', `${sha}^{tree}`]) !== tree || parents(git, sha).length !== 1) {
+		return false;
+	}
+	const lines = git(['log', '-1', '--format=%B', sha]).split('\n');
+	return (
+		lines[0]?.trim() === `Release v${options.version}` &&
+		lines.includes(`Upstream-Ref: ${options.upstream}`)
+	);
+}
+
+function parents(git: Git, sha: string): string[] {
+	return git(['log', '-1', '--format=%P', sha]).split(' ').filter(Boolean);
 }
 
 type Git = (args: string[], input?: string) => string;
@@ -289,7 +320,7 @@ function buildTree(git: Git, repo: string, stagePath: string, main: string): str
 			rmSync(join(repo, entry), { recursive: true, force: true });
 		}
 	}
-	cpSync(stagePath, repo, { recursive: true });
+	cpSync(stagePath, repo, { recursive: true, verbatimSymlinks: true });
 	git(['add', '--all', '--force', '.']);
 	const entries = git(['ls-files', '--stage']).split('\n').filter(Boolean);
 	if (entries.length === 0) {
@@ -319,6 +350,12 @@ function revision(git: Git, ref: string): string | undefined {
 	} catch {
 		return undefined;
 	}
+}
+
+/** A ref's value as the mirror advertises it, which a lease compares against, alongside the commit it peels to. */
+function advertised(git: Git, ref: string): { value: string; commit: string } | undefined {
+	const commit = revision(git, ref);
+	return commit === undefined ? undefined : { value: git(['rev-parse', '--verify', ref]), commit };
 }
 
 function isAncestor(git: Git, ancestor: string, descendant: string): boolean {

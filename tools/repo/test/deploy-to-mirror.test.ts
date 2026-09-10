@@ -3,6 +3,7 @@ import {
 	existsSync,
 	mkdirSync,
 	mkdtempSync,
+	readdirSync,
 	readFileSync,
 	rmSync,
 	symlinkSync,
@@ -88,6 +89,21 @@ class Fixture {
 
 	release(version: string, files = releaseFiles(version)): string {
 		return publish(this.options(version, files));
+	}
+
+	/** Puts an arbitrary tree and message on the mirror's main, standing in for anything this script did not write. */
+	commitToMain(files: Record<string, string>, message: string): string {
+		const dir = this.checkout();
+		for (const entry of readdirSync(dir)) {
+			if (entry !== '.git') {
+				rmSync(join(dir, entry), { recursive: true, force: true });
+			}
+		}
+		write(dir, files);
+		git(dir, 'add', '--all');
+		git(dir, 'commit', '--quiet', '-m', message);
+		git(dir, 'push', '--quiet', 'origin', 'HEAD:main');
+		return git(dir, 'rev-parse', 'HEAD');
 	}
 
 	ref(name: string): string | undefined {
@@ -297,9 +313,29 @@ describe('publish', () => {
 		const other = releaseFiles('1.0.0');
 		other['dist/index.js'] = '// tampered\n';
 		expect(() => fixture.release('1.0.0', other)).toThrow(
-			'already exists on the mirror with other',
+			'already exists on the mirror but is not',
 		);
 		expect(git(fixture.bare, 'rev-list', '--count', 'refs/heads/main')).toBe('2');
+	});
+
+	it('refuses a version tag on a commit that is not shaped like this release', () => {
+		const sha = fixture.release('1.0.0');
+		for (const message of ['Release v1.0.0', `Release v9.9.9\n\nUpstream-Ref: ${UPSTREAM}`]) {
+			const forged = fixture.checkout();
+			git(forged, 'checkout', '--quiet', '--detach', sha);
+			git(forged, 'commit', '--quiet', '--amend', '-m', message);
+			git(forged, 'push', '--quiet', '--force', 'origin', 'HEAD:refs/tags/v1.0.0');
+			expect(() => fixture.release('1.0.0')).toThrow('already exists on the mirror but is not');
+		}
+	});
+
+	it('commits rather than retagging a main tip that carries the tree but not the message', () => {
+		const impostor = fixture.commitToMain(releaseFiles('1.0.0'), 'Not a release');
+		const sha = fixture.release('1.0.0');
+		expect(sha).not.toBe(impostor);
+		expect(git(fixture.bare, 'log', '-1', '--format=%P', sha)).toBe(impostor);
+		expect(git(fixture.bare, 'log', '-1', '--format=%s', sha)).toBe('Release v1.0.0');
+		expect(fixture.ref('refs/tags/v1.0.0')).toBe(sha);
 	});
 
 	it('refuses to drag the major tag back to a version older than the one it names', () => {
@@ -315,6 +351,26 @@ describe('publish', () => {
 		expect(fixture.release('1.0.0')).toBe(first);
 		expect(fixture.ref('refs/tags/v1')).toBe(second);
 		expect(fixture.ref('refs/heads/main')).toBe(second);
+	});
+
+	/* A lease compares against the ref as the mirror advertises it, which for an annotated tag is the tag object. */
+	it('advances a major tag someone created by hand as an annotated tag', () => {
+		const first = fixture.release('1.0.0');
+		const annotator = fixture.checkout();
+		git(annotator, 'tag', '-a', '-f', '-m', 'by hand', 'v1', first);
+		git(annotator, 'push', '--quiet', '--force', 'origin', 'refs/tags/v1');
+		expect(git(fixture.bare, 'cat-file', '-t', 'refs/tags/v1')).toBe('tag');
+		const second = fixture.release('1.0.1');
+		expect(fixture.ref('refs/tags/v1')).toBe(second);
+	});
+
+	it('refuses a major tag that points past the release without being a newer release of it', () => {
+		const first = fixture.release('1.0.0');
+		// Reachable from main and a descendant of the release, but nothing tags it as a release.
+		const later = fixture.commitToMain(releaseFiles('1.2.0'), 'Release v1.2.0');
+		git(fixture.bare, 'update-ref', 'refs/tags/v1', later);
+		expect(() => fixture.release('1.0.0')).toThrow('is not a newer release of it');
+		expect(fixture.ref('refs/tags/v1.0.0')).toBe(first);
 	});
 
 	it('refuses a major tag that is unrelated to the release', () => {
@@ -370,6 +426,14 @@ describe('publish', () => {
 	it('refuses a mirror that has no main branch yet', () => {
 		git(fixture.bare, 'update-ref', '-d', 'refs/heads/main');
 		expect(() => publish(fixture.options('1.0.0'))).toThrow('The mirror has no main branch');
+	});
+
+	it('keeps a relative symlink pointing where the stage points it', () => {
+		const options = fixture.options('1.0.0');
+		symlinkSync('action.yml', join(options.stage, 'link.yml'));
+		const sha = publish(options);
+		expect(git(fixture.bare, 'ls-tree', sha, 'link.yml').split(/\s+/)[0]).toBe('120000');
+		expect(fixture.file(sha, 'link.yml')).toBe('action.yml');
 	});
 
 	it('keeps the executable bit the stage carries', () => {
