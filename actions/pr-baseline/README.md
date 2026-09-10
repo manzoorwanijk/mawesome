@@ -102,7 +102,8 @@ jobs:
           max-writes-per-run: 300
 # Uncomment during adoption to stamp the PRs nothing has reached yet, and watch `report`'s unstamped
 # count fall. Keep it permanently only if the repository uses Dependabot AND stays on the default
-# GITHUB_TOKEN, whose Dependabot runs cannot write; a custom App or PAT token is the better fix.
+# GITHUB_TOKEN, whose Dependabot runs cannot write. A custom App or PAT token is the better fix, but it
+# must be stored as a Dependabot secret too: a Dependabot run cannot read the repository's Actions secrets.
 # It needs its own daily tick: add `- cron: '23 4 * * *'` under `on.schedule` above. Each job matches
 # its own cron, so the two never start together; they still share the hour's write budget, which is
 # what the two caps below and above are sized for.

@@ -186,7 +186,7 @@ function restrict(plan: Plan): Plan {
 	if (plan.mode === 'refresh-pr-status') {
 		if (plan.report !== false) {
 			core.notice(
-				'Dependabot triggered this run, so its token cannot write and the commit is evaluated only. Configure a custom token so this check writes, or schedule a refresh-pr-statuses run with scope unstamped to stamp it later.',
+				'Dependabot triggered this run, so its token cannot write and the commit is evaluated only. Configure a custom token, stored as a Dependabot secret so this run can read it, or schedule a refresh-pr-statuses run with scope unstamped to stamp the commit later.',
 			);
 		}
 		return { ...plan, report: false };

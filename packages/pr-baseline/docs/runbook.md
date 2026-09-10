@@ -52,6 +52,8 @@ For the second, which is the recommended seed:
 
 **Dependabot.** A run Dependabot triggers gets a read-only workflow token whatever the event, so the per-PR check never stamps its PRs, and the default scope never visits them either. Either configure a custom App or PAT token, which is the fix and needs no standing job, or keep the `--scope unstamped` backfill scheduled permanently. Leaving both undone means every Dependabot PR sits on "Expected" indefinitely: its author cannot push a fix, and no per-PR run will ever write.
 
+**Where the custom token has to live.** GitHub gives a Dependabot-triggered run the repository's **Dependabot** secrets, not its Actions secrets, so a token stored only under Settings, Secrets and variables, Actions is an empty string on exactly the runs that need it, and the step then falls back to the workflow token and writes nothing. Store it under the Dependabot tab as well, or accept the backfill. A GitHub App token minted in the job has the same problem, since the App's private key is itself a secret the run must read.
+
 ## Rollback
 
 - **A baseline that left the base branch** (a force push or a hand-edited ref): every PR carries the misconfiguration pass and the sweep fails once, then warns, so nothing is blocked and the schedule does not stay red; repair it with `pr-baseline move-baseline --force --refresh-pr-statuses`, or the dispatch with mode `move-baseline`.
