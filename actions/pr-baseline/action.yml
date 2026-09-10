@@ -1,0 +1,112 @@
+name: PR Baseline
+description: Keep open pull requests current with a movable baseline on the base branch, reported through commit statuses.
+author: Manzoor Ahmad Wani
+branding:
+  icon: git-merge
+  color: blue
+inputs:
+  token:
+    description: Token used for every read and write; defaults to the workflow's own token.
+    required: false
+    default: ${{ github.token }}
+  github-token-probe:
+    description: Internal. Leave unset; it lets the action prove whether `token` is the workflow's own token.
+    required: false
+    default: ${{ github.token }}
+  mode:
+    description: 'What to do: auto (from the event), refresh-pr-status, refresh-pr-statuses, move-baseline or report.'
+    required: false
+    default: auto
+  sha:
+    description: Commit to evaluate in refresh-pr-status mode; auto takes it from the event.
+    required: false
+  base:
+    description: Base branch; defaults to the repository's default branch.
+    required: false
+  baselines:
+    description: JSON array of `{ name, label?, scope?, markers? }`, inline only; cannot be combined with name, label or markers.
+    required: false
+  name:
+    description: Shorthand for a single baseline's name (default `pr-baseline`).
+    required: false
+  label:
+    description: Shorthand for a single baseline's label (default `Require PR update`).
+    required: false
+  markers:
+    description: Shorthand for a single baseline's auto-move patterns, one gitignore pattern per line.
+    required: false
+  baseline:
+    description: In move-baseline mode, move only the baseline with this name; blank moves all.
+    required: false
+  status-context:
+    description: Status context (default `PR baseline`).
+    required: false
+  description-pass:
+    description: Description of a passing status; `{base}` and `{baselines}` are replaced.
+    required: false
+  description-fail:
+    description: Description of a failing status; `{base}` and `{baselines}` are replaced.
+    required: false
+  description-not-applicable:
+    description: Description written for PRs against other branches when other-bases is pass.
+    required: false
+  target-url:
+    description: Link attached to every status; by default a failing status links to the compare view of what it lacks.
+    required: false
+  other-bases:
+    description: 'PRs against other branches: skip (default) or pass.'
+    required: false
+  creator:
+    description: Login the token writes statuses as; required for a GitHub App token.
+    required: false
+  ancestry:
+    description: 'Ancestry source: auto (default), git or api.'
+    required: false
+  max-writes-per-run:
+    description: Stop a refresh after this many status writes; a positive integer (default 450).
+    required: false
+  max-writes-per-minute:
+    description: Pace status writes; a positive integer per minute (default 60).
+    required: false
+  dry-run:
+    description: Log every intended write and baseline move instead of making it.
+    required: false
+    default: 'false'
+  force:
+    description: In move-baseline mode, move by intent alone and seed absent baselines.
+    required: false
+    default: 'false'
+  refresh-pr-statuses-after-move:
+    description: In move-baseline mode, refresh every open PR's status afterwards (default true).
+    required: false
+    default: 'true'
+outputs:
+  state:
+    description: Status state of the checked commit (`success` or `failure`), or of the run (`success`, `failure`, `skipped` or `error`).
+  description:
+    description: Status description of the checked commit.
+  base:
+    description: The base branch the run served.
+  baselines:
+    description: JSON array of `{ name, sha }` for every configured baseline.
+  missing:
+    description: JSON array of baseline names the evaluated commit lacks (refresh-pr-status mode).
+  written:
+    description: Statuses written.
+  skipped:
+    description: PRs whose status was already current.
+  closed:
+    description: PRs that closed while the refresh ran.
+  deferred:
+    description: PRs whose head was still moving.
+  failed:
+    description: PRs whose status could not be written.
+  incomplete:
+    description: Whether a refresh stopped before covering every PR (`true` or `false`).
+  summary:
+    description: JSON summary of the run, per-PR results capped to stay under the output size limit.
+  results-file:
+    description: Path of a JSON file with the uncapped per-PR results of a refresh, for an upload step.
+runs:
+  using: node24
+  main: dist/index.js

@@ -25,6 +25,7 @@ It only writes/updates a `settings.json` that still carries the `@mawesome/manag
 ## Repository layout
 
 - `packages/*` — published `@mawesome/*` packages (each declares all of its own deps).
+- `actions/*` — GitHub Actions, private workspaces published to their own mirror repositories.
 - `tools/tsconfig` — `@mawesome/tsconfig`, the shared strict TypeScript base.
 - `tools/repo` — repo-level dev CLIs (oxlint, oxfmt, syncpack, tsgo) and their configs.
 - Root holds **no dependencies** except the `@changesets/*` release tooling (enforced by `pnpm check:root-deps`).

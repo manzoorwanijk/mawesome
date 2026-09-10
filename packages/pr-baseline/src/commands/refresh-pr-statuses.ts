@@ -1,0 +1,357 @@
+import { createWriteBudget } from '../budget.ts';
+import { ConfigError, repoUrl } from '../config.ts';
+import { baselinesOffBase, evaluateCommit } from '../evaluate.ts';
+import { GitError } from '../git/repo.ts';
+import { isGitHubError, RETRY_HINT } from '../github/errors.ts';
+import { getPull, listOpenPulls, type OpenPull } from '../github/pulls.ts';
+import type { Runtime } from '../runtime.ts';
+import type {
+	Reporter,
+	ResolvedBaseline,
+	RefreshEntry,
+	RefreshPrStatusesResult,
+	RefreshStopReason,
+	Verdict,
+} from '../types.ts';
+import { refSnapshot } from '../util.ts';
+import { writeWithRetries } from '../reporter/write.ts';
+import { misconfiguredVerdict, statusMatches, type VerdictContext } from '../verdict.ts';
+
+export interface RefreshPrStatusesInput {
+	/** Baselines already resolved by the caller, as after a move or in a dry run. */
+	baselines?: ResolvedBaseline[];
+	/** What the refs really are right now, when `baselines` is hypothetical (a dry-run move). */
+	verifyRefs?: Array<{ name: string; sha: string | null }>;
+}
+
+interface Setup {
+	base: string;
+	creator: string;
+	reporter: Reporter;
+	baselines: ResolvedBaseline[];
+	baseHead: string;
+	pulls: OpenPull[];
+	/** Head OIDs as the adapter fetched them, when it could tell. */
+	heads: Map<number, string | null> | undefined;
+}
+
+/** Brings every in-scope open PR's status in line with the current baselines, writing only changes. */
+export async function runRefreshPrStatuses(
+	runtime: Runtime,
+	input: RefreshPrStatusesInput = {},
+): Promise<RefreshPrStatusesResult> {
+	const { config, api, logger } = runtime;
+	if (config.offline) {
+		throw new ConfigError(
+			'refresh-pr-statuses needs the API; --offline applies to refresh-pr-status only.',
+		);
+	}
+	const ancestry = await runtime.ancestry();
+	const budget = createWriteBudget({
+		maxWritesPerRun: config.maxWritesPerRun,
+		maxWritesPerMinute: config.maxWritesPerMinute,
+		now: runtime.now,
+	});
+	const entries: RefreshEntry[] = [];
+	const counts = { written: 0, skipped: 0, closed: 0, deferred: 0, outOfScope: 0, failed: 0 };
+	let reason: RefreshStopReason | undefined;
+	/** Baselines that left the base branch; every PR then gets the misconfiguration pass. */
+	let offBase: string[] = [];
+	const finish = (
+		base: string,
+		baselines: ResolvedBaseline[],
+		openPulls: number,
+	): RefreshPrStatusesResult => {
+		const incomplete = reason !== undefined || counts.deferred > 0 || counts.failed > 0;
+		if (incomplete && reason === undefined) {
+			reason = counts.deferred > 0 ? 'deferred' : 'failed';
+		}
+		if (incomplete) {
+			logger.warn(`Refresh incomplete (${reason}). ${RETRY_HINT}`);
+		}
+		return {
+			base,
+			baselines,
+			openPulls,
+			misconfigured: offBase,
+			...counts,
+			incomplete,
+			...(reason === undefined ? {} : { reason }),
+			entries,
+			ancestry: ancestry.name,
+			dryRun: config.dryRun,
+		};
+	};
+
+	let setup: Setup;
+	let knownOpenPulls = 0;
+	let resolvedBase: string | undefined;
+	let resolvedBaselines: ResolvedBaseline[] | undefined = input.baselines;
+	try {
+		const base = await runtime.base();
+		resolvedBase = base;
+		// Resolved before any evaluation so a creator problem is a configuration error, not a partial refresh.
+		const creator = await runtime.creator();
+		const reporter = await runtime.reporter();
+		const baselines = input.baselines ?? (await runtime.readBaselines());
+		resolvedBaselines = baselines;
+		const baseHead = await runtime.head();
+		const list = async (): Promise<OpenPull[]> =>
+			(await listOpenPulls(api, config.repo, { base, context: config.context })).filter(
+				(pull) => pull.baseRef === base && (config.includeDrafts || !pull.isDraft),
+			);
+		let inScope = await list();
+		knownOpenPulls = inScope.length;
+		// A git adapter fetches every head in a few batches here and reports which refs are gone.
+		const prepared = await ancestry.prepare?.({
+			shas: [baseHead],
+			pulls: inScope.map((pull) => pull.number),
+			refs: input.verifyRefs ?? refSnapshot(baselines),
+		});
+		// Preparation verified the baseline refs and fetched the commits; only now is any ancestry asked.
+		offBase = await baselinesOffBase(ancestry, baselines, baseHead);
+		if (offBase.length > 0) {
+			/* Refusing here would leave every PR on a stale status and a scheduled sweep permanently red.
+			 * The single-PR path already posts a pass in this state, so the sweep matches it. */
+			logger.warn(
+				`Baseline ${offBase.join(', ')} is not on ${base}; posting passes instead of blocking. Repair it with a forced move to a commit on ${base}.`,
+			);
+		}
+		if (prepared !== undefined) {
+			/*
+			 * A PR that closed during the fetch keeps its pull ref, so the fetch cannot tell.
+			 * A second listing can: PRs that left it are closed, and the rest carry their latest head and status.
+			 */
+			const stillOpen = new Map((await list()).map((pull) => [pull.number, pull]));
+			for (const pull of inScope) {
+				if (!stillOpen.has(pull.number)) {
+					// Gone from the listing: closed, retargeted, turned draft, or a listing race; REST says which.
+					const outcome = (await reconcile(runtime, pull, null, base)) ?? 'deferred';
+					counts[outcome]++;
+					entries.push(entry(pull, outcome));
+				}
+			}
+			inScope = inScope.flatMap((pull) => stillOpen.get(pull.number) ?? []);
+		}
+		setup = {
+			base,
+			creator,
+			reporter,
+			baselines,
+			baseHead,
+			pulls: inScope,
+			heads: prepared?.heads,
+		};
+	} catch (error) {
+		// A limit hit while reading still owes the operator the retry guidance.
+		if (isGitHubError(error, 'rate-limit')) {
+			logger.warn(error.message);
+			reason = 'rate-limit';
+			return finish(resolvedBase ?? config.base ?? '', resolvedBaselines ?? [], knownOpenPulls);
+		}
+		throw error;
+	}
+	const { base, creator, reporter, baselines, baseHead, heads } = setup;
+	const context: VerdictContext = {
+		base,
+		descriptions: config.descriptions,
+		targetUrl: config.targetUrl,
+		repoUrl: repoUrl(config),
+	};
+	/* One verdict serves every PR: the baseline is unsatisfiable, so no head is worth an ancestry question. */
+	const misconfigured = offBase.length > 0 ? misconfiguredVerdict(offBase, context) : undefined;
+	const inScope = setup.pulls;
+	logger.info(
+		`Base ${base} at ${baseHead.slice(0, 12)}; ${inScope.length} open PRs; ${describe(baselines)}.`,
+	);
+
+	// Statuses belong to commits, so a head shared by several PRs is processed once, failures included.
+	const settled = new Map<string, { verdict?: Verdict; error?: unknown }>();
+	for (const listed of inScope) {
+		/*
+		 * The listing and the fetch can disagree when a PR moved or closed in between.
+		 * The fetched head is what can be evaluated; the PR is re-read once to learn what happened.
+		 */
+		let pull = listed;
+		let reconciled = false;
+		const fetched = heads?.get(listed.number);
+		if (fetched !== undefined && fetched !== listed.headSha) {
+			let settledAs: Reconciled;
+			try {
+				settledAs = await reconcile(runtime, listed, fetched, base);
+			} catch (error) {
+				if (isGitHubError(error, 'rate-limit')) {
+					reason = 'rate-limit';
+					break;
+				}
+				throw error;
+			}
+			if (settledAs !== null) {
+				counts[settledAs]++;
+				entries.push(entry(listed, settledAs));
+				continue;
+			}
+			pull = { ...listed, headSha: fetched as string, status: null };
+			reconciled = true;
+		}
+		const shared = settled.get(pull.headSha);
+		if (shared !== undefined) {
+			if (shared.error === undefined) {
+				counts.skipped++;
+				entries.push(entry(pull, 'skipped', shared.verdict));
+			} else {
+				counts.failed++;
+				entries.push(entry(pull, 'failed', shared.verdict, shared.error));
+			}
+			continue;
+		}
+		/* Probed first so an unwritable PR costs no ancestry request. */
+		const probe = budget.next(api.rest.remaining);
+		if (!probe.ok) {
+			reason = probe.reason;
+			break;
+		}
+		let verdict: Verdict;
+		let current;
+		try {
+			verdict =
+				misconfigured ??
+				(await evaluateCommit({
+					ancestry,
+					baselines,
+					sha: pull.headSha,
+					baseHead,
+					context,
+					logger,
+				}));
+			// The listing already carries the commit status the built-in reporter would read; a custom reporter is asked.
+			current =
+				runtime.customReporter || reconciled ? await reporter.current(pull.headSha) : pull.status;
+		} catch (error) {
+			if (isGitHubError(error, 'rate-limit')) {
+				reason = 'rate-limit';
+				break;
+			}
+			// A git failure after preparation is the clone's problem, not this PR's; the run ends.
+			if (error instanceof GitError) {
+				throw error;
+			}
+			counts.failed++;
+			entries.push(entry(pull, 'failed', undefined, error));
+			settled.set(pull.headSha, { error });
+			continue;
+		}
+		if (statusMatches(current, verdict.status, creator)) {
+			settled.set(pull.headSha, { verdict });
+			counts.skipped++;
+			entries.push(entry(pull, 'skipped', verdict));
+			continue;
+		}
+		try {
+			const outcome = await writeWithRetries(reporter, pull.headSha, verdict.status, {
+				// Every physical attempt is budgeted and paced; the transport itself does not retry writes.
+				async before() {
+					const decision = budget.next(api.rest.remaining);
+					if (!decision.ok) {
+						reason = decision.reason;
+						return false;
+					}
+					if (decision.waitMs > 0 && !config.dryRun) {
+						await runtime.sleep(decision.waitMs);
+					}
+					budget.record();
+					return true;
+				},
+				sleep: runtime.sleep,
+				retryBaseMs: config.retryBaseMs,
+			});
+			if (outcome === 'abandoned') {
+				break;
+			}
+			settled.set(pull.headSha, { verdict });
+			counts.written++;
+			entries.push(entry(pull, 'written', verdict));
+		} catch (error) {
+			// A creator mismatch is an identity problem that repeats for every PR; the run fails outright.
+			if (error instanceof ConfigError || error instanceof GitError) {
+				throw error;
+			}
+			counts.failed++;
+			entries.push(entry(pull, 'failed', verdict, error));
+			settled.set(pull.headSha, { verdict, error });
+			logger.warn(`PR #${pull.number}: ${message(error)}`);
+			if (isGitHubError(error, 'rate-limit')) {
+				reason = 'rate-limit';
+				break;
+			}
+			// A permission or auth failure repeats for every PR; stop instead of burning the budget.
+			if (isGitHubError(error, 'permission') || isGitHubError(error, 'auth')) {
+				reason = 'failed';
+				break;
+			}
+		}
+	}
+	return finish(base, baselines, inScope.length);
+}
+
+type Reconciled = 'closed' | 'deferred' | 'outOfScope' | null;
+
+/**
+ * Decides a PR the listing and the fetch disagree about, through one REST read.
+ * Returns why it cannot be evaluated, or null when the fetched head is its stable open in-scope head.
+ */
+async function reconcile(
+	runtime: Runtime,
+	listed: OpenPull,
+	fetched: string | null,
+	base: string,
+): Promise<Reconciled> {
+	const current = await getPull(runtime.api, runtime.config.repo, listed.number);
+	if (current === null || current.state !== 'open') {
+		return 'closed';
+	}
+	if (current.baseRef !== base || (!runtime.config.includeDrafts && current.draft)) {
+		runtime.logger.info(`PR #${listed.number} left the refresh's scope while it was preparing.`);
+		return 'outOfScope';
+	}
+	if (fetched === null) {
+		// The pull ref is gone but the PR is open: an in-flight change; the next run sees it settled.
+		runtime.logger.warn(
+			`PR #${listed.number} has no pull ref right now; deferred to the next run.`,
+		);
+		return 'deferred';
+	}
+	if (current.headSha === fetched) {
+		return null;
+	}
+	runtime.logger.warn(`PR #${listed.number} is still moving; deferred to the next run.`);
+	return 'deferred';
+}
+
+function entry(
+	pull: OpenPull,
+	outcome: RefreshEntry['outcome'] | 'outOfScope',
+	verdict?: RefreshEntry['verdict'],
+	error?: unknown,
+): RefreshEntry {
+	return {
+		number: pull.number,
+		sha: pull.headSha,
+		outcome: outcome === 'outOfScope' ? 'out-of-scope' : outcome,
+		...(verdict === undefined ? {} : { verdict }),
+		...(error === undefined ? {} : { error: message(error) }),
+	};
+}
+
+function describe(baselines: ResolvedBaseline[]): string {
+	return baselines
+		.map(
+			(baseline) =>
+				`${baseline.name}=${baseline.sha === null ? 'absent' : baseline.sha.slice(0, 12)}`,
+		)
+		.join(', ');
+}
+
+function message(error: unknown): string {
+	return error instanceof Error ? error.message : String(error);
+}

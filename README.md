@@ -6,9 +6,20 @@ A monorepo of sharp, single-purpose developer tools.
 
 ## Tools
 
-| Tool                                                        | What it does                                                                                                                                                                                                                                                                    |
-| ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`@mawesome/dependency-audit`](./packages/dependency-audit) | Verify every reachable import in a package's released artifact is declared and resolvable. ([npm](https://www.npmjs.com/package/@mawesome/dependency-audit) · [docs](https://mawesome.dev/dependency-audit/) · [playground](https://mawesome.dev/dependency-audit/playground/)) |
+### 📦 npm packages
+
+| Package                                                        | What it does                                                                                                                                                                                                                                                                    |
+| -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 🔍 [`@mawesome/dependency-audit`](./packages/dependency-audit) | Verify every reachable import in a package's released artifact is declared and resolvable. ([npm](https://www.npmjs.com/package/@mawesome/dependency-audit) · [docs](https://mawesome.dev/dependency-audit/) · [playground](https://mawesome.dev/dependency-audit/playground/)) |
+| ✅ [`@mawesome/pr-baseline`](./packages/pr-baseline)           | Keep open pull requests current with a movable baseline on the base branch, as a CLI and a library. ([npm](https://www.npmjs.com/package/@mawesome/pr-baseline) · [docs](https://mawesome.dev/pr-baseline/))                                                                    |
+
+### ⚙️ GitHub Actions
+
+Each action is published to its own mirror repository on release; consumers reference the mirror, never this repository.
+
+| Action                                                       | What it does                                                                                                                                                                                                        |
+| ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ✅ [`mawesomedev/pr-baseline-action`](./actions/pr-baseline) | Run pr-baseline on pull requests, merges, pushes and a schedule, writing one commit status per PR. ([mirror](https://github.com/mawesomedev/pr-baseline-action) · [docs](https://mawesome.dev/pr-baseline/action/)) |
 
 ## Quickstart
 
@@ -24,4 +35,4 @@ See [CONTRIBUTING.md](./CONTRIBUTING.md) to get started. [AGENTS.md](./AGENTS.md
 
 ## License
 
-[MIT](./LICENSE) © 2026 Manzoor Ahmad Wani
+[MIT](./LICENSE)

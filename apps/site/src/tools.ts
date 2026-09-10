@@ -46,4 +46,24 @@ export const tools: Tool[] = [
 			'comparison',
 		],
 	},
+	{
+		slug: 'pr-baseline',
+		name: 'pr-baseline',
+		npm: '@mawesome/pr-baseline',
+		tagline:
+			'Keep open pull requests current with a movable baseline on the base branch, reported through commit statuses.',
+		icon: 'approve-check',
+		playground: false,
+		docOrder: [
+			'concepts',
+			'cli',
+			'api',
+			'permissions',
+			'rate-limits',
+			'edge-cases',
+			'runbook',
+			'for-pr-authors',
+			'action',
+		],
+	},
 ];

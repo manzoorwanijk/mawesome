@@ -1,0 +1,172 @@
+name: Deploy to mirror
+
+# Publishes an action workspace to its own mirror repository when that action's release lands.
+# The trigger is the changesets tag, which the release workflow pushes with the App token;
+# a dispatch with a package and version reconciles a release whose run was lost, and recreating a missing tag by hand does the same.
+on:
+  push:
+    tags: ['@mawesome/*-action@*']
+  workflow_dispatch:
+    inputs:
+      package:
+        type: string
+        required: true
+        description: Action workspace to mirror, for example @mawesome/pr-baseline-action
+      version:
+        type: string
+        required: true
+        description: Version to mirror, without a v (its changesets tag must exist)
+
+# Releases never interleave; queued runs wait (up to GitHub's cap of 100 pending runs) instead of being dropped.
+concurrency:
+  group: deploy-to-mirror
+  cancel-in-progress: false
+  queue: max
+
+permissions: {}
+
+jobs:
+  deploy:
+    name: Deploy the action to its mirror
+    runs-on: ubuntu-latest
+    # Restrict this environment to the tag pattern @mawesome/*-action@* and the main branch in the repo settings,
+    # and protect that tag pattern with a ruleset that only the release App can bypass: the run executes the tagged commit.
+    environment: action-mirror
+    permissions:
+      contents: read
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2
+        with:
+          egress-policy: audit
+      # Full treeless history, so the ancestry check below can walk main back to the tagged commit.
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          filter: tree:0
+          persist-credentials: false
+      # The tag names the package and the version; its commit must be on main, and is what this job builds.
+      - name: Resolve the release
+        id: release
+        env:
+          INPUT_PACKAGE: ${{ inputs.package }}
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = 'push' ]; then
+            package="${GITHUB_REF_NAME%@*}"
+            version="${GITHUB_REF_NAME##*@}"
+          else
+            package="$INPUT_PACKAGE"
+            version="$INPUT_VERSION"
+          fi
+          if ! printf '%s' "$package" | grep -Eq '^@mawesome/[a-z0-9-]+-action$'; then
+            echo "Not an action workspace: $package" >&2
+            exit 1
+          fi
+          if ! printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "Not a release version: $version" >&2
+            exit 1
+          fi
+          tag="refs/tags/$package@$version"
+          listing="$(git ls-remote --exit-code origin "$tag" "$tag^{}")"
+          sha="$(printf '%s\n' "$listing" | awk -v ref="$tag^{}" '$2 == ref { print $1 }')"
+          if [ -z "$sha" ]; then
+            sha="$(printf '%s\n' "$listing" | awk -v ref="$tag" '$2 == ref { print $1 }')"
+          fi
+          test -n "$sha"
+          git fetch --quiet --filter=tree:0 origin "$sha" '+refs/heads/main:refs/remotes/origin/main'
+          git merge-base --is-ancestor "$sha" refs/remotes/origin/main
+          git checkout --quiet "$sha"
+          echo "package=$package" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      # The workspace names its own mirror and the files it ships, so a second action here brings its own.
+      - name: Resolve the action workspace
+        id: action
+        env:
+          PACKAGE: ${{ steps.release.outputs.package }}
+          VERSION: ${{ steps.release.outputs.version }}
+        run: node tools/repo/scripts/deploy-to-mirror.ts resolve --package "$PACKAGE" --version "$VERSION"
+      # The same App as the release, installed on the mirror as well; the token is scoped to that one repository.
+      - name: Mint a GitHub App token for the mirror
+        id: mirror-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          owner: ${{ steps.action.outputs.mirror_owner }}
+          repositories: ${{ steps.action.outputs.mirror_repo }}
+          permission-contents: write
+      # The App's bot user, so the mirror commit is attributed to it like any App-made commit.
+      - name: Resolve the App's bot identity
+        id: bot
+        env:
+          GH_TOKEN: ${{ steps.mirror-token.outputs.token }}
+          SLUG: ${{ steps.mirror-token.outputs.app-slug }}
+        run: |
+          id="$(gh api "users/${SLUG}[bot]" --jq .id)"
+          echo "name=${SLUG}[bot]" >> "$GITHUB_OUTPUT"
+          echo "email=${id}+${SLUG}[bot]@users.noreply.github.com" >> "$GITHUB_OUTPUT"
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          package-manager-cache: false # never restore a cache into a run that publishes
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build the action bundle
+        env:
+          PACKAGE: ${{ steps.release.outputs.package }}
+        run: pnpm --filter "$PACKAGE..." build
+      - name: Stage the mirror contents
+        env:
+          PACKAGE: ${{ steps.release.outputs.package }}
+          VERSION: ${{ steps.release.outputs.version }}
+          SHA: ${{ steps.release.outputs.sha }}
+        run: >-
+          node tools/repo/scripts/deploy-to-mirror.ts stage
+          --package "$PACKAGE"
+          --version "$VERSION"
+          --upstream "$SHA"
+          --out mirror-stage
+      # Checked out last, so nothing before it can touch a working tree that is about to be committed.
+      - name: Check out the mirror
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ steps.action.outputs.mirror }}
+          token: ${{ steps.mirror-token.outputs.token }}
+          persist-credentials: true # zizmor: ignore[artipacked] the publish step below pushes with it
+          path: mirror
+          fetch-depth: 0
+      # One commit carrying exactly the staged tree, then main, vX.Y.Z and vX move onto it or nothing does.
+      - name: Publish the release to the mirror
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+          SHA: ${{ steps.release.outputs.sha }}
+          GIT_AUTHOR_NAME: ${{ steps.bot.outputs.name }}
+          GIT_AUTHOR_EMAIL: ${{ steps.bot.outputs.email }}
+          GIT_COMMITTER_NAME: ${{ steps.bot.outputs.name }}
+          GIT_COMMITTER_EMAIL: ${{ steps.bot.outputs.email }}
+        run: >-
+          node tools/repo/scripts/deploy-to-mirror.ts publish
+          --repo mirror
+          --stage mirror-stage
+          --version "$VERSION"
+          --upstream "$SHA"
+      - name: Announce the release on the mirror
+        env:
+          GH_TOKEN: ${{ steps.mirror-token.outputs.token }}
+          MIRROR: ${{ steps.action.outputs.mirror }}
+          DIR: ${{ steps.action.outputs.dir }}
+          VERSION: ${{ steps.release.outputs.version }}
+          SHA: ${{ steps.release.outputs.sha }}
+        run: |
+          if gh release view "v$VERSION" --repo "$MIRROR" >/dev/null 2>&1; then
+            echo "The mirror already has a release for v$VERSION."
+            exit 0
+          fi
+          gh release create "v$VERSION" --repo "$MIRROR" --title "v$VERSION" \
+            --notes "Changelog: https://github.com/$GITHUB_REPOSITORY/blob/$SHA/$DIR/CHANGELOG.md"
