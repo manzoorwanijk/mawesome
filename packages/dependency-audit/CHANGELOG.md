@@ -1,5 +1,13 @@
 # @mawesome/dependency-audit
 
+## 0.4.7
+
+### Patch Changes
+
+- [#87](https://github.com/mawesomedev/mawesome/pull/87) [`4b7e8e3`](https://github.com/mawesomedev/mawesome/commit/4b7e8e3ff4e0315125a359a4dbccf09469ebf8db) Thanks [@manzoorwanijk](https://github.com/manzoorwanijk)! - Point the README's docs and playground links at the new `mawesome.dev` domain.
+
+- [#84](https://github.com/mawesomedev/mawesome/pull/84) [`63405e5`](https://github.com/mawesomedev/mawesome/commit/63405e5bdd6e78d7ec914b3b3c4737f436ad96c6) Thanks [@manzoorwanijk](https://github.com/manzoorwanijk)! - Point the package's repository, homepage and issue links at the new `mawesomedev` GitHub org.
+
 ## 0.4.6
 
 ### Patch Changes
