@@ -548,14 +548,16 @@ async function reportRefreshPrStatuses(
 		`pr-baseline-refresh-${Date.now()}.json`,
 	);
 	writeFileSync(file, JSON.stringify({ ...extra, ...result }, null, 2));
-	/* A baseline off the base branch is an operator problem the refresh cannot fix, so it warns instead
-	 * of failing: every PR carries the misconfiguration pass and a red schedule every hour helps nobody. */
+	/* A baseline off the base branch is an operator problem the refresh cannot fix, and the open gate must
+	 * be seen: the step fails while the news is new, then warns once every PR carries the message. */
 	const misconfigured =
 		result.misconfigured.length === 0
 			? undefined
 			: `Baseline ${result.misconfigured.join(', ')} is not on ${result.base}; every PR passes until a forced move puts it back.`;
+	// Nothing written means every in-scope PR already says so; with no PRs at all, only this run can.
+	const unannounced = misconfigured !== undefined && (result.written > 0 || result.openPulls === 0);
 	emit({
-		state: result.incomplete ? 'failure' : 'success',
+		state: result.incomplete || unannounced ? 'failure' : 'success',
 		description: result.incomplete
 			? `Refresh incomplete (${result.reason})`
 			: misconfigured === undefined
@@ -601,7 +603,11 @@ async function reportRefreshPrStatuses(
 	}
 	await writeSummary();
 	if (misconfigured !== undefined) {
-		core.warning(misconfigured);
+		if (unannounced) {
+			core.setFailed(misconfigured);
+		} else {
+			core.warning(misconfigured);
+		}
 	}
 	if (result.incomplete) {
 		core.setFailed(`Refresh incomplete (${result.reason}); dispatch the workflow to continue.`);
