@@ -1,5 +1,11 @@
 # @mawesome/pr-baseline-action
 
+## 0.1.1
+
+### Patch Changes
+
+- [#88](https://github.com/mawesomedev/mawesome/pull/88) [`14e076b`](https://github.com/mawesomedev/mawesome/commit/14e076b85ec96da2e707c1384e65543bce5ad23d) Thanks [@manzoorwanijk](https://github.com/manzoorwanijk)! - Rebuild the action bundle with `undici` 6.28.1, clearing the seven advisories against the bundled 6.26.0.
+
 ## 0.1.0
 
 ### Minor Changes
