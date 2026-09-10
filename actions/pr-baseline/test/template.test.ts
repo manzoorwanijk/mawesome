@@ -29,6 +29,24 @@ describe('consumer workflow template', () => {
 	it('defines the baseline list once and reads it in both jobs', () => {
 		const env = /^  PR_BASELINES: '(.*)'$/m.exec(template)?.[1] ?? '';
 		expect(Array.isArray(JSON.parse(env))).toBe(true);
-		expect(template.match(/baselines: \$\{\{ env\.PR_BASELINES \}\}/g)).toHaveLength(2);
+		// Comment lines excluded: the commented-out backfill job reads it too.
+		const active = template
+			.split('\n')
+			.filter((line) => !line.trimStart().startsWith('#'))
+			.join('\n');
+		expect(active.match(/baselines: \$\{\{ env\.PR_BASELINES \}\}/g)).toHaveLength(2);
+	});
+
+	it('runs once per merge and keeps the counts in the log rather than an artifact', () => {
+		// A merge fires `push` too, so a `closed` trigger would only queue the same job a second time.
+		expect(template).toContain('types: [opened, synchronize, reopened, ready_for_review, edited]');
+		expect(refresh).not.toContain("github.event.action == 'closed'");
+		// The results file is still an output for a workflow that wants it.
+		expect(template).not.toContain('upload-artifact');
+	});
+
+	it('offers the backfill as a commented-out job, with the scope wired through', () => {
+		expect(template).toContain('#          scope: unstamped');
+		expect(template).toContain("scope: ${{ inputs.scope || '' }}");
 	});
 });

@@ -18,7 +18,7 @@ name: PR baseline
 # in a job-level `if`, so the branch name is a literal in the marked places.
 on:
   pull_request_target:
-    types: [opened, synchronize, reopened, ready_for_review, edited, closed]
+    types: [opened, synchronize, reopened, ready_for_review, edited]
   merge_group:
   push:
     branches: [BASE]
@@ -37,9 +37,9 @@ on:
         description: Name of one baseline to move; blank moves all
       scope:
         type: choice
-        default: ''
-        options: ['', corrections, unstamped, all]
-        description: Which open PRs a refresh covers; blank is corrections, the green ones. unstamped is the backfill
+        default: corrections
+        options: [corrections, unstamped, all]
+        description: Which open PRs a refresh covers; corrections is the PRs showing green, unstamped is the backfill
 permissions: {}
 env:
   # One source of truth for both jobs. Omit to use the single default baseline.
@@ -65,9 +65,9 @@ jobs:
           baselines: ${{ env.PR_BASELINES }}
   refresh-pr-statuses:
     name: Move baselines and refresh PR statuses
+    # A merge fires `push` on the base branch at the same moment, so a `closed` trigger would only run this twice.
     if: >-
       !github.event.repository.fork && (
-        (github.event_name == 'pull_request_target' && github.event.action == 'closed' && github.event.pull_request.merged) ||
         (github.event_name == 'push' && github.ref_name == 'BASE') ||
         github.event_name == 'schedule' ||
         github.event_name == 'workflow_dispatch'
@@ -98,11 +98,38 @@ jobs:
           force: ${{ inputs.mode == 'move-baseline' }}
           baseline: ${{ inputs.baseline || '' }}
           scope: ${{ inputs.scope || '' }}
-      - if: ${{ always() && steps.pr-baseline.outputs.results-file != '' }}
-        uses: actions/upload-artifact@<sha> # vN
-        with:
-          name: pr-baseline-refresh
-          path: ${{ steps.pr-baseline.outputs.results-file }}
+          # Leaves headroom in the shared hourly budget for the per-PR checks.
+          max-writes-per-run: 300
+# Uncomment during adoption to stamp the PRs nothing has reached yet, and watch `report`'s unstamped
+# count fall. Keep it permanently only if the repository uses Dependabot AND stays on the default
+# GITHUB_TOKEN, whose Dependabot runs cannot write; a custom App or PAT token is the better fix.
+#  backfill:
+#    name: Stamp the PRs that have no status yet
+#    if: ${{ !github.event.repository.fork }}
+#    runs-on: ubuntu-latest
+#    timeout-minutes: 60
+#    permissions:
+#      contents: read
+#      statuses: write
+#      pull-requests: read
+#    concurrency:
+#      group: pr-baseline-backfill
+#      cancel-in-progress: false
+#    steps:
+#      - uses: actions/checkout@<sha> # vN
+#        with:
+#          ref: BASE
+#          fetch-depth: 0
+#          filter: tree:0
+#          persist-credentials: false
+#      - uses: mawesomedev/pr-baseline-action@<sha> # vX.Y.Z
+#        with:
+#          base: BASE
+#          baselines: ${{ env.PR_BASELINES }}
+#          mode: refresh-pr-statuses
+#          scope: unstamped
+#          # Well below the ceiling: a backfill must not starve every other workflow that writes a status.
+#          max-writes-per-run: 150
 ```
 
 <!-- workflow:end -->
