@@ -320,7 +320,7 @@ function describeRefreshPrStatuses(result: RefreshPrStatusesResult): string {
 			? ''
 			: ` Baseline ${result.misconfigured.join(', ')} is not on ${result.base}; every PR passes until a forced move puts it back.`;
 	if (result.paused) {
-		return `${line}${misconfigured} Paused (${result.reason}); the next run continues.`;
+		return `${line}${misconfigured} Paused (${result.reason}) at scope ${result.scope}, ${result.remaining} left.`;
 	}
 	return result.incomplete
 		? `${line}${misconfigured} Incomplete (${result.reason}). ${RETRY_HINT}`

@@ -78,12 +78,7 @@ export async function runRefreshPrStatuses(
 	let scope: RefreshScope = input.scope ?? config.scope;
 	if (runtime.customReporter) {
 		/* Bucketing reads the listing's commit statuses, which a custom reporter does not own,
-		 * so the only honest population is every PR. */
-		if (config.scopeExplicit && config.scope !== 'all') {
-			throw new ConfigError(
-				`A custom reporter owns the statuses this refresh compares against, so scope "${config.scope}" cannot be applied; use "all".`,
-			);
-		}
+		 * so the only honest population is every PR. An explicit narrower scope is refused in `createRuntime`. */
 		if (!config.scopeExplicit && input.scope === undefined) {
 			logger.warn(
 				'A custom reporter owns the statuses, which the PR listing cannot report; refreshing every open PR.',
@@ -141,11 +136,12 @@ export async function runRefreshPrStatuses(
 		const summary = `${counts.written} written, ${counts.skipped} skipped, ${counts.cosmetic} cosmetic, ${counts.failed} failed, ${remaining} remaining`;
 		if (paused) {
 			const runs = Math.ceil(remaining / config.maxWritesPerRun);
-			/* Only a run at the same scope continues this one, and a schedule runs the default unless
-			 * it was set up for this scope, so a non-default run says what it needs rather than promising. */
+			/* Only a run at the same scope continues this one. A scope the run chose for itself is chosen
+			 * again next time; one a caller or a move asked for is not, so that case says what it needs. */
+			const promotedAgain = runtime.customReporter || offBase.length > 0;
 			const more = `About ${runs} more ${runs === 1 ? 'run' : 'runs'} at this cap`;
 			const next =
-				scope === DEFAULT_SCOPE
+				scope === DEFAULT_SCOPE || promotedAgain
 					? `${more}; the schedule continues automatically.`
 					: `${more}, at scope ${scope}; a run at the default scope will not continue it.`;
 			logger.warn(`Paused on ${STOP_PHRASE[reason as RefreshStopReason]}: ${summary}.\n${next}`);

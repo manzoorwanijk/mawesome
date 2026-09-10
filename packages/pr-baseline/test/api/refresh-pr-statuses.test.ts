@@ -799,18 +799,20 @@ describe('refresh scope', () => {
 		expect(warnings.some((line) => line.includes('custom reporter'))).toBe(true);
 	});
 
-	it('refuses an explicit scope for a custom reporter', async () => {
-		const { client } = harness(
-			{
-				scope: 'corrections',
-				reporter: {
-					current: () => Promise.resolve(null),
-					write: () => Promise.resolve(),
+	it('refuses an explicit scope for a custom reporter, before any request', () => {
+		// `move-baseline` reaches the refresh only after the refs have moved, so this cannot wait for it.
+		expect(() =>
+			harness(
+				{
+					scope: 'corrections',
+					reporter: {
+						current: () => Promise.resolve(null),
+						write: () => Promise.resolve(),
+					},
 				},
-			},
-			scoped,
-		);
-		await expect(client.refreshPrStatuses()).rejects.toThrow(/custom reporter/);
+				scoped,
+			),
+		).toThrow(/custom reporter/);
 	});
 
 	it('refreshes every PR after a forced move and after an off-base baseline', async () => {
