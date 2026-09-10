@@ -131,7 +131,7 @@ async function main(argv: string[]): Promise<number> {
 			case 'refresh-pr-statuses': {
 				const result = await client.refreshPrStatuses();
 				emit(json, result, describeRefreshPrStatuses(result));
-				return result.incomplete ? 1 : 0;
+				return result.incomplete && !result.paused ? 1 : 0;
 			}
 			case 'move-baseline': {
 				const result = await client.moveBaseline({
@@ -141,7 +141,7 @@ async function main(argv: string[]): Promise<number> {
 					...(values.baseline === undefined ? {} : { baseline: values.baseline }),
 				});
 				emit(json, result, describeMove(result));
-				return result.refresh?.incomplete ? 1 : 0;
+				return result.refresh?.incomplete && !result.refresh.paused ? 1 : 0;
 			}
 			case 'report': {
 				const result = await client.report();
@@ -310,6 +310,9 @@ function describeRefreshPrStatuses(result: RefreshPrStatusesResult): string {
 		result.misconfigured.length === 0
 			? ''
 			: ` Baseline ${result.misconfigured.join(', ')} is not on ${result.base}; every PR passes until a forced move puts it back.`;
+	if (result.paused) {
+		return `${line}${misconfigured} Paused (${result.reason}); the next run continues.`;
+	}
 	return result.incomplete
 		? `${line}${misconfigured} Incomplete (${result.reason}). ${RETRY_HINT}`
 		: `${line}${misconfigured}`;

@@ -15,7 +15,10 @@ import type {
 } from '../types.ts';
 import { refSnapshot } from '../util.ts';
 import { writeWithRetries } from '../reporter/write.ts';
-import { misconfiguredVerdict, statusMatches, type VerdictContext } from '../verdict.ts';
+import { compareStatus, misconfiguredVerdict, type VerdictContext } from '../verdict.ts';
+
+/** Stops the next run continues from on its own; anything else needs someone to look. */
+const PAUSED_REASONS = new Set<RefreshStopReason>(['write-cap', 'primary-budget', 'rate-limit']);
 
 export interface RefreshPrStatusesInput {
 	/** Baselines already resolved by the caller, as after a move or in a dry run. */
@@ -66,6 +69,13 @@ export async function runRefreshPrStatuses(
 		if (incomplete && reason === undefined) {
 			reason = counts.deferred > 0 ? 'deferred' : 'failed';
 		}
+		/* A pause is a run that made progress and hit a budget: nothing failed, so the next run resumes by itself. */
+		const paused =
+			incomplete &&
+			counts.failed === 0 &&
+			counts.written > 0 &&
+			reason !== undefined &&
+			PAUSED_REASONS.has(reason);
 		if (incomplete) {
 			logger.warn(`Refresh incomplete (${reason}). ${RETRY_HINT}`);
 		}
@@ -76,6 +86,7 @@ export async function runRefreshPrStatuses(
 			misconfigured: offBase,
 			...counts,
 			incomplete,
+			paused,
 			...(reason === undefined ? {} : { reason }),
 			entries,
 			ancestry: ancestry.name,
@@ -241,7 +252,7 @@ export async function runRefreshPrStatuses(
 			settled.set(pull.headSha, { error });
 			continue;
 		}
-		if (statusMatches(current, verdict.status, creator)) {
+		if (compareStatus(current, verdict.status, creator) === 'current') {
 			settled.set(pull.headSha, { verdict });
 			counts.skipped++;
 			entries.push(entry(pull, 'skipped', verdict));

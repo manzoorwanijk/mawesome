@@ -42,11 +42,11 @@ The two are independent: a repository-wide baseline can move only when `.nvmrc` 
 
 ## Idempotency
 
-A refresh recomputes every in-scope PR's verdict and writes only when the existing status differs in state, description, target URL or creator. The description is human text and encodes no SHA. Without a configured target URL a failing status links to the compare view `<head>...<baseline commit>` on the server; a PR that was already failing is written once more when the baseline that link names moves, with the new commit. A status written by another creator (an old token, a previous integration) is rewritten, so a ruleset pinned to a source is always satisfied by the configured token.
+A refresh recomputes every in-scope PR's verdict and writes only when the existing status differs in state, description, target URL or creator. The description is human text and encodes no SHA. Without a configured target URL a failing status links to the compare view `<head>...<base branch>` on the server, which names the branch rather than the baseline commit, so a move alone never changes it. A status written by another creator (an old token, a previous integration) is rewritten, so a ruleset pinned to a source is always satisfied by the configured token.
 
 ## Recovery
 
-A refresh that hits a rate limit or a write budget exits nonzero with a summary and a retry hint; the next scheduled run continues where it left off, since every write it made is already current. Scheduled runs are best effort on GitHub, so a workflow dispatch is the immediate retry and `report` tells an operator whether anything is still stale.
+A refresh that hits a rate limit or a write budget having written something is paused, not failed: it exits 0 with a summary, and the next scheduled run continues where it left off, since every write it made is already current. One that stops having written nothing, or with any failure, exits nonzero with a retry hint. Scheduled runs are best effort on GitHub, so a workflow dispatch is the immediate retry and `report` tells an operator whether anything is still stale.
 
 ## Ancestry sources
 

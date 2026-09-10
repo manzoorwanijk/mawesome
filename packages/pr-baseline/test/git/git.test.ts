@@ -155,6 +155,7 @@ describe('git ancestry', () => {
 			deferred: 1,
 			written: 0,
 			incomplete: true,
+			paused: false,
 			reason: 'deferred',
 		});
 		expect(result.entries.map((entry) => [entry.number, entry.outcome])).toEqual([[2, 'deferred']]);
@@ -237,12 +238,12 @@ describe('git ancestry', () => {
 	});
 
 	it('counts a failing status with the default link as current, and the refresh skips it', async () => {
-		const [, c2, c3] = world.c;
+		const [, c2] = world.c;
 		const head = openPull(1, c2 as string, { 'x.txt': 'x' });
 		world.github.status(head, {
 			state: 'failure',
 			description: 'Merge or rebase main to include: pr-baseline',
-			targetUrl: `https://github.com/acme/widgets/compare/${head}...${c3}`,
+			targetUrl: `https://github.com/acme/widgets/compare/${head}...main`,
 		});
 		expect(await client().report()).toMatchObject({ stale: 0, current: 1 });
 		expect(await client().refreshPrStatuses()).toMatchObject({ written: 0, skipped: 1 });
@@ -457,7 +458,13 @@ describe('git ancestry review round 3', () => {
 		openPull(1, c2 as string, { 'x.txt': 'x' });
 		world.fixture.deletePull(1);
 		const result = await client().refreshPrStatuses();
-		expect(result).toMatchObject({ deferred: 1, closed: 0, incomplete: true, reason: 'deferred' });
+		expect(result).toMatchObject({
+			deferred: 1,
+			closed: 0,
+			incomplete: true,
+			paused: false,
+			reason: 'deferred',
+		});
 	});
 
 	it('binds a report on the fetched head when the listed one is gone from the remote', async () => {

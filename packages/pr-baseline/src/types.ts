@@ -208,6 +208,8 @@ export interface RefreshPrStatusesResult {
 	outOfScope: number;
 	failed: number;
 	incomplete: boolean;
+	/** The run stopped on a budget having made progress, so the next run continues; a green ending. */
+	paused: boolean;
 	reason?: RefreshStopReason;
 	entries: RefreshEntry[];
 	ancestry: 'git' | 'api';

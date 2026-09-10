@@ -3,7 +3,7 @@ import { ConfigError, repoUrl } from '../config.ts';
 import type { OpenPull } from '../github/pulls.ts';
 import type { Ancestry, ResolvedBaseline } from '../types.ts';
 import { refSnapshot } from '../util.ts';
-import { statusMatches } from '../verdict.ts';
+import { compareStatus } from '../verdict.ts';
 import { listOpenPulls } from '../github/pulls.ts';
 import type { Runtime } from '../runtime.ts';
 import type { ReportBaseline, ReportResult } from '../types.ts';
@@ -127,7 +127,7 @@ async function staleness(
 			context,
 			logger,
 		});
-		if (statusMatches(pull.status, verdict.status, creator)) {
+		if (compareStatus(pull.status, verdict.status, creator) === 'current') {
 			current++;
 		} else {
 			stale++;

@@ -56,13 +56,13 @@ Exit codes: `0` pass (including not-applicable and misconfigured), `1` fail, `2`
 
 Lists open PRs against the base branch, computes every verdict, and writes only the statuses that differ in state, description, target URL or creator. Writes are paced by `--max-writes-per-minute`, capped by `--max-writes-per-run`, and stop when the primary rate limit is within its reserve.
 
-The summary reports `written`, `skipped` (already current), `closed` (gone since listing), `deferred` (head still moving), `outOfScope` (left the base branch or became a draft meanwhile), `failed` and `incomplete` with a `reason`: `rate-limit`, `write-cap`, `primary-budget`, `deferred` or `failed`. Any `deferred` or `failed` marks the refresh incomplete. `closed` and `deferred` only occur with the git adapter, which fetches every head and notices a PR that closed or moved since the listing; the API adapter writes to the listed head.
+The summary reports `written`, `skipped` (already current), `closed` (gone since listing), `deferred` (head still moving), `outOfScope` (left the base branch or became a draft meanwhile), `failed` and `incomplete` with a `reason`: `rate-limit`, `write-cap`, `primary-budget`, `deferred` or `failed`. Any `deferred` or `failed` marks the refresh incomplete. `paused` is an incomplete run that stopped on `rate-limit`, `write-cap` or `primary-budget` having written something and with nothing failed, which the next run continues on its own. `closed` and `deferred` only occur with the git adapter, which fetches every head and notices a PR that closed or moved since the listing; the API adapter writes to the listed head.
 
 A permission or authentication failure on the first write stops the refresh, since it would repeat for every PR. A commit that already carries 1,000 statuses for the context fails for that PR only.
 
 Before evaluating anything, the refresh resolves the status creator, which is exit `2` when it fails, and checks that every present baseline is an ancestor of the base branch head. A baseline that is not gets a warning and the misconfiguration pass for every PR, since such a baseline can never be satisfied by merging and a refusal would only leave stale statuses behind.
 
-Exit codes: `0` complete, `1` incomplete, `2` error.
+Exit codes: `0` complete or paused, `1` incomplete and not paused, `2` error.
 
 ### `move-baseline`
 
@@ -76,7 +76,7 @@ For each selected baseline decides whether it should move, and to where:
 
 `--refresh-pr-statuses` runs a refresh afterwards, also when nothing moved, so a re-dispatch is a safe retry. In a dry run the refresh is evaluated against the intended, unwritten baseline positions.
 
-Exit codes: `0`, `1` when the following refresh is incomplete, `2` error.
+Exit codes: `0`, `1` when the following refresh is incomplete and not paused, `2` error.
 
 ### `report`
 

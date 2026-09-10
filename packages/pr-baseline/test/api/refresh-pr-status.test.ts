@@ -50,14 +50,14 @@ describe('refresh-pr-status', () => {
 		await client.refreshPrStatus({ sha: sha(10), report: true });
 		expect(github.latestStatus(sha(10), 'PR baseline')).toMatchObject({
 			state: 'failure',
-			targetUrl: `https://github.com/acme/widgets/compare/${sha(10)}...${sha(4)}`,
+			targetUrl: `https://github.com/acme/widgets/compare/${sha(10)}...main`,
 		});
-		// A move changes the link, so the failing status is written again with the new baseline commit.
+		// The link names the branch, so a move leaves it alone and the failing status is not rewritten.
 		github.baseline('two', sha(5));
 		const again = await client.refreshPrStatus({ sha: sha(10), report: true });
-		expect(again.written).toBe(true);
+		expect(again).toMatchObject({ written: false, skipped: true });
 		expect(github.latestStatus(sha(10), 'PR baseline')?.targetUrl).toBe(
-			`https://github.com/acme/widgets/compare/${sha(10)}...${sha(5)}`,
+			`https://github.com/acme/widgets/compare/${sha(10)}...main`,
 		);
 	});
 

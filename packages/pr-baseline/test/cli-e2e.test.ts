@@ -96,13 +96,18 @@ describe('cli end to end', () => {
 		expect(github.latestStatus(sha(10), 'PR baseline')?.state).toBe('failure');
 	});
 
-	it('exits 1 on an incomplete refresh and 0 once it converges', async () => {
+	it('exits 0 on a paused refresh and 0 once it converges', async () => {
 		const capped = await run(twoStalePulls, ['refresh-pr-statuses', '--max-writes-per-run', '1']);
-		expect(capped.status).toBe(1);
-		expect(capped.json()).toMatchObject({ written: 1, incomplete: true, reason: 'write-cap' });
+		expect(capped.status).toBe(0);
+		expect(capped.json()).toMatchObject({
+			written: 1,
+			incomplete: true,
+			paused: true,
+			reason: 'write-cap',
+		});
 		const full = await run(twoStalePulls, ['refresh-pr-statuses']);
 		expect(full.status).toBe(0);
-		expect(full.json()).toMatchObject({ written: 2, incomplete: false });
+		expect(full.json()).toMatchObject({ written: 2, incomplete: false, paused: false });
 	});
 
 	it('exits 2 when report finds a baseline off the base branch', async () => {

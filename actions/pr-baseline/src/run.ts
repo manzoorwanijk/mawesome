@@ -35,6 +35,7 @@ const OUTPUT_NAMES = [
 	'deferred',
 	'failed',
 	'incomplete',
+	'paused',
 	'summary',
 	'results-file',
 ] as const;
@@ -94,6 +95,7 @@ function emit(values: Record<string, string | number | boolean>): void {
 		deferred: 0,
 		failed: 0,
 		incomplete: false,
+		paused: false,
 		...values,
 	});
 }
@@ -557,12 +559,14 @@ async function reportRefreshPrStatuses(
 	// Nothing written means every in-scope PR already says so; with no PRs at all, only this run can.
 	const unannounced = misconfigured !== undefined && (result.written > 0 || result.openPulls === 0);
 	emit({
-		state: result.incomplete || unannounced ? 'failure' : 'success',
-		description: result.incomplete
-			? `Refresh incomplete (${result.reason})`
-			: misconfigured === undefined
-				? 'Refresh complete'
-				: `Baseline ${result.misconfigured.join(', ')} is not on ${result.base}`,
+		state: (result.incomplete && !result.paused) || unannounced ? 'failure' : 'success',
+		description: result.paused
+			? `Refresh paused (${result.reason})`
+			: result.incomplete
+				? `Refresh incomplete (${result.reason})`
+				: misconfigured === undefined
+					? 'Refresh complete'
+					: `Baseline ${result.misconfigured.join(', ')} is not on ${result.base}`,
 		base: result.base,
 		baselines: baselinesOutput(result.baselines),
 		missing: '[]',
@@ -572,6 +576,7 @@ async function reportRefreshPrStatuses(
 		deferred: result.deferred,
 		failed: result.failed,
 		incomplete: result.incomplete,
+		paused: result.paused,
 		summary: boundedSummary(result, extra),
 		'results-file': file,
 	});
@@ -595,7 +600,9 @@ async function reportRefreshPrStatuses(
 			String(result.failed),
 		],
 	]);
-	if (result.incomplete) {
+	if (result.paused) {
+		core.summary.addRaw(`\nPaused: ${result.reason}. The next run continues.\n`);
+	} else if (result.incomplete) {
 		core.summary.addRaw(`\nIncomplete: ${result.reason}. Dispatch the workflow to continue.\n`);
 	}
 	if (misconfigured !== undefined) {
@@ -609,7 +616,9 @@ async function reportRefreshPrStatuses(
 			core.warning(misconfigured);
 		}
 	}
-	if (result.incomplete) {
+	if (result.paused) {
+		core.warning(`Refresh paused (${result.reason}); the next run continues.`);
+	} else if (result.incomplete) {
 		core.setFailed(`Refresh incomplete (${result.reason}); dispatch the workflow to continue.`);
 	}
 }

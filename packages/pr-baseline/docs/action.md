@@ -120,7 +120,7 @@ Inputs mirror the [CLI](./cli.md), except that `baselines` is inline JSON only a
 
 A hidden `github-token-probe` input, defaulting to `${{ github.token }}` like `token`, lets the action prove whether `token` is the workflow's own token: when the two are equal the status creator is `github-actions[bot]` without any request; an App token never matches and must come with `creator`.
 
-Outputs are plain strings, several of them JSON documents. Every run, including a skip or an error, sets every output and writes a step summary; `state` is then `skipped` or `error`. The `summary` output of a refresh drops per-PR entries until it fits a quarter of GitHub's 1 MB output cap and says how many it omitted; after a move it also carries the moves. A run Dependabot triggers has a read-only workflow token, so it evaluates without writing and leaves moves to the schedule. An incomplete refresh, an off-base baseline in `report`, a configuration error and a permission error fail the step; a failing `refresh-pr-status` verdict does not, since the commit status is the gate, and an off-base baseline in a refresh fails it only while some PR still has to learn it: the run that writes the misconfiguration pass fails, later runs, which write nothing, warn instead. A repository with no open PRs has nowhere else to carry the message, so its run always fails.
+Outputs are plain strings, several of them JSON documents. Every run, including a skip or an error, sets every output and writes a step summary; `state` is then `skipped` or `error`. The `summary` output of a refresh drops per-PR entries until it fits a quarter of GitHub's 1 MB output cap and says how many it omitted; after a move it also carries the moves. A run Dependabot triggers has a read-only workflow token, so it evaluates without writing and leaves moves to the schedule. An incomplete refresh that is not paused, an off-base baseline in `report`, a configuration error and a permission error fail the step; a paused refresh warns and leaves the step green, with `incomplete` still `true`; a failing `refresh-pr-status` verdict does not, since the commit status is the gate, and an off-base baseline in a refresh fails it only while some PR still has to learn it: the run that writes the misconfiguration pass fails, later runs, which write nothing, warn instead. A repository with no open PRs has nowhere else to carry the message, so its run always fails.
 
 ### Inputs
 
@@ -157,21 +157,22 @@ Outputs are plain strings, several of them JSON documents. Every run, including 
 
 <!-- outputs:start -->
 
-| Output         | Description                                                                                                              |
-| -------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| `state`        | Status state of the checked commit (`success` or `failure`), or of the run (`success`, `failure`, `skipped` or `error`). |
-| `description`  | Status description of the checked commit.                                                                                |
-| `base`         | The base branch the run served.                                                                                          |
-| `baselines`    | JSON array of `{ name, sha }` for every configured baseline.                                                             |
-| `missing`      | JSON array of baseline names the evaluated commit lacks (refresh-pr-status mode).                                        |
-| `written`      | Statuses written.                                                                                                        |
-| `skipped`      | PRs whose status was already current.                                                                                    |
-| `closed`       | PRs that closed while the refresh ran.                                                                                   |
-| `deferred`     | PRs whose head was still moving.                                                                                         |
-| `failed`       | PRs whose status could not be written.                                                                                   |
-| `incomplete`   | Whether a refresh stopped before covering every PR (`true` or `false`).                                                  |
-| `summary`      | JSON summary of the run, per-PR results capped to stay under the output size limit.                                      |
-| `results-file` | Path of a JSON file with the uncapped per-PR results of a refresh, for an upload step.                                   |
+| Output         | Description                                                                                                                             |
+| -------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `state`        | Status state of the checked commit (`success` or `failure`), or of the run (`success`, `failure`, `skipped` or `error`).                |
+| `description`  | Status description of the checked commit.                                                                                               |
+| `base`         | The base branch the run served.                                                                                                         |
+| `baselines`    | JSON array of `{ name, sha }` for every configured baseline.                                                                            |
+| `missing`      | JSON array of baseline names the evaluated commit lacks (refresh-pr-status mode).                                                       |
+| `written`      | Statuses written.                                                                                                                       |
+| `skipped`      | PRs whose status was already current.                                                                                                   |
+| `closed`       | PRs that closed while the refresh ran.                                                                                                  |
+| `deferred`     | PRs whose head was still moving.                                                                                                        |
+| `failed`       | PRs whose status could not be written.                                                                                                  |
+| `incomplete`   | Whether a refresh stopped before covering every PR (`true` or `false`).                                                                 |
+| `paused`       | Whether a refresh stopped on a budget having written something, so the next run continues and the step stays green (`true` or `false`). |
+| `summary`      | JSON summary of the run, per-PR results capped to stay under the output size limit.                                                     |
+| `results-file` | Path of a JSON file with the uncapped per-PR results of a refresh, for an upload step.                                                  |
 
 <!-- outputs:end -->
 

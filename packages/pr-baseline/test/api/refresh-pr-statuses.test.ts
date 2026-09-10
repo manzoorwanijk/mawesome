@@ -21,7 +21,7 @@ function populate(gh: FakeGitHub): void {
 	gh.status(sha(13), {
 		state: 'failure',
 		description: 'Merge or rebase main to include: pr-baseline',
-		targetUrl: `https://github.com/acme/widgets/compare/${sha(13)}...${sha(3)}`,
+		targetUrl: `https://github.com/acme/widgets/compare/${sha(13)}...main`,
 	});
 	gh.status(sha(14), { state: 'success', description: PASS, creator: 'someone-else' });
 }
@@ -82,10 +82,15 @@ describe('refresh-pr-statuses', () => {
 		expect(logs.filter((line) => line.startsWith('[dry-run]'))).toHaveLength(3);
 	});
 
-	it('stops at the per-run write cap and marks the refresh incomplete', async () => {
+	it('pauses at the per-run write cap, incomplete but green, having written something', async () => {
 		const { client, github } = harness({ maxWritesPerRun: 2 }, populate);
 		const result = await client.refreshPrStatuses();
-		expect(result).toMatchObject({ written: 2, incomplete: true, reason: 'write-cap' });
+		expect(result).toMatchObject({
+			written: 2,
+			incomplete: true,
+			paused: true,
+			reason: 'write-cap',
+		});
 		expect(github.requests(/\/statuses\//, 'POST')).toHaveLength(2);
 	});
 
@@ -266,7 +271,7 @@ describe('refresh guards', () => {
 			gh.rateLimitRemaining = 55;
 		});
 		const result = await client.refreshPrStatuses();
-		expect(result.reason).toBe('primary-budget');
+		expect(result).toMatchObject({ written: 0, reason: 'primary-budget', paused: false });
 		expect(github.requests(/\/statuses\//, 'POST')).toHaveLength(0);
 	});
 
@@ -416,7 +421,14 @@ describe('refresh write accounting', () => {
 			},
 		);
 		const result = await client.refreshPrStatuses();
-		expect(result).toMatchObject({ written: 0, failed: 2, incomplete: true, reason: 'write-cap' });
+		// Failures are not a pause, whatever stopped the run: something needs looking at.
+		expect(result).toMatchObject({
+			written: 0,
+			failed: 2,
+			incomplete: true,
+			paused: false,
+			reason: 'write-cap',
+		});
 		expect(github.requests(/\/statuses\//, 'POST')).toHaveLength(2);
 		expect(sleeps).toEqual([60_000]);
 	});
@@ -443,7 +455,13 @@ describe('refresh transport retries', () => {
 			gh.overrides.push({ path: /\/statuses\//, method: 'POST', status: 500, times: 5 });
 		});
 		const result = await client.refreshPrStatuses();
-		expect(result).toMatchObject({ written: 0, incomplete: true, reason: 'write-cap' });
+		// A run that made no progress is indistinguishable from one that never will.
+		expect(result).toMatchObject({
+			written: 0,
+			incomplete: true,
+			paused: false,
+			reason: 'write-cap',
+		});
 		expect(github.requests(/\/statuses\//, 'POST')).toHaveLength(2);
 	});
 

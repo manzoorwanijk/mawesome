@@ -65,7 +65,7 @@ interface Reporter {
 
 `PrepareInput` carries the commits the run will ask about, the open PR numbers and every baseline name with the SHA the API reported (null when absent); `PrepareResult.heads` maps each PR to the head the adapter fetched, null when its ref is gone. Every command calls it before its first ancestry question (`refresh-pr-status` and `move-baseline` with an empty `pulls` list, `refresh-pr-status` offline with an empty `refs` list, `move-baseline` once more with the labeled merge candidates it found); the built-in git adapter uses it to fetch in batches and to refuse when a baseline ref on the remote disagrees with the API.
 
-A custom reporter can post a comment, create a check run or forward to a hosted service. `refresh-pr-status` and `refresh-pr-statuses` compare `current()` against the intended status by state, description, target URL and creator, so a reporter that stores no creator should return the configured one. The built-in status reporter is the one exception: the refresh reads its current statuses from the PR listing (one GraphQL page per 100 PRs, two with the git adapter) instead of calling `current()` per PR.
+A custom reporter can post a comment, create a check run or forward to a hosted service. `refresh-pr-status` and `refresh-pr-statuses` compare `current()` against the intended status by state, description, target URL and creator, so a reporter that stores no creator should return the configured one. A difference in state or creator is material and a difference in description or target URL alone is cosmetic; `refresh-pr-status` writes either, and `refresh-pr-statuses` writes a cosmetic one only under `--scope all`. The built-in status reporter is the one exception: the refresh reads its current statuses from the PR listing (one GraphQL page per 100 PRs, two with the git adapter) instead of calling `current()` per PR.
 
 ## Errors
 
@@ -75,4 +75,4 @@ A custom reporter can post a comment, create a check run or forward to a hosted 
 
 ## Pure helpers
 
-`computeVerdict`, `renderDescription`, `boundDescription`, `statusMatches`, `validateBaselines`, `parseBaselines`, `shorthandBaselines` and `createMatcher` are exported for tests and for integrations that want the same decisions without the client.
+`computeVerdict`, `renderDescription`, `boundDescription`, `compareStatus`, `validateBaselines`, `parseBaselines`, `shorthandBaselines` and `createMatcher` are exported for tests and for integrations that want the same decisions without the client.

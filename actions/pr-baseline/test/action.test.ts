@@ -76,6 +76,7 @@ const OUTPUT_NAMES = [
 	'failed',
 	'incomplete',
 	'missing',
+	'paused',
 	'results-file',
 	'skipped',
 	'state',
@@ -359,14 +360,39 @@ describe('action mode: auto', () => {
 		expect(outputs()['written']).toBe('1');
 	});
 
-	it('fails the step on an incomplete refresh', async () => {
+	it('leaves the step green on a paused refresh, still reporting it incomplete', async () => {
 		world.github.commit(sha(13), [sha(1)]);
 		world.github.pull({ number: 1, headSha: sha(12) });
 		world.github.pull({ number: 2, headSha: sha(13) });
 		runner({ event: 'schedule', payload: {}, inputs: { 'max-writes-per-run': '1' } });
 		await run();
 		expect(outputs()['incomplete']).toBe('true');
+		expect(outputs()['paused']).toBe('true');
 		expect(outputs()['written']).toBe('1');
+		expect(outputs()['description']).toBe('Refresh paused (write-cap)');
+		expect(outputs()['state']).toBe('success');
+		expect(summary()).toContain('Paused: write-cap. The next run continues.');
+		expect(process.exitCode ?? 0).toBe(0);
+	});
+
+	it('fails the step on a refresh that stopped having written nothing', async () => {
+		world.github.pull({ number: 1, headSha: sha(12) });
+		world.github.overrides.push({
+			path: /\/statuses\//,
+			method: 'POST',
+			status: 422,
+			times: 10,
+			body: { message: 'This SHA and context has reached the maximum number of statuses.' },
+		});
+		runner({ event: 'schedule', payload: {} });
+		await run();
+		expect(outputs()).toMatchObject({
+			incomplete: 'true',
+			paused: 'false',
+			written: '0',
+			failed: '1',
+			state: 'failure',
+		});
 		expect(process.exitCode).toBe(1);
 		process.exitCode = 0;
 	});
@@ -435,9 +461,10 @@ describe('action mode: auto', () => {
 		});
 		await run();
 		expect(world.github.baselineAt('pr-baseline')).toBe(sha(5));
-		// The failure written earlier now links to the moved baseline, so it is written once more.
-		expect(outputs()['written']).toBe('1');
-		expect(world.github.latestStatus(sha(12), 'PR baseline')?.targetUrl).toContain(`...${sha(5)}`);
+		// The link names the base branch, so the move leaves the failing status alone.
+		expect(outputs()['written']).toBe('0');
+		expect(outputs()['skipped']).toBe('1');
+		expect(world.github.latestStatus(sha(12), 'PR baseline')?.targetUrl).toContain('...main');
 	});
 });
 
@@ -497,6 +524,7 @@ describe('action explicit modes and errors', () => {
 			'failed',
 			'incomplete',
 			'missing',
+			'paused',
 			'results-file',
 			'skipped',
 			'state',
@@ -565,6 +593,7 @@ describe('action explicit modes and errors', () => {
 			outOfScope: 0,
 			failed: 200,
 			incomplete: true,
+			paused: false,
 			reason: 'failed',
 			entries,
 			ancestry: 'api',

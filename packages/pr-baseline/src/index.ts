@@ -56,10 +56,11 @@ export type {
 export { BaselineError } from './util.ts';
 export {
 	boundDescription,
+	compareStatus,
 	computeVerdict,
 	MAX_DESCRIPTION_LENGTH,
 	renderDescription,
-	statusMatches,
+	type StatusDifference,
 	type VerdictBaseline,
 	type VerdictContext,
 } from './verdict.ts';
