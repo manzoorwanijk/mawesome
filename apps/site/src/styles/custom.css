@@ -8,3 +8,29 @@
 .card .title a:focus-visible {
 	text-decoration: underline;
 }
+
+/*
+ * The sidebar lists one tool's pages (src/starlightRouteData.ts), so its top-level entries are page links rather than group headings.
+ * Undo the heading treatment Starlight gives a top-level link, keeping its responsive sizing.
+ */
+.sidebar-content a.large {
+	font-size: inherit;
+	font-weight: 400;
+	color: var(--sl-color-gray-2);
+}
+
+.sidebar-content a.large:hover,
+.sidebar-content a.large:focus {
+	color: var(--sl-color-white);
+}
+
+.sidebar-content a.large[aria-current='page'] {
+	font-weight: 600;
+	color: var(--sl-color-text-invert);
+}
+
+@media (min-width: 50rem) {
+	.sidebar-content a.large {
+		font-size: var(--sl-text-sm);
+	}
+}

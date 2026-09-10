@@ -1,0 +1,56 @@
+---
+/**
+ * Name the tool the reader is in above its page list, with a way back out to the tool index.
+ * The list itself is scoped to that tool by `src/starlightRouteData.ts`.
+ */
+import Default from '@astrojs/starlight/components/Sidebar.astro';
+import { toolFromPath } from '../lib/current-tool.ts';
+
+const tool = toolFromPath(Astro.url.pathname);
+---
+
+{
+	tool && (
+		<div class="tool-nav">
+			<a class="tool-nav-back" href="/">
+				<span aria-hidden="true">&#8592;</span> All tools
+			</a>
+			<span class="tool-nav-name">{tool.name}</span>
+		</div>
+	)
+}
+<Default><slot /></Default>
+
+<style>
+	.tool-nav {
+		display: flex;
+		flex-direction: column;
+		gap: 0.25rem;
+		margin-bottom: 1rem;
+		padding-bottom: 0.75rem;
+		border-bottom: 1px solid var(--sl-color-hairline-light);
+	}
+
+	.tool-nav-back {
+		color: var(--sl-color-gray-3);
+		font-size: var(--sl-text-xs);
+		text-decoration: none;
+	}
+
+	.tool-nav-back:hover,
+	.tool-nav-back:focus-visible {
+		color: var(--sl-color-white);
+	}
+
+	.tool-nav-name {
+		color: var(--sl-color-white);
+		font-size: var(--sl-text-lg);
+		font-weight: 600;
+	}
+
+	@media (min-width: 50rem) {
+		.tool-nav-name {
+			font-size: var(--sl-text-base);
+		}
+	}
+</style>
