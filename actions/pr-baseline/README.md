@@ -69,7 +69,7 @@ jobs:
     if: >-
       !github.event.repository.fork && (
         (github.event_name == 'push' && github.ref_name == 'BASE') ||
-        github.event_name == 'schedule' ||
+        github.event.schedule == '17 * * * *' ||
         github.event_name == 'workflow_dispatch'
       )
     runs-on: ubuntu-latest
@@ -103,8 +103,8 @@ jobs:
 # Uncomment during adoption to stamp the PRs nothing has reached yet, and watch `report`'s unstamped
 # count fall. Keep it permanently only if the repository uses Dependabot AND stays on the default
 # GITHUB_TOKEN, whose Dependabot runs cannot write; a custom App or PAT token is the better fix.
-# It needs its own daily tick: add `- cron: '23 4 * * *'` under `on.schedule` above, which the job
-# below matches on. The hourly refresh also runs at that minute, which costs one ordinary refresh.
+# It needs its own daily tick: add `- cron: '23 4 * * *'` under `on.schedule` above. Each job matches
+# its own cron, so the two never run together and never share an hour's write budget.
 #  backfill:
 #    name: Stamp the PRs that have no status yet
 #    if: ${{ !github.event.repository.fork && github.event.schedule == '23 4 * * *' }}

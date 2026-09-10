@@ -1,5 +1,5 @@
 import { createWriteBudget } from '../budget.ts';
-import { ConfigError, repoUrl } from '../config.ts';
+import { ConfigError, DEFAULT_SCOPE, repoUrl } from '../config.ts';
 import { baselinesOffBase, evaluateCommit } from '../evaluate.ts';
 import { GitError } from '../git/repo.ts';
 import { isGitHubError, RETRY_HINT } from '../github/errors.ts';
@@ -121,10 +121,12 @@ export async function runRefreshPrStatuses(
 		if (incomplete && reason === undefined) {
 			reason = counts.deferred > 0 ? 'deferred' : 'failed';
 		}
-		/* A pause is a run that made progress and hit a budget: nothing failed, so the next run resumes by itself. */
+		/* A pause is a run that made progress and hit a budget, with nothing left behind: a deferred
+		 * PR's next head is unstamped, which no later `corrections` run revisits, so it is not a pause. */
 		const paused =
 			incomplete &&
 			counts.failed === 0 &&
+			counts.deferred === 0 &&
 			counts.written > 0 &&
 			reason !== undefined &&
 			PAUSED_REASONS.has(reason);
@@ -140,10 +142,13 @@ export async function runRefreshPrStatuses(
 		const summary = `${counts.written} written, ${counts.skipped} skipped, ${counts.cosmetic} cosmetic, ${counts.failed} failed, ${remaining} remaining`;
 		if (paused) {
 			const runs = Math.ceil(remaining / config.maxWritesPerRun);
-			logger.warn(
-				`Paused on ${STOP_PHRASE[reason as RefreshStopReason]}: ${summary}.\n` +
-					`About ${runs} more ${runs === 1 ? 'run' : 'runs'} at this cap; the schedule continues automatically.`,
-			);
+			/* A promoted `all` is not what the next run defaults to, so an operator has to ask for it
+			 * again; the promotion came from a move that will not repeat. */
+			const next =
+				scope === 'all' && !asked
+					? `About ${runs} more ${runs === 1 ? 'run' : 'runs'} at this cap, but the next run defaults to ${DEFAULT_SCOPE}; rerun with scope all to finish this sweep.`
+					: `About ${runs} more ${runs === 1 ? 'run' : 'runs'} at this cap; the schedule continues automatically.`;
+			logger.warn(`Paused on ${STOP_PHRASE[reason as RefreshStopReason]}: ${summary}.\n${next}`);
 		} else if (
 			incomplete &&
 			counts.written === 0 &&
@@ -292,7 +297,7 @@ export async function runRefreshPrStatuses(
 	const progress = createProgressThrottle(runtime.now());
 
 	// Statuses belong to commits, so a head shared by several PRs is processed once, failures included.
-	const settled = new Map<string, { verdict?: Verdict; error?: unknown }>();
+	const settled = new Map<string, { verdict?: Verdict; error?: unknown; cosmetic?: boolean }>();
 	/*
 	 * Text-only differences wait for the material ones, which are the only writes that can unblock a merge.
 	 * Keyed by head so a shared head is written once, and accounted only once the write has happened.
@@ -396,8 +401,10 @@ export async function runRefreshPrStatuses(
 		const shared = settled.get(pull.headSha);
 		if (shared !== undefined) {
 			if (shared.error === undefined) {
-				counts.skipped++;
-				entries.push(entry(pull, 'skipped', shared.verdict));
+				// `skipped` means already current, so a head left alone as cosmetic keeps that name here.
+				const outcome = shared.cosmetic === true ? 'cosmetic' : 'skipped';
+				counts[outcome]++;
+				entries.push(entry(pull, outcome, shared.verdict));
 			} else {
 				counts.failed++;
 				entries.push(entry(pull, 'failed', shared.verdict, shared.error));
@@ -452,7 +459,7 @@ export async function runRefreshPrStatuses(
 				cosmetic.set(pull.headSha, { verdict, pulls: [pull] });
 			} else {
 				// Description and link drift gate nothing, and a write from a 500 an hour budget is too expensive for it.
-				settled.set(pull.headSha, { verdict });
+				settled.set(pull.headSha, { verdict, cosmetic: true });
 				counts.cosmetic++;
 				entries.push(entry(pull, 'cosmetic', verdict));
 			}

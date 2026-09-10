@@ -46,7 +46,7 @@ A refresh recomputes the verdict of the PRs its scope selects, by default the on
 
 ## Recovery
 
-A refresh that hits a rate limit or a write budget having written something is paused, not failed: it exits 0 with a summary, and the next run of the same command continues where it left off, since every write it made is already current. One that stops having written nothing, or with any failure, exits nonzero with a retry hint. Scheduled runs are best effort on GitHub, so a workflow dispatch is the immediate retry and `report` tells an operator whether anything is still stale.
+A refresh that hits a rate limit or a write budget having written something, with nothing failed and nothing deferred, is paused rather than failed: it exits 0 with a summary, and the next run at the same scope continues where it left off, since every write it made is already current. One that stops having written nothing, or with any failure, exits nonzero with a retry hint. Scheduled runs are best effort on GitHub, so a workflow dispatch is the immediate retry and `report` tells an operator whether anything is still stale.
 
 ## Ancestry sources
 

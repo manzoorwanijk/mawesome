@@ -693,6 +693,22 @@ describe('refresh scope', () => {
 		expect(github.latestStatus(sha(12), 'PR baseline')?.description).toBe('older wording');
 	});
 
+	it('counts a second PR sharing a head left alone as cosmetic, not as already current', async () => {
+		const { client } = harness({ scope: 'corrections' }, (gh) => {
+			gh.baseline('pr-baseline', sha(3));
+			gh.commit(sha(11), [sha(4)]);
+			gh.pull({ number: 1, headSha: sha(11) });
+			gh.pull({ number: 2, headSha: sha(11) });
+			gh.status(sha(11), { state: 'success', description: 'wording from an older release' });
+		});
+		await expect(client.refreshPrStatuses()).resolves.toMatchObject({
+			selected: 2,
+			cosmetic: 2,
+			skipped: 0,
+			written: 0,
+		});
+	});
+
 	it('leaves both PRs sharing a queued cosmetic head unaccounted when the run stops first', async () => {
 		const { client, github } = harness({ scope: 'all', maxWritesPerRun: 1 }, (gh) => {
 			gh.baseline('pr-baseline', sha(4));

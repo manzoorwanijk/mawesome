@@ -486,6 +486,23 @@ describe('git ancestry review round 3', () => {
 		});
 	});
 
+	it('calls a deferral a failure even when a budget stopped the run', async () => {
+		const [, c2] = world.c;
+		openPull(1, c2 as string, { 'x.txt': 'x' });
+		openPull(2, c2 as string, { 'y.txt': 'y' });
+		openPull(3, c2 as string, { 'z.txt': 'z' });
+		world.fixture.deletePull(3);
+		const result = await client({ maxWritesPerRun: 1 }).refreshPrStatuses();
+		// The cap would be a pause on its own; the deferred PR is what keeps the run a failure.
+		expect(result).toMatchObject({
+			written: 1,
+			deferred: 1,
+			incomplete: true,
+			paused: false,
+			reason: 'write-cap',
+		});
+	});
+
 	it('calls a deferral a failure even when the run wrote everything else', async () => {
 		const [, c2] = world.c;
 		openPull(1, c2 as string, { 'x.txt': 'x' });
