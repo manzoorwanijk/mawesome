@@ -199,6 +199,10 @@ describe('action mode: auto', () => {
 		runner({ event: 'pull_request_target', payload: closed, actor: 'dependabot[bot]' });
 		await run();
 		expect(outputs()['state']).toBe('skipped');
+		/* The skip text is the only thing the maintainer sees on this path, and it must not promise
+		 * a stamp the default scope cannot make. */
+		expect(outputs()['description']).toContain('a scope unstamped backfill stamps the commit');
+		expect(outputs()['description']).not.toContain('the scheduled run recovers it');
 		runner({
 			event: 'push',
 			payload: { ref: 'refs/heads/main', repository: { default_branch: 'main' } },
@@ -566,6 +570,15 @@ describe('action mode: auto', () => {
 });
 
 describe('action explicit modes and errors', () => {
+	it('puts the readiness breakdown in the report summary', async () => {
+		world.github.pull({ number: 1, headSha: sha(11) });
+		world.github.pull({ number: 2, headSha: sha(12) });
+		runner({ event: 'workflow_dispatch', payload: {}, inputs: { mode: 'report' } });
+		await run();
+		// The four buckets are what a maintainer reads before making the context required.
+		expect(summary()).toContain('0 passing, 0 failing, 0 other, 2 unstamped.');
+	});
+
 	it('reports, with a failing step when a baseline is off the base', async () => {
 		runner({ event: 'workflow_dispatch', payload: {}, inputs: { mode: 'report' } });
 		await run();

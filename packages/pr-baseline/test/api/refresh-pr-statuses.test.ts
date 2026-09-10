@@ -702,6 +702,14 @@ describe('refresh scope', () => {
 		expect(warnings.join('\n')).toContain('About 1 more run at this cap');
 	});
 
+	it('closes a complete run with its counts', async () => {
+		const { client, logs } = harness({ scope: 'all' }, scoped);
+		await client.refreshPrStatuses();
+		expect(logs).toContain(
+			'Refresh complete: 3 written, 1 skipped, 0 cosmetic, 0 failed, 0 remaining.',
+		);
+	});
+
 	it('subtracts every accounted outcome from remaining, not just the writes', async () => {
 		const { client } = harness({ scope: 'all', maxWritesPerRun: 1 }, (gh) => {
 			scoped(gh);
