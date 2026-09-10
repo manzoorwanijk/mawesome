@@ -2,4 +2,4 @@
 '@mawesome/dependency-audit': patch
 ---
 
-Raise the `tar` and `pacote` floors to patched releases (GHSA advisories in tar <=7.5.18 and pacote <21.5.1).
+Raise the `tar` and `pacote` floors to patched releases, clearing their outstanding advisories including a critical one in `tar`.
