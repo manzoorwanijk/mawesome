@@ -10,13 +10,13 @@
 		"github-actions",
 		"pull-request"
 	],
-	"homepage": "https://github.com/manzoorwanijk/mawesome/tree/main/packages/pr-baseline#readme",
-	"bugs": "https://github.com/manzoorwanijk/mawesome/issues",
+	"homepage": "https://github.com/mawesomedev/mawesome/tree/main/packages/pr-baseline#readme",
+	"bugs": "https://github.com/mawesomedev/mawesome/issues",
 	"license": "MIT",
 	"author": "Manzoor Ahmad Wani",
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/manzoorwanijk/mawesome.git",
+		"url": "git+https://github.com/mawesomedev/mawesome.git",
 		"directory": "packages/pr-baseline"
 	},
 	"bin": {

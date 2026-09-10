@@ -49,10 +49,10 @@ pr-baseline refresh-pr-statuses --baselines '[
 
 ## GitHub Action
 
-The same tool runs as a GitHub Action, published to [`manzoorwanijk/pr-baseline-action`](https://github.com/manzoorwanijk/pr-baseline-action) from this package's [`action/`](./action/) directory on every release. One workflow with two jobs covers PR checks, labeled merges, marker pushes, an hourly recovery refresh and manual dispatches:
+The same tool runs as a GitHub Action, published to [`mawesomedev/pr-baseline-action`](https://github.com/mawesomedev/pr-baseline-action) from this package's [`action/`](./action/) directory on every release. One workflow with two jobs covers PR checks, labeled merges, marker pushes, an hourly recovery refresh and manual dispatches:
 
 ```yaml
-- uses: manzoorwanijk/pr-baseline-action@<sha> # vX.Y.Z
+- uses: mawesomedev/pr-baseline-action@<sha> # vX.Y.Z
   with:
     base: main
 ```
