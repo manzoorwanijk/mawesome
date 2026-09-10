@@ -103,7 +103,7 @@ describe('move-baseline', () => {
 	});
 
 	it('reports a baseline already at the target and still refreshes', async () => {
-		const { client } = harness({}, (gh) => {
+		const { client } = harness({ scope: 'all' }, (gh) => {
 			gh.baseline('pr-baseline', sha(5));
 			gh.commit(sha(11), [sha(4)]);
 			gh.pull({ number: 1, headSha: sha(11) });
@@ -111,6 +111,17 @@ describe('move-baseline', () => {
 		const result = await client.moveBaseline({ force: true, refreshPrStatuses: true });
 		expect(result.moves[0]).toMatchObject({ moved: false, note: 'already at the target' });
 		expect(result.refresh).toMatchObject({ written: 1 });
+	});
+
+	it('keeps the default scope when a forced move moved nothing', async () => {
+		const { client } = harness({ scope: undefined }, (gh) => {
+			gh.baseline('pr-baseline', sha(5));
+			gh.commit(sha(11), [sha(4)]);
+			gh.pull({ number: 1, headSha: sha(11) });
+		});
+		const result = await client.moveBaseline({ force: true, refreshPrStatuses: true });
+		// Nothing moved, so nothing can have turned red into green; the full sweep is not owed.
+		expect(result.refresh).toMatchObject({ scope: 'corrections' });
 	});
 
 	it('refuses a rewind to an older commit on the base branch', async () => {

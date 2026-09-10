@@ -2,9 +2,9 @@
 
 > Keep open pull requests current with a movable baseline on the base branch.
 
-A repository-wide change lands on `main` (a toolchain bump, a lint rule, a CI fix) and every open PR that was branched before it keeps passing CI on stale code. `pr-baseline` marks that commit with a git ref under `refs/baselines/`, the **baseline**, and stamps every open PR with a commit status: `success` when the PR's head contains the baseline, `failure` when it does not. Require the status in the base branch's ruleset and stale PRs must merge or rebase before they can land.
+A repository-wide change lands on `main` (a toolchain bump, a lint rule, a CI fix) and every open PR that was branched before it keeps passing CI on stale code. `pr-baseline` marks that commit with a git ref under `refs/baselines/`, the **baseline**, and stamps open PRs with a commit status: `success` when the PR's head contains the baseline, `failure` when it does not. Require the status in the base branch's ruleset and stale PRs must merge or rebase before they can land.
 
-The baseline moves forward only by intent: a workflow dispatch, a merged PR carrying a label, or a push touching marker paths. When it moves, a **refresh** re-evaluates every open PR and writes only the statuses that changed.
+The baseline moves forward only by intent: a workflow dispatch, a merged PR carrying a label, or a push touching marker paths. When it moves, a **refresh** re-evaluates the PRs a move can have broken, the ones showing green, and writes only the statuses that changed. `--scope unstamped` and `--scope all` cover the rest when a repository needs them.
 
 📚 Full documentation lives in [`docs/`](./docs/): [why the baseline is not a tag](./docs/concepts.md#why-not-a-tag-or-a-branch), [CLI](./docs/cli.md), [GitHub Action](./docs/action.md), [API](./docs/api.md), [permissions](./docs/permissions.md), [rate limits](./docs/rate-limits.md), [edge cases](./docs/edge-cases.md), [runbook](./docs/runbook.md).
 
@@ -23,7 +23,7 @@ export GITHUB_REPOSITORY=owner/name GITHUB_TOKEN=...
 pr-baseline refresh-pr-status --pr 42
 pr-baseline refresh-pr-status <sha>
 
-# Seed or move the baseline, then bring every open PR up to date
+# Seed or move the baseline, then bring the PRs it can have broken up to date
 pr-baseline move-baseline --force --refresh-pr-statuses
 
 # Move only when a labeled PR merged or a marker path changed, then refresh

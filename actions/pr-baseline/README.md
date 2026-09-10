@@ -113,17 +113,17 @@ The `refresh-pr-status` job never checks out code: the head SHA comes from the e
 
 `mode: auto` (the default) maps the event to a command:
 
-| Event                                           | What runs                                                                                                                       |
-| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| `pull_request_target`, any type but `closed`    | `refresh-pr-status` on the PR head, status written. The supported path for fork PRs.                                            |
-| any event, run triggered by Dependabot          | The workflow token is read-only: a PR is evaluated without writing, a move or refresh is skipped; the schedule recovers.        |
-| `pull_request_target` type `closed` and merged  | `move-baseline` (a labeled merge moves its baseline) followed by a refresh.                                                     |
-| `pull_request_target` type `closed`, not merged | Nothing, with a notice.                                                                                                         |
-| `pull_request`                                  | `refresh-pr-status`; with the workflow token the status is written only for a same-repository PR not triggered by Dependabot.   |
-| `merge_group`                                   | `refresh-pr-status` on the merge group's head when its base is the configured branch; otherwise the `other-bases` rule applies. |
-| `push` to the base branch                       | `move-baseline` (path markers, merges made without a PR event) followed by a refresh.                                           |
-| `schedule`                                      | Non-forced `move-baseline` followed by a refresh, so a missed move is recovered and stale PRs converge.                         |
-| `workflow_dispatch`                             | The same as `schedule`; the template's `mode` input passes `move-baseline` with `force` or `refresh-pr-statuses` explicitly.    |
+| Event                                           | What runs                                                                                                                                                                                                                                    |
+| ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pull_request_target`, any type but `closed`    | `refresh-pr-status` on the PR head, status written. The supported path for fork PRs.                                                                                                                                                         |
+| any event, run triggered by Dependabot          | The workflow token is read-only: a PR is evaluated without writing, a move or refresh is skipped. The schedule makes the move, but nothing stamps that commit under the default scope: use a custom token, or a `scope: unstamped` backfill. |
+| `pull_request_target` type `closed` and merged  | `move-baseline` (a labeled merge moves its baseline) followed by a refresh.                                                                                                                                                                  |
+| `pull_request_target` type `closed`, not merged | Nothing, with a notice.                                                                                                                                                                                                                      |
+| `pull_request`                                  | `refresh-pr-status`; with the workflow token the status is written only for a same-repository PR not triggered by Dependabot.                                                                                                                |
+| `merge_group`                                   | `refresh-pr-status` on the merge group's head when its base is the configured branch; otherwise the `other-bases` rule applies.                                                                                                              |
+| `push` to the base branch                       | `move-baseline` (path markers, merges made without a PR event) followed by a refresh.                                                                                                                                                        |
+| `schedule`                                      | Non-forced `move-baseline` followed by a refresh, so a missed move is recovered and stale PRs converge.                                                                                                                                      |
+| `workflow_dispatch`                             | The same as `schedule`; the template's `mode` input passes `move-baseline` with `force` or `refresh-pr-statuses` explicitly.                                                                                                                 |
 
 Explicit modes (`refresh-pr-status`, `refresh-pr-statuses`, `move-baseline`, `report`) take the inputs as given; `refresh-pr-status` then needs `sha`.
 

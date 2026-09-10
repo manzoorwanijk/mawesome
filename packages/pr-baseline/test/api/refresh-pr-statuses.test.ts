@@ -682,6 +682,29 @@ describe('refresh scope', () => {
 		expect(github.latestStatus(sha(12), 'PR baseline')?.description).toBe('older wording');
 	});
 
+	it('leaves both PRs sharing a queued cosmetic head unaccounted when the run stops first', async () => {
+		const { client, github } = harness({ scope: 'all', maxWritesPerRun: 1 }, (gh) => {
+			gh.baseline('pr-baseline', sha(4));
+			// 3 and 2 share a head that only differs in wording; 1 differs materially and takes the cap.
+			gh.commit(sha(12), [sha(5)]);
+			gh.commit(sha(11), [sha(3)]);
+			gh.pull({ number: 3, headSha: sha(12) });
+			gh.pull({ number: 2, headSha: sha(12) });
+			gh.pull({ number: 1, headSha: sha(11) });
+			gh.status(sha(12), { state: 'success', description: 'older wording' });
+		});
+		const result = await client.refreshPrStatuses();
+		// Counting the sibling before the write landed would report skipped 1 and remaining 1.
+		expect(result).toMatchObject({
+			selected: 3,
+			written: 1,
+			skipped: 0,
+			cosmetic: 0,
+			remaining: 2,
+		});
+		expect(github.latestStatus(sha(12), 'PR baseline')?.description).toBe('older wording');
+	});
+
 	it('accounts a second PR sharing a queued cosmetic head only once the write lands', async () => {
 		const { client, github } = harness({ scope: 'all' }, (gh) => {
 			gh.baseline('pr-baseline', sha(3));
@@ -694,6 +717,25 @@ describe('refresh scope', () => {
 		expect(result).toMatchObject({ selected: 2, written: 1, skipped: 1, remaining: 0 });
 		// One physical write for the shared head, and the sibling is not claimed to be current before it.
 		expect(github.requests(/\/statuses\//, 'POST')).toHaveLength(1);
+	});
+
+	it('reports what the scope selected when a rate limit stops it after the listing', async () => {
+		const { client, github } = harness({ scope: 'corrections' }, scoped);
+		// The listing succeeds; the base-membership compare that follows does not.
+		github.overrides.push({
+			path: /\/compare\//,
+			status: 403,
+			headers: { 'x-ratelimit-remaining': '0' },
+		});
+		const result = await client.refreshPrStatuses();
+		expect(result).toMatchObject({
+			openPulls: 4,
+			selected: 1,
+			excluded: 3,
+			written: 0,
+			remaining: 1,
+			reason: 'rate-limit',
+		});
 	});
 
 	it('promotes a defaulted scope to all for a custom reporter, and warns', async () => {

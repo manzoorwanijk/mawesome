@@ -27,7 +27,7 @@ Usage:
 Commands:
   refresh-pr-status [<sha-or-ref>]
                          Evaluate one commit (default: HEAD of the local repository).
-  refresh-pr-statuses    Bring every open PR's status in line with the baselines.
+  refresh-pr-statuses    Bring the open PRs --scope selects in line with the baselines.
   move-baseline          Move baselines forward when a label, marker or --force says so.
   report                 Print every baseline, its commit and how many open PRs it binds.
 
@@ -72,7 +72,7 @@ refresh-pr-status:
             (reporting defaults on for --pr and off for any commit given directly).
 move-baseline:
             --force  Move by intent alone, seeding absent baselines; --to <sha>  Target commit;
-            --baseline <name>  Only this baseline; --refresh-pr-statuses  Refresh every open PR's status afterwards.
+            --baseline <name>  Only this baseline; --refresh-pr-statuses  Refresh open PR statuses afterwards.
 
 Exit codes: 0 pass, complete or paused, 1 fail, or incomplete and not paused, 2 error.`;
 
@@ -312,7 +312,7 @@ function describeRefreshPrStatus(result: RefreshPrStatusResult): string {
 }
 
 function describeRefreshPrStatuses(result: RefreshPrStatusesResult): string {
-	const line = `Refreshed statuses of ${result.openPulls} open PRs against ${result.base}: ${result.written} written, ${result.skipped} skipped, ${result.closed} closed, ${result.deferred} deferred, ${result.outOfScope} out of scope, ${result.failed} failed.`;
+	const line = `Refreshed ${result.selected} of ${result.openPulls} open PRs against ${result.base} (scope ${result.scope}): ${result.written} written, ${result.skipped} skipped, ${result.cosmetic} cosmetic, ${result.closed} closed, ${result.deferred} deferred, ${result.outOfScope} out of scope, ${result.failed} failed, ${result.remaining} remaining.`;
 	const misconfigured =
 		result.misconfigured.length === 0
 			? ''
