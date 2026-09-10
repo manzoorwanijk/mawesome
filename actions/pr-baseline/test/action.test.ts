@@ -386,6 +386,36 @@ describe('action mode: auto', () => {
 		expect(outputs()['written']).toBe('1');
 	});
 
+	it('keeps refreshing on a dispatch and skips it on an unchanged merge', async () => {
+		world.github.baseline('pr-baseline', sha(5));
+		world.github.pull({ number: 1, headSha: sha(12) });
+		const merged = pullPayload(sha(4), {
+			action: 'closed',
+			pull_request: { ...(pullPayload(sha(4))['pull_request'] as object), merged: true },
+		});
+		runner({ event: 'pull_request_target', payload: merged });
+		await run();
+		expect(world.github.requests(/\/statuses\//, 'POST')).toHaveLength(0);
+		// A bare dispatch is the recovery net and refreshes whether or not anything moved.
+		runner({ event: 'workflow_dispatch', payload: {} });
+		await run();
+		expect(outputs()['written']).toBe('1');
+	});
+
+	it('emits moved and moved-baselines with no refresh at all', async () => {
+		runner({
+			event: 'workflow_dispatch',
+			payload: {},
+			inputs: { mode: 'move-baseline', force: 'true', 'refresh-pr-statuses-after-move': 'false' },
+		});
+		await run();
+		expect(outputs()).toMatchObject({
+			moved: 'true',
+			'moved-baselines': '["pr-baseline"]',
+			written: '0',
+		});
+	});
+
 	it('emits moved and moved-baselines on a run that also refreshed', async () => {
 		world.github.pull({ number: 1, headSha: sha(12) });
 		runner({

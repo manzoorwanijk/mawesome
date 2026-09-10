@@ -150,9 +150,14 @@ export async function runRefreshPrStatuses(
 			reason !== undefined &&
 			PAUSED_REASONS.has(reason)
 		) {
-			// A run that could not write at all is not waiting for a budget, it is being starved by something.
+			/* A run that could not write at all is not waiting for a budget, it is being stopped by
+			 * something: either this run spending its cap on abandoned attempts, or another workflow. */
+			const cause =
+				reason === 'write-cap'
+					? 'the cap went on attempts that were abandoned'
+					: "another workflow is consuming the repository's request budget";
 			logger.warn(
-				`Stopped on ${STOP_PHRASE[reason]} having written nothing; another workflow is consuming the repository's request budget. ${RETRY_HINT}`,
+				`Stopped on ${STOP_PHRASE[reason]} having written nothing: ${summary}. ${cause}. ${RETRY_HINT}`,
 			);
 		} else if (incomplete) {
 			logger.warn(`Refresh incomplete (${reason}): ${summary}. ${RETRY_HINT}`);
@@ -220,6 +225,15 @@ export async function runRefreshPrStatuses(
 		buckets = tally(inScope);
 		inScope = inScope.filter((pull) => selects(pull, scope));
 		knownSelected = inScope.length;
+		/* Three lines before any work: where the baselines are, how the open PRs stand, and how much
+		 * of that this run will touch. Emitted before the head fetch, which is what the silence was. */
+		logger.info(`Base ${base} at ${baseHead.slice(0, 12)}; ${describe(baselines)}.`);
+		logger.info(
+			`${knownOpenPulls} open PRs: ${buckets.passing} passing, ${buckets.failing} failing, ${buckets.other} other, ${buckets.unstamped} unstamped.`,
+		);
+		logger.info(
+			`Scope ${scope}: ${knownSelected} ${knownSelected === 1 ? 'PR' : 'PRs'} to ${VERB[scope]}, at most ${Math.min(knownSelected, config.maxWritesPerRun)} writes.`,
+		);
 		// A git adapter fetches the selected heads in a few batches here and reports which refs are gone.
 		const prepared = await ancestry.prepare?.({
 			shas: [],
@@ -275,15 +289,6 @@ export async function runRefreshPrStatuses(
 	/* One verdict serves every PR: the baseline is unsatisfiable, so no head is worth an ancestry question. */
 	const misconfigured = offBase.length > 0 ? misconfiguredVerdict(offBase, context) : undefined;
 	const inScope = setup.pulls;
-	/* Three lines before any work: where the baselines are, how the open PRs stand, and how much
-	 * of that this run will touch. The counts are all from the listing, which has already happened. */
-	logger.info(`Base ${base} at ${baseHead.slice(0, 12)}; ${describe(baselines)}.`);
-	logger.info(
-		`${knownOpenPulls} open PRs: ${buckets.passing} passing, ${buckets.failing} failing, ${buckets.other} other, ${buckets.unstamped} unstamped.`,
-	);
-	logger.info(
-		`Scope ${scope}: ${knownSelected} ${knownSelected === 1 ? 'PR' : 'PRs'} to ${VERB[scope]}, at most ${Math.min(knownSelected, config.maxWritesPerRun)} writes.`,
-	);
 	const progress = createProgressThrottle(runtime.now());
 
 	// Statuses belong to commits, so a head shared by several PRs is processed once, failures included.

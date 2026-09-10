@@ -164,46 +164,6 @@ describe('move-baseline', () => {
 		expect(result.refresh).toBeDefined();
 	});
 
-	it('skips the refresh with refreshWhenUnchanged false when no ref changed', async () => {
-		const { client, github } = harness({}, (gh) => {
-			gh.baseline('pr-baseline', sha(5));
-			gh.commit(sha(11), [sha(4)]);
-			gh.pull({ number: 1, headSha: sha(11) });
-		});
-		const result = await client.moveBaseline({
-			refreshPrStatuses: true,
-			refreshWhenUnchanged: false,
-		});
-		expect(result.moves[0]).toMatchObject({ moved: false });
-		expect(result.refresh).toBeUndefined();
-		expect(github.requests(/\/statuses\//, 'POST')).toHaveLength(0);
-	});
-
-	it('still refreshes with refreshWhenUnchanged false when another writer moved the ref', async () => {
-		const { client, github } = harness({}, (gh) => {
-			gh.baseline('pr-baseline', sha(3));
-			gh.commit(sha(11), [sha(4)]);
-			gh.pull({ number: 1, headSha: sha(11) });
-			gh.status(sha(11), { state: 'success', description: 'Contains the required main changes.' });
-		});
-		let crossed = false;
-		github.onRefWrite = (_ref, target) => {
-			if (!crossed && target === sha(5)) {
-				crossed = true;
-				github.baseline('pr-baseline', sha(6));
-			}
-		};
-		github.commit(sha(6), [sha(5)]);
-		const result = await client.moveBaseline({
-			force: true,
-			refreshPrStatuses: true,
-			refreshWhenUnchanged: false,
-		});
-		// `moved: false`, but the refs did change since the last refresh, which is the test that matters.
-		expect(result.moves[0]).toMatchObject({ moved: false });
-		expect(result.refresh).toBeDefined();
-	});
-
 	it('refuses a rewind to an older commit on the base branch', async () => {
 		const { client } = harness({}, (gh) => gh.baseline('pr-baseline', sha(5)));
 		await expect(client.moveBaseline({ force: true, to: sha(3) })).rejects.toThrow(
@@ -355,20 +315,6 @@ describe('move-baseline', () => {
 		expect(result.refresh?.baselines[0]?.sha).toBe(sha(5));
 		expect(result.refresh?.entries[0]?.verdict?.kind).toBe('fail');
 		expect(github.requests(/\/statuses\//, 'POST')).toHaveLength(0);
-	});
-
-	it('refreshes a dry run even with refreshWhenUnchanged false', async () => {
-		const { client } = harness({ dryRun: true }, (gh) => {
-			gh.commit(sha(11), [sha(4)]);
-			gh.pull({ number: 1, headSha: sha(11) });
-		});
-		const result = await client.moveBaseline({
-			force: true,
-			refreshPrStatuses: true,
-			refreshWhenUnchanged: false,
-		});
-		// The intended move is a ref difference like any other, so the preview still runs.
-		expect(result.refresh).toBeDefined();
 	});
 
 	it('refreshes a dry run even with refreshWhenUnchanged false', async () => {

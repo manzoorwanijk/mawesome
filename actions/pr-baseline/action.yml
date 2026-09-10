@@ -80,7 +80,7 @@ inputs:
     required: false
     default: 'false'
   refresh-pr-statuses-after-move:
-    description: In move-baseline mode, refresh open PR statuses afterwards (default true).
+    description: In move-baseline mode, refresh open PR statuses afterwards (default true). On a base-branch push or a merged pull_request_target the refresh is skipped anyway when no baseline ref changed.
     required: false
     default: 'true'
 outputs:

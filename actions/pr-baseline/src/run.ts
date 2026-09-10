@@ -685,12 +685,11 @@ async function reportRefreshPrStatuses(
 			core.warning(misconfigured);
 		}
 	}
-	if (result.paused) {
-		core.warning(
-			`Refresh paused (${result.reason}); ${result.remaining} PRs left, and the next run continues.`,
+	// The command already logged the closing line with the counts; only the failure needs to fail the step.
+	if (result.incomplete && !result.paused) {
+		core.setFailed(
+			`Refresh incomplete (${result.reason}); ${result.remaining} PRs left. Retry by dispatching the workflow.`,
 		);
-	} else if (result.incomplete) {
-		core.setFailed(`Refresh incomplete (${result.reason}); dispatch the workflow to continue.`);
 	}
 }
 
