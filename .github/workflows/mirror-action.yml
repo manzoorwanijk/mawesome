@@ -22,7 +22,7 @@ concurrency:
 permissions: {}
 
 env:
-  MIRROR_OWNER: manzoorwanijk
+  MIRROR_OWNER: mawesomedev
   MIRROR_REPO: pr-baseline-action
 
 jobs:
