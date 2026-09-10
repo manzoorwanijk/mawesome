@@ -80,7 +80,7 @@ inputs:
     required: false
     default: 'false'
   refresh-pr-statuses-after-move:
-    description: In move-baseline mode, refresh every open PR's status afterwards (default true).
+    description: In move-baseline mode, refresh open PR statuses afterwards (default true).
     required: false
     default: 'true'
 outputs:
@@ -99,7 +99,7 @@ outputs:
   skipped:
     description: PRs whose status was already current.
   closed:
-    description: PRs that closed while the refresh ran.
+    description: Selected PRs that closed while the refresh ran.
   deferred:
     description: PRs whose head was still moving.
   failed:
@@ -115,7 +115,7 @@ outputs:
   remaining:
     description: Selected PRs the run never reached.
   incomplete:
-    description: Whether a refresh stopped before covering every PR (`true` or `false`).
+    description: Whether a refresh stopped before covering every selected PR (`true` or `false`).
   paused:
     description: Whether a refresh stopped on a budget having written something, so the next run continues on its own (`true` or `false`). The step stays green unless something else fails it.
   summary:

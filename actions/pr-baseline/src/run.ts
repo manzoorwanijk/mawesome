@@ -180,14 +180,14 @@ function restrict(plan: Plan): Plan {
 	if (plan.mode === 'refresh-pr-status') {
 		if (plan.report !== false) {
 			core.notice(
-				'Dependabot triggered this run, so its token cannot write; the commit is evaluated only and the scheduled run stamps it.',
+				'Dependabot triggered this run, so its token cannot write and the commit is evaluated only. Configure a custom token so this check writes, or schedule a refresh-pr-statuses run with scope unstamped to stamp it later.',
 			);
 		}
 		return { ...plan, report: false };
 	}
 	return {
 		mode: 'refresh-pr-status',
-		skip: 'Dependabot triggered this run, so its token cannot move a baseline or write statuses; the scheduled run recovers it.',
+		skip: 'Dependabot triggered this run, so its token cannot move a baseline or write statuses; the scheduled run makes the move, and a custom token or a scope unstamped backfill stamps the commit.',
 	};
 }
 

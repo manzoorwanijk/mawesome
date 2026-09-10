@@ -22,7 +22,7 @@ Git fetches do not count against any of these, which is why the git ancestry ada
 
 A default link names the base branch rather than a baseline commit, so a move leaves every failing PR's status alone and costs no writes.
 
-Worked cold start with `GITHUB_TOKEN`, one baseline, 600 open PRs, nothing stamped yet: 6 GraphQL points to list, 600 compares, 600 writes. The refresh stops at the 450-write cap with 150 PRs left; it wrote something, so it is paused and exits 0, and the next scheduled run finishes them. With the git adapter the 600 compares disappear.
+Worked cold start with `GITHUB_TOKEN`, one baseline, 600 open PRs, nothing stamped yet, run as `--scope unstamped` or `--scope all` (the default scope selects none of them, since none carries a status): 6 GraphQL points to list, 600 compares, 600 writes. The refresh stops at the 450-write cap with 150 PRs left; it wrote something, so it is paused and exits 0, and the next run of the same command finishes them. With the git adapter the 600 compares disappear.
 
 ## How the tool paces itself
 

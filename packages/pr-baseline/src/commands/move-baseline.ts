@@ -113,7 +113,7 @@ export async function runMoveBaseline(
 	if (options.refreshPrStatuses) {
 		/* Scoping to green PRs is sound only because a baseline moves forward: a forced move can put one
 		 * anywhere, so it can turn a red PR green, which only a full sweep sees. */
-		const forced = force || moves.some((move) => move.moved && move.reason === 'forced');
+		const forced = moves.some((move) => move.moved && move.reason === 'forced');
 		// A dry-run refresh evaluates statuses against the intended positions while the adapter still verifies the real, unmoved refs.
 		result.refresh = await runRefreshPrStatuses(runtime, {
 			baselines: authoritative,

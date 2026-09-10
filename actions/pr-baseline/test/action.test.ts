@@ -366,6 +366,16 @@ describe('action mode: auto', () => {
 		expect(outputs()['written']).toBe('1');
 	});
 
+	it('passes the scope input through to the refresh', async () => {
+		world.github.commit(sha(13), [sha(1)]);
+		world.github.pull({ number: 1, headSha: sha(12) });
+		world.github.pull({ number: 2, headSha: sha(13) });
+		runner({ event: 'schedule', payload: {}, inputs: { scope: 'corrections' } });
+		await run();
+		// Neither PR carries a status, so the corrections scope selects nothing and writes nothing.
+		expect(outputs()).toMatchObject({ scope: 'corrections', selected: '0', written: '0' });
+	});
+
 	it('leaves the step green on a paused refresh, still reporting it incomplete', async () => {
 		world.github.commit(sha(13), [sha(1)]);
 		world.github.pull({ number: 1, headSha: sha(12) });

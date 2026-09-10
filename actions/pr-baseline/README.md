@@ -4,7 +4,7 @@
 
 **This repository is generated.** It mirrors [`actions/pr-baseline`](https://github.com/mawesomedev/mawesome/tree/main/actions/pr-baseline) in [mawesomedev/mawesome](https://github.com/mawesomedev/mawesome) with the bundled `dist/` and a `release.json` naming the release added; open issues and pull requests there. Full documentation lives in the package's [docs](https://github.com/mawesomedev/mawesome/tree/main/packages/pr-baseline/docs).
 
-A repository-wide change lands on the base branch and every open PR branched before it keeps passing CI on stale code. This action marks that commit with a git ref under `refs/baselines/`, the **baseline**, and stamps every open PR with a commit status: `success` when the PR's head contains the baseline, `failure` when it does not. Require the status in the base branch's ruleset and stale PRs must merge or rebase before they can land. The baseline moves forward only by intent: a workflow dispatch, a merged PR carrying a label, or a push touching marker paths.
+A repository-wide change lands on the base branch and every open PR branched before it keeps passing CI on stale code. This action marks that commit with a git ref under `refs/baselines/`, the **baseline**, and stamps open PRs with a commit status: `success` when the PR's head contains the baseline, `failure` when it does not. Require the status in the base branch's ruleset and stale PRs must merge or rebase before they can land. The baseline moves forward only by intent: a workflow dispatch, a merged PR carrying a label, or a push touching marker paths.
 
 ## Usage
 
@@ -155,7 +155,7 @@ Explicit modes (`refresh-pr-status`, `refresh-pr-statuses`, `move-baseline`, `re
 | `max-writes-per-minute`          | Pace status writes; a positive integer per minute (default 60).                                                  |                       |
 | `dry-run`                        | Log every intended write and baseline move instead of making it.                                                 | `false`               |
 | `force`                          | In move-baseline mode, move by intent alone and seed absent baselines.                                           | `false`               |
-| `refresh-pr-statuses-after-move` | In move-baseline mode, refresh every open PR's status afterwards (default true).                                 | `true`                |
+| `refresh-pr-statuses-after-move` | In move-baseline mode, refresh open PR statuses afterwards (default true).                                       | `true`                |
 
 <!-- inputs:end -->
 
@@ -174,7 +174,7 @@ Explicit modes (`refresh-pr-status`, `refresh-pr-statuses`, `move-baseline`, `re
 | `missing`      | JSON array of baseline names the evaluated commit lacks (refresh-pr-status mode).                                                                                              |
 | `written`      | Statuses written.                                                                                                                                                              |
 | `skipped`      | PRs whose status was already current.                                                                                                                                          |
-| `closed`       | PRs that closed while the refresh ran.                                                                                                                                         |
+| `closed`       | Selected PRs that closed while the refresh ran.                                                                                                                                |
 | `deferred`     | PRs whose head was still moving.                                                                                                                                               |
 | `failed`       | PRs whose status could not be written.                                                                                                                                         |
 | `scope`        | The scope a refresh applied, which is `all` whatever was asked when a baseline is off the base branch.                                                                         |
@@ -182,7 +182,7 @@ Explicit modes (`refresh-pr-status`, `refresh-pr-statuses`, `move-baseline`, `re
 | `excluded`     | Open PRs the scope left out.                                                                                                                                                   |
 | `cosmetic`     | Selected PRs whose status differed only in description or link, so no write was spent.                                                                                         |
 | `remaining`    | Selected PRs the run never reached.                                                                                                                                            |
-| `incomplete`   | Whether a refresh stopped before covering every PR (`true` or `false`).                                                                                                        |
+| `incomplete`   | Whether a refresh stopped before covering every selected PR (`true` or `false`).                                                                                               |
 | `paused`       | Whether a refresh stopped on a budget having written something, so the next run continues on its own (`true` or `false`). The step stays green unless something else fails it. |
 | `summary`      | JSON summary of the run, per-PR results capped to stay under the output size limit.                                                                                            |
 | `results-file` | Path of a JSON file with the uncapped per-PR results of a refresh, for an upload step.                                                                                         |

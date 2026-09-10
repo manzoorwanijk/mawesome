@@ -86,7 +86,10 @@ export interface Ancestry {
 	 * Returns null when the answer is indeterminate, as with the compare API's 300-file cap.
 	 */
 	changedFiles(from: string, to: string): Promise<string[] | null>;
-	/** Optional batch step every command runs before its first ancestry question; adapters without one are asked commit by commit. */
+	/**
+	 * Optional batch step run before the commits it names are asked about; adapters without one are asked commit by commit.
+	 * `refresh-pr-statuses` calls it twice: once for the base head, then once for the PR heads its scope selected.
+	 */
 	prepare?(input: PrepareInput): Promise<PrepareResult>;
 }
 
@@ -247,7 +250,7 @@ export interface MoveBaselineOptions {
 	to?: string;
 	/** Restrict to one baseline by name. */
 	baseline?: string;
-	/** Refresh every open PR's status afterwards, also when nothing moved. */
+	/** Refresh open PR statuses afterwards, also when nothing moved. */
 	refreshPrStatuses?: boolean;
 }
 

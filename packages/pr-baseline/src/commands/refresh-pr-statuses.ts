@@ -1,5 +1,5 @@
 import { createWriteBudget } from '../budget.ts';
-import { ConfigError, DEFAULT_SCOPE, repoUrl } from '../config.ts';
+import { ConfigError, repoUrl } from '../config.ts';
 import { baselinesOffBase, evaluateCommit } from '../evaluate.ts';
 import { GitError } from '../git/repo.ts';
 import { isGitHubError, RETRY_HINT } from '../github/errors.ts';
@@ -52,17 +52,17 @@ export async function runRefreshPrStatuses(
 			'refresh-pr-statuses needs the API; --offline applies to refresh-pr-status only.',
 		);
 	}
-	const requested = input.scope ?? config.scope;
-	let scope: RefreshScope = requested ?? DEFAULT_SCOPE;
+	const asked = input.scope !== undefined || config.scopeExplicit;
+	let scope: RefreshScope = input.scope ?? config.scope;
 	if (runtime.customReporter) {
 		/* Bucketing reads the listing's commit statuses, which a custom reporter does not own,
 		 * so the only honest population is every PR. */
-		if (requested !== undefined && requested !== 'all') {
+		if (asked && scope !== 'all') {
 			throw new ConfigError(
-				`A custom reporter owns the statuses this refresh compares against, so scope "${requested}" cannot be applied; use "all".`,
+				`A custom reporter owns the statuses this refresh compares against, so scope "${scope}" cannot be applied; use "all".`,
 			);
 		}
-		if (requested === undefined) {
+		if (!asked) {
 			logger.warn(
 				'A custom reporter owns the statuses, which the PR listing cannot report; refreshing every open PR.',
 			);
@@ -156,6 +156,9 @@ export async function runRefreshPrStatuses(
 			);
 		let inScope = await list();
 		knownOpenPulls = inScope.length;
+		/* Counted from the listing alone, before anything that can fail, so a run that stops early
+		 * still reports what it would have covered rather than claiming the scope excluded everything. */
+		knownSelected = inScope.filter((pull) => selects(pull, scope)).length;
 		/* Preparation runs twice: the scope cannot be settled before the baselines are checked
 		 * against the base head, and no PR head is worth fetching until it is. */
 		await ancestry.prepare?.({ shas: [baseHead], pulls: [], refs });
@@ -233,8 +236,11 @@ export async function runRefreshPrStatuses(
 
 	// Statuses belong to commits, so a head shared by several PRs is processed once, failures included.
 	const settled = new Map<string, { verdict?: Verdict; error?: unknown }>();
-	/* Text-only differences wait for the material ones, which are the only writes that can unblock a merge. */
-	const cosmetic: Array<{ pull: OpenPull; verdict: Verdict }> = [];
+	/*
+	 * Text-only differences wait for the material ones, which are the only writes that can unblock a merge.
+	 * Keyed by head so a shared head is written once, and accounted only once the write has happened.
+	 */
+	const cosmetic = new Map<string, { verdict: Verdict; pulls: OpenPull[] }>();
 	/** Writes one status through the budget; false when the run must stop. */
 	const write = async (pull: OpenPull, verdict: Verdict): Promise<boolean> => {
 		try {
@@ -310,6 +316,12 @@ export async function runRefreshPrStatuses(
 			pull = { ...listed, headSha: fetched as string, status: null };
 			reconciled = true;
 		}
+		const waiting = cosmetic.get(pull.headSha);
+		if (waiting !== undefined) {
+			// Accounted when the queue drains, so a write that never happens leaves it in `remaining`.
+			waiting.pulls.push(pull);
+			continue;
+		}
 		const shared = settled.get(pull.headSha);
 		if (shared !== undefined) {
 			if (shared.error === undefined) {
@@ -358,16 +370,18 @@ export async function runRefreshPrStatuses(
 			continue;
 		}
 		const difference = compareStatus(current, verdict.status, creator);
-		if (difference !== 'material') {
-			// Recorded now so a PR sharing this head neither re-evaluates it nor queues it twice.
+		if (difference === 'current') {
 			settled.set(pull.headSha, { verdict });
-			if (difference === 'current') {
-				counts.skipped++;
-				entries.push(entry(pull, 'skipped', verdict));
-			} else if (scope === 'all') {
-				cosmetic.push({ pull, verdict });
+			counts.skipped++;
+			entries.push(entry(pull, 'skipped', verdict));
+			continue;
+		}
+		if (difference === 'cosmetic') {
+			if (scope === 'all') {
+				cosmetic.set(pull.headSha, { verdict, pulls: [pull] });
 			} else {
 				// Description and link drift gate nothing, and a write from a 500 an hour budget is too expensive for it.
+				settled.set(pull.headSha, { verdict });
 				counts.cosmetic++;
 				entries.push(entry(pull, 'cosmetic', verdict));
 			}
@@ -377,9 +391,31 @@ export async function runRefreshPrStatuses(
 			break;
 		}
 	}
-	for (const queued of cosmetic) {
-		if (!(await write(queued.pull, queued.verdict))) {
-			break;
+	// A run that stopped stays stopped: draining here would spend a write past a budget or a permission failure.
+	if (reason === undefined) {
+		for (const queued of cosmetic.values()) {
+			const [first, ...rest] = queued.pulls;
+			if (first === undefined) {
+				continue;
+			}
+			const keepGoing = await write(first, queued.verdict);
+			/* The siblings take the head's outcome, as they do in the main loop; a head the budget
+			 * abandoned is settled by nobody, so they stay unaccounted and land in `remaining`. */
+			const outcome = settled.get(first.headSha);
+			if (outcome !== undefined) {
+				for (const sibling of rest) {
+					if (outcome.error === undefined) {
+						counts.skipped++;
+						entries.push(entry(sibling, 'skipped', queued.verdict));
+					} else {
+						counts.failed++;
+						entries.push(entry(sibling, 'failed', queued.verdict, outcome.error));
+					}
+				}
+			}
+			if (!keepGoing) {
+				break;
+			}
 		}
 	}
 	return finish(base, baselines, knownOpenPulls, knownSelected);

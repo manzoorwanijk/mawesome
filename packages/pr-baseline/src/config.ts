@@ -46,8 +46,9 @@ export interface ResolvedConfig {
 	ancestry: AncestryMode;
 	gitDir: string | undefined;
 	otherBases: OtherBases;
-	/** Undefined when nothing asked for one, which lets a refresh tell a default from a choice. */
-	scope: RefreshScope | undefined;
+	scope: RefreshScope;
+	/** Whether the scope was asked for rather than defaulted; a custom reporter treats the two differently. */
+	scopeExplicit: boolean;
 	creator: string | undefined;
 	tokenIsWorkflowToken: boolean;
 	offline: boolean;
@@ -114,7 +115,8 @@ export function resolveConfig(options: ClientOptions): ResolvedConfig {
 		ancestry,
 		gitDir: nonEmpty(options.gitDir),
 		otherBases,
-		scope,
+		scope: scope ?? DEFAULT_SCOPE,
+		scopeExplicit: scope !== undefined,
 		creator,
 		tokenIsWorkflowToken: options.tokenIsWorkflowToken ?? false,
 		offline: options.offline ?? false,

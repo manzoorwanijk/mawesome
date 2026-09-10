@@ -492,7 +492,8 @@ function drifted(gh: FakeGitHub): void {
 
 describe('refresh scope', () => {
 	it('corrects only the PRs a forward move can have turned red', async () => {
-		const { client, github } = harness({ scope: 'corrections' }, scoped);
+		// `scope: undefined` is the library's own default, which is what a consumer that asks for nothing gets.
+		const { client, github } = harness({ scope: undefined }, scoped);
 		const result = await client.refreshPrStatuses();
 		expect(result).toMatchObject({
 			scope: 'corrections',
@@ -571,6 +572,31 @@ describe('refresh scope', () => {
 		expect(github.latestStatus(sha(12), 'PR baseline')?.description).toBe('older wording');
 	});
 
+	it('reconciles against the heads stage 2 fetched, not stage 1', async () => {
+		let calls = 0;
+		const adapter: Ancestry = {
+			name: 'api',
+			isAncestor: (ancestor, descendant) => Promise.resolve(ancestor <= descendant),
+			changedFiles: () => Promise.resolve([]),
+			prepare() {
+				calls++;
+				// Only the second call knows any PR, so a run that kept stage 1's result would see no head at all.
+				return Promise.resolve({
+					heads: calls === 1 ? new Map() : new Map([[1, sha(19)]]),
+				});
+			},
+		};
+		const { client } = harness({ scope: 'corrections', ancestryAdapter: adapter }, (gh) => {
+			scoped(gh);
+			gh.commit(sha(19), [sha(3)]);
+		});
+		const result = await client.refreshPrStatuses();
+		// PR 1's fetched head differs from the listed one, so it is re-read and evaluated at the new head.
+		/* The re-read says the PR is still at its listed head, so it is deferred rather than stamped.
+		 * With stage 1's empty head map kept instead, PR 1 would simply have been written. */
+		expect(result.entries[0]).toMatchObject({ number: 1, outcome: 'deferred' });
+	});
+
 	it('asks the adapter to prepare only the selected PR heads', async () => {
 		const strict = strictAdapter();
 		const { client } = harness({ scope: 'corrections', ancestryAdapter: strict.adapter }, scoped);
@@ -610,10 +636,64 @@ describe('refresh scope', () => {
 		expect(result.selected + result.excluded).toBe(result.openPulls);
 	});
 
-	it('reports the selected PRs it never reached as remaining', async () => {
-		const { client } = harness({ scope: 'all', maxWritesPerRun: 1 }, scoped);
+	it('subtracts every accounted outcome from remaining, not just the writes', async () => {
+		const { client } = harness({ scope: 'all', maxWritesPerRun: 1 }, (gh) => {
+			scoped(gh);
+			// A fifth PR already current and a sixth that passes but carries older wording.
+			gh.commit(sha(15), [sha(3)]);
+			gh.commit(sha(16), [sha(4)]);
+			gh.pull({ number: 5, headSha: sha(15) });
+			gh.pull({ number: 6, headSha: sha(16) });
+			gh.status(sha(15), {
+				state: 'failure',
+				description: 'Merge or rebase main to include: pr-baseline',
+				targetUrl: `https://github.com/acme/widgets/compare/${sha(15)}...main`,
+			});
+			gh.status(sha(16), { state: 'success', description: 'older wording' });
+		});
 		const result = await client.refreshPrStatuses();
-		expect(result).toMatchObject({ selected: 4, written: 1, remaining: 3 });
+		// Newest first, so 6 (cosmetic, queued) and 5 (current) are reached before the cap bites.
+		expect(result).toMatchObject({ selected: 6, written: 1, skipped: 1, cosmetic: 0 });
+		expect(result.remaining).toBe(
+			result.selected -
+				(result.written +
+					result.skipped +
+					result.cosmetic +
+					result.closed +
+					result.deferred +
+					result.outOfScope +
+					result.failed),
+		);
+		expect(result.remaining).toBeGreaterThan(0);
+	});
+
+	it('leaves a queued cosmetic PR unaccounted when the run stops before draining it', async () => {
+		const { client, github } = harness({ scope: 'all', maxWritesPerRun: 1 }, (gh) => {
+			gh.baseline('pr-baseline', sha(4));
+			gh.commit(sha(12), [sha(5)]);
+			gh.commit(sha(11), [sha(3)]);
+			gh.pull({ number: 2, headSha: sha(12) });
+			gh.pull({ number: 1, headSha: sha(11) });
+			gh.status(sha(12), { state: 'success', description: 'older wording' });
+		});
+		const result = await client.refreshPrStatuses();
+		// The cap is spent on the material write, so the queued cosmetic one is neither written nor counted.
+		expect(result).toMatchObject({ written: 1, cosmetic: 0, skipped: 0, remaining: 1 });
+		expect(github.latestStatus(sha(12), 'PR baseline')?.description).toBe('older wording');
+	});
+
+	it('accounts a second PR sharing a queued cosmetic head only once the write lands', async () => {
+		const { client, github } = harness({ scope: 'all' }, (gh) => {
+			gh.baseline('pr-baseline', sha(3));
+			gh.commit(sha(11), [sha(4)]);
+			gh.pull({ number: 1, headSha: sha(11) });
+			gh.pull({ number: 2, headSha: sha(11) });
+			gh.status(sha(11), { state: 'success', description: 'older wording' });
+		});
+		const result = await client.refreshPrStatuses();
+		expect(result).toMatchObject({ selected: 2, written: 1, skipped: 1, remaining: 0 });
+		// One physical write for the shared head, and the sibling is not claimed to be current before it.
+		expect(github.requests(/\/statuses\//, 'POST')).toHaveLength(1);
 	});
 
 	it('promotes a defaulted scope to all for a custom reporter, and warns', async () => {
