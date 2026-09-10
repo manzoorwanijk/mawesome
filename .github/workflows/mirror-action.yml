@@ -110,7 +110,7 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Build the action bundle
-        run: pnpm --filter @mawesome/pr-baseline-action build
+        run: pnpm --filter '@mawesome/pr-baseline-action...' build
       # release.json records what this mirror commit was built from, so every release changes the tree.
       - name: Stage the mirror contents
         env:
