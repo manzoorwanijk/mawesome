@@ -62,7 +62,7 @@ export async function runReport(runtime: Runtime): Promise<ReportResult> {
 	const offBase = report.filter((baseline) => baseline.onBase === false).map((b) => b.name);
 	if (offBase.length > 0) {
 		logger.warn(
-			`Baseline ${offBase.join(', ')} is not on ${base}; refreshes refuse to run until it is fixed.`,
+			`Baseline ${offBase.join(', ')} is not on ${base}; every PR passes until a forced move puts it back.`,
 		);
 	}
 	const result: ReportResult = {

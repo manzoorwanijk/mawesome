@@ -340,7 +340,7 @@ function describeReport(result: ReportResult): string {
 	}
 	if (result.offBase.length > 0) {
 		lines.push(
-			`Baseline ${result.offBase.join(', ')} is not on ${result.base}; fix the baseline before refreshing.`,
+			`Baseline ${result.offBase.join(', ')} is not on ${result.base}; repair it with a forced move onto ${result.base}.`,
 		);
 	}
 	return lines.join('\n');
