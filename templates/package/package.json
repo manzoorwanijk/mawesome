@@ -3,13 +3,13 @@
 	"version": "0.0.0",
 	"description": "TODO: describe @mawesome/PACKAGE_NAME",
 	"keywords": [],
-	"homepage": "https://github.com/manzoorwanijk/mawesome/tree/main/packages/PACKAGE_NAME#readme",
-	"bugs": "https://github.com/manzoorwanijk/mawesome/issues",
+	"homepage": "https://github.com/mawesomedev/mawesome/tree/main/packages/PACKAGE_NAME#readme",
+	"bugs": "https://github.com/mawesomedev/mawesome/issues",
 	"license": "MIT",
 	"author": "Manzoor Ahmad Wani",
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/manzoorwanijk/mawesome.git",
+		"url": "git+https://github.com/mawesomedev/mawesome.git",
 		"directory": "packages/PACKAGE_NAME"
 	},
 	"files": [

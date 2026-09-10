@@ -41,7 +41,7 @@ export default defineConfig({
 			customCss: ['./src/styles/custom.css'],
 			tagline: 'Sharp, single-purpose tools for npm package authors.',
 			social: [
-				{ icon: 'github', label: 'GitHub', href: 'https://github.com/manzoorwanijk/mawesome' },
+				{ icon: 'github', label: 'GitHub', href: 'https://github.com/mawesomedev/mawesome' },
 			],
 			// One sidebar group per registered tool: docs auto-generate from the synced directory
 			// (scripts/sync-docs.ts, ordered by each page's `sidebar` frontmatter), plus a Playground

@@ -1,6 +1,6 @@
 {
 	"$schema": "https://unpkg.com/@changesets/config@4.0.0/schema.json",
-	"changelog": ["@changesets/changelog-github", { "repo": "manzoorwanijk/mawesome" }],
+	"changelog": ["@changesets/changelog-github", { "repo": "mawesomedev/mawesome" }],
 	"commit": false,
 	"fixed": [],
 	"linked": [],
