@@ -60,14 +60,14 @@
 		"ignore": "^7.0.8"
 	},
 	"devDependencies": {
-		"@arethetypeswrong/cli": "^0.18.3",
+		"@arethetypeswrong/cli": "^0.18.5",
 		"@mawesome/testing": "workspace:*",
 		"@mawesome/tsconfig": "workspace:*",
-		"@types/node": "^24.13.2",
+		"@types/node": "^26.4.1",
 		"@typescript/native-preview": "7.0.0-dev.20260527.2",
-		"publint": "^0.3.21",
-		"tsdown": "^0.22.2",
-		"vitest": "^4.1.7"
+		"publint": "^0.3.24",
+		"tsdown": "^0.23.0",
+		"vitest": "^5.0.0"
 	},
 	"engines": {
 		"node": ">=24.12.0"
