@@ -7,7 +7,7 @@
 	"author": "Manzoor Ahmad Wani",
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/manzoorwanijk/mawesome.git"
+		"url": "git+https://github.com/mawesomedev/mawesome.git"
 	},
 	"type": "module",
 	"scripts": {
