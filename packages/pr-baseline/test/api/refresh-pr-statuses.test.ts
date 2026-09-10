@@ -120,7 +120,7 @@ describe('refresh-pr-statuses', () => {
 	});
 
 	it('pauses on the primary budget once it has written something', async () => {
-		const { client } = harness({}, (gh) => {
+		const { client, warnings } = harness({}, (gh) => {
 			populate(gh);
 			// Enough headroom for a write or two, then the reserve stops the run.
 			gh.rateLimitRemaining = 58;
@@ -133,6 +133,7 @@ describe('refresh-pr-statuses', () => {
 			reason: 'primary-budget',
 		});
 		expect(result.written).toBeGreaterThan(0);
+		expect(warnings.join('\n')).toContain('Paused on the primary budget:');
 	});
 
 	it('paces writes against the per-minute cap', async () => {
@@ -162,7 +163,14 @@ describe('refresh-pr-statuses', () => {
 			headers: { 'x-ratelimit-remaining': '0' },
 		});
 		const result = await client.refreshPrStatuses();
-		expect(result).toMatchObject({ written: 0, failed: 1, incomplete: true, reason: 'rate-limit' });
+		// A rate limit answering the write itself is a failure, so it is not a pause.
+		expect(result).toMatchObject({
+			written: 0,
+			failed: 1,
+			incomplete: true,
+			paused: false,
+			reason: 'rate-limit',
+		});
 	});
 
 	it('returns an incomplete summary when the listing is rate limited', async () => {
@@ -306,13 +314,17 @@ describe('refresh guards', () => {
 	});
 
 	it('rechecks the primary reserve after evaluation spent requests', async () => {
-		const { client, github } = harness({}, (gh) => {
+		const { client, github, warnings } = harness({}, (gh) => {
 			populate(gh);
 			// Listing and the base-membership compare bring the count to the reserve edge before the first write.
 			gh.rateLimitRemaining = 55;
 		});
 		const result = await client.refreshPrStatuses();
 		expect(result).toMatchObject({ written: 0, reason: 'primary-budget', paused: false });
+		// A run starved of budget before its first write says which, so an operator looks at the right thing.
+		expect(warnings.join('\n')).toContain(
+			"another workflow is consuming the repository's request budget",
+		);
 		expect(github.requests(/\/statuses\//, 'POST')).toHaveLength(0);
 	});
 
@@ -813,6 +825,12 @@ describe('refresh scope', () => {
 		expect(github.baselineAt('pr-baseline')).toBe(sha(4));
 		// The other commands are untouched by the scope, so the same client still serves them.
 		await expect(client.report()).resolves.toMatchObject({ openPulls: 4 });
+		await expect(client.refreshPrStatus({ pr: 1, report: true })).resolves.toMatchObject({
+			written: true,
+		});
+		await expect(
+			client.moveBaseline({ force: true, to: sha(5), refreshPrStatuses: false }),
+		).resolves.toMatchObject({ moves: [{ moved: true }] });
 	});
 
 	it('refreshes every PR after a forced move and after an off-base baseline', async () => {
@@ -875,7 +893,7 @@ describe('refresh transport retries', () => {
 	});
 
 	it('stops at the write cap in the middle of a retry sequence', async () => {
-		const { client, github } = harness({ maxWritesPerRun: 2 }, (gh) => {
+		const { client, github, warnings } = harness({ maxWritesPerRun: 2 }, (gh) => {
 			gh.baseline('pr-baseline', sha(3));
 			gh.commit(sha(11), [sha(2)]);
 			gh.pull({ number: 1, headSha: sha(11) });
@@ -889,6 +907,8 @@ describe('refresh transport retries', () => {
 			paused: false,
 			reason: 'write-cap',
 		});
+		// Its own cap went on abandoned attempts, which is not another workflow's doing.
+		expect(warnings.join('\n')).toContain('the cap went on attempts that were abandoned');
 		expect(github.requests(/\/statuses\//, 'POST')).toHaveLength(2);
 	});
 
