@@ -662,6 +662,35 @@ describe('refresh scope', () => {
 		);
 	});
 
+	it('logs progress once the write and the time threshold have both passed', async () => {
+		// The throttle's own thresholds are a unit test; this is the only case that proves the loop uses it.
+		const { client, logs } = harness({ scope: 'all', maxWritesPerMinute: 1 }, (gh) => {
+			gh.baseline('pr-baseline', sha(4));
+			for (let n = 1; n <= 60; n += 1) {
+				gh.commit(sha(100 + n), [sha(3)]);
+				gh.pull({ number: n, headSha: sha(100 + n) });
+			}
+		});
+		const result = await client.refreshPrStatuses();
+		expect(result).toMatchObject({ selected: 60, written: 60 });
+		const progress = logs.filter((line) => line.startsWith('Written '));
+		expect(progress).toEqual(['Written 50 of at most 60; 10 PRs still to visit.']);
+	});
+
+	it('names the population left by the scope in a progress line', async () => {
+		const { client, logs } = harness({ scope: 'unstamped', maxWritesPerMinute: 1 }, (gh) => {
+			gh.baseline('pr-baseline', sha(4));
+			for (let n = 1; n <= 55; n += 1) {
+				gh.commit(sha(100 + n), [sha(3)]);
+				gh.pull({ number: n, headSha: sha(100 + n) });
+			}
+		});
+		await client.refreshPrStatuses();
+		expect(logs.filter((line) => line.startsWith('Written '))).toEqual([
+			'Written 50 of at most 55; 5 PRs still unstamped.',
+		]);
+	});
+
 	it('says what it plans to do before doing it, and what is left when it pauses', async () => {
 		const { client, logs, warnings } = harness({ scope: 'all', maxWritesPerRun: 2 }, scoped);
 		await client.refreshPrStatuses();

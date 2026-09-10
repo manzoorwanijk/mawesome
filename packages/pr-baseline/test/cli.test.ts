@@ -115,9 +115,23 @@ describe('cli', () => {
 	});
 
 	it('accepts --scope on the refresh only', () => {
-		const other = run(['report', '--scope', 'all', '--repo', 'a/b', '--token', 'x']);
-		expect(other.status).toBe(2);
-		expect(other.stderr).toContain('--scope cannot be used with "report"');
+		for (const command of ['report', 'move-baseline']) {
+			const other = run([command, '--scope', 'all', '--repo', 'a/b', '--token', 'x']);
+			expect(other.status).toBe(2);
+			expect(other.stderr).toContain(`--scope cannot be used with "${command}"`);
+		}
+		const single = run([
+			'refresh-pr-status',
+			'abc',
+			'--scope',
+			'all',
+			'--repo',
+			'a/b',
+			'--token',
+			'x',
+		]);
+		expect(single.status).toBe(2);
+		expect(single.stderr).toContain('--scope cannot be used with "refresh-pr-status"');
 		const invalid = run([
 			'refresh-pr-statuses',
 			'--scope',

@@ -61,6 +61,20 @@ describe('refresh-pr-status', () => {
 		);
 	});
 
+	it('rewrites a difference in wording alone, which the bulk refresh would leave', async () => {
+		const { client, github } = harness({}, (gh) => {
+			gh.baseline('pr-baseline', sha(2));
+			gh.commit(sha(10), [sha(3)]);
+			gh.status(sha(10), { state: 'success', description: 'wording from an older release' });
+		});
+		// One write is cheap here and it is what stamps a PR after a push; only the sweep hoards them.
+		const result = await client.refreshPrStatus({ sha: sha(10), report: true });
+		expect(result).toMatchObject({ written: true, skipped: false });
+		expect(github.latestStatus(sha(10), 'PR baseline')?.description).toBe(
+			'Contains the required main changes.',
+		);
+	});
+
 	it('treats an absent baseline as satisfied', async () => {
 		const { client } = harness({}, (gh) => gh.commit(sha(10), [sha(1)]));
 		const result = await client.refreshPrStatus({ sha: sha(10), report: true });
