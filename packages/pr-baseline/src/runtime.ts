@@ -40,13 +40,6 @@ export function createRuntime(options: ClientOptions): Runtime {
 			'A token is required except for an offline refresh-pr-status: pass --token or set GITHUB_TOKEN.',
 		);
 	}
-	/* Rejected here rather than inside the refresh, which `move-baseline` reaches only after the refs
-	 * have moved: bucketing reads the listing's commit statuses, which a custom reporter does not own. */
-	if (options.reporter !== undefined && config.scopeExplicit && config.scope !== 'all') {
-		throw new ConfigError(
-			`A custom reporter owns the statuses a refresh compares against, so scope "${config.scope}" cannot be applied; use "all".`,
-		);
-	}
 	const logger = options.logger ?? {
 		info: (message) => console.error(message),
 		warn: (message) => console.error(`Warning: ${message}`),

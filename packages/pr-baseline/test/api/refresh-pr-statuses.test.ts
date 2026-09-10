@@ -799,20 +799,20 @@ describe('refresh scope', () => {
 		expect(warnings.some((line) => line.includes('custom reporter'))).toBe(true);
 	});
 
-	it('refuses an explicit scope for a custom reporter, before any request', () => {
-		// `move-baseline` reaches the refresh only after the refs have moved, so this cannot wait for it.
-		expect(() =>
-			harness(
-				{
-					scope: 'corrections',
-					reporter: {
-						current: () => Promise.resolve(null),
-						write: () => Promise.resolve(),
-					},
-				},
-				scoped,
-			),
-		).toThrow(/custom reporter/);
+	it('refuses an explicit scope for a custom reporter, and a move refuses before it moves', async () => {
+		const reporter = {
+			current: () => Promise.resolve(null),
+			write: () => Promise.resolve(),
+		};
+		const { client, github } = harness({ scope: 'corrections', reporter }, scoped);
+		await expect(client.refreshPrStatuses()).rejects.toThrow(/custom reporter/);
+		// The move would otherwise write the ref and only then reject, leaving statuses unrefreshed.
+		await expect(
+			client.moveBaseline({ force: true, to: sha(5), refreshPrStatuses: true }),
+		).rejects.toThrow(/custom reporter/);
+		expect(github.baselineAt('pr-baseline')).toBe(sha(4));
+		// The other commands are untouched by the scope, so the same client still serves them.
+		await expect(client.report()).resolves.toMatchObject({ openPulls: 4 });
 	});
 
 	it('refreshes every PR after a forced move and after an off-base baseline', async () => {

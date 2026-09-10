@@ -75,10 +75,11 @@ export async function runRefreshPrStatuses(
 			'refresh-pr-statuses needs the API; --offline applies to refresh-pr-status only.',
 		);
 	}
+	assertScopeUsable(runtime);
 	let scope: RefreshScope = input.scope ?? config.scope;
 	if (runtime.customReporter) {
 		/* Bucketing reads the listing's commit statuses, which a custom reporter does not own,
-		 * so the only honest population is every PR. An explicit narrower scope is refused in `createRuntime`. */
+		 * so the only honest population is every PR. */
 		if (!config.scopeExplicit && input.scope === undefined) {
 			logger.warn(
 				'A custom reporter owns the statuses, which the PR listing cannot report; refreshing every open PR.',
@@ -515,6 +516,19 @@ function tally(pulls: OpenPull[]): {
 		}
 	}
 	return counts;
+}
+
+/**
+ * Refuses a scope a custom reporter cannot honour, since the PR listing's statuses are not its.
+ * `move-baseline` calls this before it moves anything, so a refusal is never a half-run.
+ */
+export function assertScopeUsable(runtime: Runtime): void {
+	const { config } = runtime;
+	if (runtime.customReporter && config.scopeExplicit && config.scope !== 'all') {
+		throw new ConfigError(
+			`A custom reporter owns the statuses a refresh compares against, so scope "${config.scope}" cannot be applied; use "all".`,
+		);
+	}
 }
 
 /** Whether a scope selects a PR, read from the status the listing carries. */

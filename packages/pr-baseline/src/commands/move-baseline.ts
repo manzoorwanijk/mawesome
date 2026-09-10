@@ -13,7 +13,7 @@ import type {
 	ResolvedBaseline,
 } from '../types.ts';
 import { BaselineError, refSnapshot, sameRefs, shortSha } from '../util.ts';
-import { runRefreshPrStatuses } from './refresh-pr-statuses.ts';
+import { assertScopeUsable, runRefreshPrStatuses } from './refresh-pr-statuses.ts';
 
 type Decision = { reason: MoveReason } | { note: string };
 
@@ -53,6 +53,7 @@ export async function runMoveBaseline(
 	const base = await runtime.base();
 	if (options.refreshPrStatuses) {
 		// Resolved before anything moves so a creator problem is a configuration error, not a half-run.
+		assertScopeUsable(runtime);
 		await runtime.creator();
 	}
 	const baselines = await runtime.readBaselines();
