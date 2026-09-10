@@ -39,7 +39,7 @@ jobs:
       group: pr-baseline-status-${{ github.event.pull_request.number || github.event.merge_group.head_sha }}
       cancel-in-progress: false
     steps:
-      - uses: manzoorwanijk/pr-baseline-action@<sha> # vX.Y.Z
+      - uses: mawesomedev/pr-baseline-action@<sha> # vX.Y.Z
         with:
           base: BASE
           baselines: ${{ env.PR_BASELINES }}
@@ -70,7 +70,7 @@ jobs:
           filter: tree:0
           persist-credentials: false
       - id: pr-baseline
-        uses: manzoorwanijk/pr-baseline-action@<sha> # vX.Y.Z
+        uses: mawesomedev/pr-baseline-action@<sha> # vX.Y.Z
         with:
           base: BASE
           baselines: ${{ env.PR_BASELINES }}

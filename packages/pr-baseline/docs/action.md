@@ -1,6 +1,6 @@
 # GitHub Action
 
-The action is one root action, `manzoorwanijk/pr-baseline-action`, with a `mode` input. Its source is the [`action/`](../action/) directory of this package, which is the complete mirror repository: the mirror adds only the bundled `dist/` and a `release.json` naming the release. The workflow and the tables below are generated from [`action.yml`](../action/action.yml) and the [workflow template](../action/workflow-template.yml), the same sources as the action's own [README](../action/README.md).
+The action is one root action, `mawesomedev/pr-baseline-action`, with a `mode` input. Its source is the [`action/`](../action/) directory of this package, which is the complete mirror repository: the mirror adds only the bundled `dist/` and a `release.json` naming the release. The workflow and the tables below are generated from [`action.yml`](../action/action.yml) and the [workflow template](../action/workflow-template.yml), the same sources as the action's own [README](../action/README.md).
 
 ## Usage
 
@@ -50,7 +50,7 @@ jobs:
       group: pr-baseline-status-${{ github.event.pull_request.number || github.event.merge_group.head_sha }}
       cancel-in-progress: false
     steps:
-      - uses: manzoorwanijk/pr-baseline-action@<sha> # vX.Y.Z
+      - uses: mawesomedev/pr-baseline-action@<sha> # vX.Y.Z
         with:
           base: BASE
           baselines: ${{ env.PR_BASELINES }}
@@ -81,7 +81,7 @@ jobs:
           filter: tree:0
           persist-credentials: false
       - id: pr-baseline
-        uses: manzoorwanijk/pr-baseline-action@<sha> # vX.Y.Z
+        uses: mawesomedev/pr-baseline-action@<sha> # vX.Y.Z
         with:
           base: BASE
           baselines: ${{ env.PR_BASELINES }}
@@ -183,7 +183,7 @@ Outputs are plain strings, several of them JSON documents. Every run, including 
 
 The npm release stays with changesets. The changesets tag it pushes afterwards, `@mawesome/pr-baseline@X.Y.Z`, triggers the monorepo's mirror workflow, which checks out the tagged commit, builds the bundle, stages `action/` with `dist/` and a `release.json` naming the version and that commit, and publishes it to the mirror through `tools/repo/scripts/tag-action-mirror.ts` in three steps around one deploy step. A lost mirror run is repeated by dispatching the workflow with the version; a release whose tag never landed is repaired by creating the tag on the released commit, which triggers the workflow. `prepare` records the mirror's `main`, refuses a version older than the one `vX` points at, refuses to run while `release/vX.Y.Z` exists, and creates that branch at `main` with a lease that expects it absent, recording ownership only after the push; when `vX.Y.Z` already exists the run resumes instead, verifying that its commit is this release and reachable from `main`, and reconciling only `vX`. A pinned `manzoorwanijk/action-deploy-to-repo` then commits the staged tree on that branch with the subject `Release vX.Y.Z` and an `Upstream-Ref` footer, as the App's bot user, and reports the commit it pushed. `promote` verifies that the branch still holds the commit the deploy step reported, the subject, the footer, that the commit's first parent is the recorded `main` and that its tree is exactly the staged directory, then moves `main`, creates `vX.Y.Z` and moves `vX` in one atomic push, `main` and `vX` leased on the values it read and `vX.Y.Z` rejected by the push if it appeared meanwhile, refusing a `vX` that is not an ancestor before pushing anything; any failure leaves `main` and the tags untouched, with only the temporary branch to remove. `cleanup` runs on every outcome and deletes the temporary branch when it points at a commit the run recorded: where it was created, what the deploy step left, or the promoted release.
 
-The first publication needs the mirror repository, `manzoorwanijk/pr-baseline-action`, created by hand with an empty initial commit on `main`, the release App installed on it, and rulesets there restricting `main`, `v*` and `release/*` to the App. In the monorepo, a tag ruleset must restrict `@mawesome/pr-baseline@*` to the App and the `action-mirror` environment must be limited to that tag pattern and the `main` branch, because the workflow runs the code of the commit the tag names. A runner that dies after promoting leaves `release/vX.Y.Z` at the release commit, which the rerun's resume path deletes; one that dies anywhere before that leaves a branch the rerun refuses, since it cannot prove the branch is its own, so delete the branch by hand and rerun. Protect `release/*` and `v*` in the mirror with rulesets restricted to the App, since the promotion trusts the branch only as far as those checks reach.
+The first publication needs the mirror repository, `mawesomedev/pr-baseline-action`, created by hand with an empty initial commit on `main`, the release App installed on it, and rulesets there restricting `main`, `v*` and `release/*` to the App. In the monorepo, a tag ruleset must restrict `@mawesome/pr-baseline@*` to the App and the `action-mirror` environment must be limited to that tag pattern and the `main` branch, because the workflow runs the code of the commit the tag names. A runner that dies after promoting leaves `release/vX.Y.Z` at the release commit, which the rerun's resume path deletes; one that dies anywhere before that leaves a branch the rerun refuses, since it cannot prove the branch is its own, so delete the branch by hand and rerun. Protect `release/*` and `v*` in the mirror with rulesets restricted to the App, since the promotion trusts the branch only as far as those checks reach.
 
 ## Support matrix
 

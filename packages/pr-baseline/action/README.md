@@ -2,7 +2,7 @@
 
 > Keep open pull requests current with a movable baseline on the base branch, reported through commit statuses.
 
-**This repository is generated.** It mirrors the `action/` directory of [`@mawesome/pr-baseline`](https://github.com/manzoorwanijk/mawesome/tree/main/packages/pr-baseline) with the bundled `dist/` and a `release.json` naming the release added; open issues and pull requests there. Full documentation lives in the package's [docs](https://github.com/manzoorwanijk/mawesome/tree/main/packages/pr-baseline/docs).
+**This repository is generated.** It mirrors the `action/` directory of [`@mawesome/pr-baseline`](https://github.com/mawesomedev/mawesome/tree/main/packages/pr-baseline) with the bundled `dist/` and a `release.json` naming the release added; open issues and pull requests there. Full documentation lives in the package's [docs](https://github.com/mawesomedev/mawesome/tree/main/packages/pr-baseline/docs).
 
 A repository-wide change lands on the base branch and every open PR branched before it keeps passing CI on stale code. This action marks that commit with a git ref under `refs/baselines/`, the **baseline**, and stamps every open PR with a commit status: `success` when the PR's head contains the baseline, `failure` when it does not. Require the status in the base branch's ruleset and stale PRs must merge or rebase before they can land. The baseline moves forward only by intent: a workflow dispatch, a merged PR carrying a label, or a push touching marker paths.
 
@@ -54,7 +54,7 @@ jobs:
       group: pr-baseline-status-${{ github.event.pull_request.number || github.event.merge_group.head_sha }}
       cancel-in-progress: false
     steps:
-      - uses: manzoorwanijk/pr-baseline-action@<sha> # vX.Y.Z
+      - uses: mawesomedev/pr-baseline-action@<sha> # vX.Y.Z
         with:
           base: BASE
           baselines: ${{ env.PR_BASELINES }}
@@ -85,7 +85,7 @@ jobs:
           filter: tree:0
           persist-credentials: false
       - id: pr-baseline
-        uses: manzoorwanijk/pr-baseline-action@<sha> # vX.Y.Z
+        uses: mawesomedev/pr-baseline-action@<sha> # vX.Y.Z
         with:
           base: BASE
           baselines: ${{ env.PR_BASELINES }}
@@ -185,7 +185,7 @@ Every run, including a skip or an error, sets every output and writes a step sum
 | `refresh-pr-status`   | read       | write      |                 |
 | `refresh-pr-statuses` | write      | write      | read            |
 
-Require the status context (`PR baseline` by default) in the base branch's ruleset only, with the source matching the token. The baseline refs live under `refs/baselines/`, which no clone fetches and no ruleset covers: whoever has `contents: write` can move them, and the tool only ever fast-forwards them. The package docs cover [permissions](https://github.com/manzoorwanijk/mawesome/blob/main/packages/pr-baseline/docs/permissions.md), [rate limits](https://github.com/manzoorwanijk/mawesome/blob/main/packages/pr-baseline/docs/rate-limits.md), [edge cases](https://github.com/manzoorwanijk/mawesome/blob/main/packages/pr-baseline/docs/edge-cases.md) and the [runbook](https://github.com/manzoorwanijk/mawesome/blob/main/packages/pr-baseline/docs/runbook.md).
+Require the status context (`PR baseline` by default) in the base branch's ruleset only, with the source matching the token. The baseline refs live under `refs/baselines/`, which no clone fetches and no ruleset covers: whoever has `contents: write` can move them, and the tool only ever fast-forwards them. The package docs cover [permissions](https://github.com/mawesomedev/mawesome/blob/main/packages/pr-baseline/docs/permissions.md), [rate limits](https://github.com/mawesomedev/mawesome/blob/main/packages/pr-baseline/docs/rate-limits.md), [edge cases](https://github.com/mawesomedev/mawesome/blob/main/packages/pr-baseline/docs/edge-cases.md) and the [runbook](https://github.com/mawesomedev/mawesome/blob/main/packages/pr-baseline/docs/runbook.md).
 
 ## Support
 
