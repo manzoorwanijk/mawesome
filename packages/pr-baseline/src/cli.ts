@@ -11,6 +11,7 @@ import type {
 	ClientOptions,
 	MoveBaselineResult,
 	OtherBases,
+	RefreshScope,
 	ReportResult,
 	RefreshPrStatusesResult,
 } from './types.ts';
@@ -61,6 +62,10 @@ Behavior:
   --max-writes-per-minute <n>   Positive integer, default 60
   --dry-run              Log writes instead of making them
   --json                 Print the result as JSON on stdout
+
+refresh-pr-statuses:
+            --scope corrections|unstamped|all  Which open PRs to bring in line (default corrections:
+            the green ones, which are the only ones a baseline move can turn red).
 
 refresh-pr-status:
             --pr <n>  Evaluate the PR's head; --report / --no-report  Write the status
@@ -181,6 +186,7 @@ function parse(argv: string[]) {
 			ancestry: { type: 'string' },
 			'git-dir': { type: 'string' },
 			'other-bases': { type: 'string' },
+			scope: { type: 'string' },
 			creator: { type: 'string' },
 			offline: { type: 'boolean' },
 			'max-writes-per-run': { type: 'string' },
@@ -203,7 +209,7 @@ type Values = ReturnType<typeof parse>['values'];
 /** Command-specific options, so a flag meant for another command is an error rather than silently ignored. */
 const COMMAND_OPTIONS: Record<string, readonly (keyof Values)[]> = {
 	'refresh-pr-status': ['pr', 'report'],
-	'refresh-pr-statuses': [],
+	'refresh-pr-statuses': ['scope'],
 	'move-baseline': ['force', 'to', 'baseline', 'refresh-pr-statuses'],
 	report: [],
 };
@@ -234,6 +240,7 @@ function clientOptions(values: Values): ClientOptions {
 	assign(options, 'creator', values.creator);
 	assign(options, 'ancestry', values.ancestry as AncestryMode | undefined);
 	assign(options, 'otherBases', values['other-bases'] as OtherBases | undefined);
+	assign(options, 'scope', values.scope as RefreshScope | undefined);
 	assign(options, 'offline', values.offline);
 	assign(options, 'dryRun', values['dry-run']);
 	assign(

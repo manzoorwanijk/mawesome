@@ -38,6 +38,9 @@ inputs:
   baseline:
     description: In move-baseline mode, move only the baseline with this name; blank moves all.
     required: false
+  scope:
+    description: 'Which open PRs a refresh covers: corrections (default, the green ones), unstamped (the backfill) or all.'
+    required: false
   status-context:
     description: Status context (default `PR baseline`).
     required: false
@@ -101,6 +104,16 @@ outputs:
     description: PRs whose head was still moving.
   failed:
     description: PRs whose status could not be written.
+  scope:
+    description: The scope a refresh applied, which is `all` whatever was asked when a baseline is off the base branch.
+  selected:
+    description: Open PRs the scope selected.
+  excluded:
+    description: Open PRs the scope left out.
+  cosmetic:
+    description: Selected PRs whose status differed only in description or link, so no write was spent.
+  remaining:
+    description: Selected PRs the run never reached.
   incomplete:
     description: Whether a refresh stopped before covering every PR (`true` or `false`).
   paused:

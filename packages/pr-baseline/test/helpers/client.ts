@@ -1,4 +1,9 @@
-import { createClient, type Client, type ClientOptions } from '../../src/index.ts';
+import {
+	createClient,
+	type Client,
+	type ClientOptions,
+	type RefreshScope,
+} from '../../src/index.ts';
 import { FakeGitHub, sha } from '@mawesome/testing/github';
 
 export interface Harness {
@@ -15,9 +20,13 @@ export interface Harness {
  * The default repository has `main` at commit 5 on a linear history 1..5.
  */
 export function harness(
-	options: ClientOptions = {},
+	/* This suite predates scoping and asserts the full sweep, so `scope` defaults to `all` here;
+	 * a case that wants the library's own default passes `scope: undefined`. */
+	options: Omit<ClientOptions, 'scope'> & { scope?: RefreshScope | undefined } = {},
 	setup?: (github: FakeGitHub) => void,
 ): Harness {
+	const { scope: requested, ...rest } = options;
+	const scope = 'scope' in options ? requested : 'all';
 	const github = new FakeGitHub();
 	github.chain(1, 5);
 	github.branch('main', sha(5));
@@ -43,7 +52,8 @@ export function harness(
 		// No clone and no git here: the fake API is the whole world, refs included.
 		ancestry: 'api',
 		env: {},
-		...options,
+		...rest,
+		...(scope === undefined ? {} : { scope }),
 	});
 	return { github, client, logs, warnings, sleeps, clock };
 }

@@ -51,6 +51,8 @@ function client(options: ClientOptions = {}): Client {
 		retryBaseMs: 0,
 		tokenIsWorkflowToken: true,
 		gitDir: world.fixture.cloneDir,
+		// These cases predate scoping and assert the full sweep.
+		scope: 'all',
 		env: {},
 		...options,
 	});

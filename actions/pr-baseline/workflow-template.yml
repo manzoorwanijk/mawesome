@@ -20,6 +20,11 @@ on:
         type: string
         default: ''
         description: Name of one baseline to move; blank moves all
+      scope:
+        type: choice
+        default: ''
+        options: ['', corrections, unstamped, all]
+        description: Which open PRs a refresh covers; blank is corrections, the green ones. unstamped is the backfill
 permissions: {}
 env:
   # One source of truth for both jobs. Omit to use the single default baseline.
@@ -77,6 +82,7 @@ jobs:
           mode: ${{ inputs.mode || 'auto' }}
           force: ${{ inputs.mode == 'move-baseline' }}
           baseline: ${{ inputs.baseline || '' }}
+          scope: ${{ inputs.scope || '' }}
       - if: ${{ always() && steps.pr-baseline.outputs.results-file != '' }}
         uses: actions/upload-artifact@<sha> # vN
         with:

@@ -446,6 +446,227 @@ describe('refresh round 4', () => {
 	});
 });
 
+/** Baseline at 4; PR 1 green and now failing, 2 already red, 3 unstamped, 4 carrying a foreign `error`. */
+function scoped(gh: FakeGitHub): void {
+	gh.baseline('pr-baseline', sha(4));
+	for (const n of [11, 12, 13, 14]) {
+		gh.commit(sha(n), [sha(3)]);
+	}
+	gh.pull({ number: 1, headSha: sha(11) });
+	gh.pull({ number: 2, headSha: sha(12) });
+	gh.pull({ number: 3, headSha: sha(13) });
+	gh.pull({ number: 4, headSha: sha(14) });
+	gh.status(sha(11), { state: 'success', description: PASS });
+	gh.status(sha(12), {
+		state: 'failure',
+		description: 'Merge or rebase main to include: pr-baseline',
+		targetUrl: `https://github.com/acme/widgets/compare/${sha(12)}...main`,
+	});
+	gh.status(sha(14), { state: 'error', description: 'left by a previous integration' });
+}
+
+/** An adapter that prepares, so the second listing and the head map run, and records what it was asked for. */
+function preparingAdapter(): { adapter: Ancestry; pulls: number[][] } {
+	const pulls: number[][] = [];
+	return {
+		pulls,
+		adapter: {
+			name: 'api',
+			isAncestor: (ancestor, descendant) => Promise.resolve(ancestor <= descendant),
+			changedFiles: () => Promise.resolve([]),
+			prepare(input) {
+				pulls.push(input.pulls);
+				return Promise.resolve({ heads: new Map() });
+			},
+		},
+	};
+}
+
+/** One green PR that still passes, carrying a description from an older release. */
+function drifted(gh: FakeGitHub): void {
+	gh.baseline('pr-baseline', sha(3));
+	gh.commit(sha(11), [sha(4)]);
+	gh.pull({ number: 1, headSha: sha(11) });
+	gh.status(sha(11), { state: 'success', description: 'wording from an older release' });
+}
+
+describe('refresh scope', () => {
+	it('corrects only the PRs a forward move can have turned red', async () => {
+		const { client, github } = harness({ scope: 'corrections' }, scoped);
+		const result = await client.refreshPrStatuses();
+		expect(result).toMatchObject({
+			scope: 'corrections',
+			openPulls: 4,
+			selected: 1,
+			excluded: 3,
+			written: 1,
+			skipped: 0,
+			remaining: 0,
+		});
+		expect(github.latestStatus(sha(11), 'PR baseline')?.state).toBe('failure');
+		// The red, the unstamped and the `error` PR are all left exactly as they were.
+		expect(github.latestStatus(sha(12), 'PR baseline')?.description).toBe(
+			'Merge or rebase main to include: pr-baseline',
+		);
+		expect(github.latestStatus(sha(13), 'PR baseline')).toBeNull();
+		expect(github.latestStatus(sha(14), 'PR baseline')?.state).toBe('error');
+	});
+
+	it('stamps only PRs with no status under unstamped', async () => {
+		const { client, github } = harness({ scope: 'unstamped' }, scoped);
+		const result = await client.refreshPrStatuses();
+		expect(result).toMatchObject({ scope: 'unstamped', selected: 1, excluded: 3, written: 1 });
+		expect(github.latestStatus(sha(13), 'PR baseline')?.state).toBe('failure');
+		expect(github.latestStatus(sha(11), 'PR baseline')?.state).toBe('success');
+	});
+
+	it('reaches a PR carrying an `error` status only under all', async () => {
+		const { client, github } = harness({ scope: 'all' }, scoped);
+		const result = await client.refreshPrStatuses();
+		// Every PR but the already-red one differs materially.
+		expect(result).toMatchObject({
+			scope: 'all',
+			selected: 4,
+			excluded: 0,
+			written: 3,
+			skipped: 1,
+		});
+		expect(github.latestStatus(sha(14), 'PR baseline')?.state).toBe('failure');
+	});
+
+	it('counts a text-only difference as cosmetic and writes it only under all', async () => {
+		const corrections = harness({ scope: 'corrections' }, drifted);
+		await expect(corrections.client.refreshPrStatuses()).resolves.toMatchObject({
+			selected: 1,
+			written: 0,
+			cosmetic: 1,
+			skipped: 0,
+			remaining: 0,
+			incomplete: false,
+		});
+		expect(corrections.github.latestStatus(sha(11), 'PR baseline')?.description).toBe(
+			'wording from an older release',
+		);
+		const all = harness({ scope: 'all' }, drifted);
+		await expect(all.client.refreshPrStatuses()).resolves.toMatchObject({
+			written: 1,
+			cosmetic: 0,
+		});
+		expect(all.github.latestStatus(sha(11), 'PR baseline')?.description).toBe(PASS);
+	});
+
+	it('spends the last write on a material difference, not a cosmetic one', async () => {
+		const { client, github } = harness({ scope: 'all', maxWritesPerRun: 1 }, (gh) => {
+			gh.baseline('pr-baseline', sha(4));
+			// The listing is newest first, so the cosmetic PR is reached before the material one.
+			gh.commit(sha(12), [sha(5)]);
+			gh.commit(sha(11), [sha(3)]);
+			gh.pull({ number: 2, headSha: sha(12) });
+			gh.pull({ number: 1, headSha: sha(11) });
+			gh.status(sha(12), { state: 'success', description: 'older wording' });
+		});
+		const result = await client.refreshPrStatuses();
+		expect(result).toMatchObject({ written: 1, paused: true, reason: 'write-cap' });
+		expect(github.latestStatus(sha(11), 'PR baseline')?.state).toBe('failure');
+		expect(github.latestStatus(sha(12), 'PR baseline')?.description).toBe('older wording');
+	});
+
+	it('asks the adapter to prepare only the selected PR heads', async () => {
+		const strict = strictAdapter();
+		const { client } = harness({ scope: 'corrections', ancestryAdapter: strict.adapter }, scoped);
+		await expect(client.refreshPrStatuses()).resolves.toMatchObject({ selected: 1 });
+		// The first call settles the baselines against the base head; only the second knows the scope.
+		expect(strict.preparedPulls).toEqual([[], [1]]);
+	});
+
+	it('counts a PR that closes between the two listings in openPulls', async () => {
+		const preparing = preparingAdapter();
+		const { client, github } = harness(
+			{ scope: 'corrections', ancestryAdapter: preparing.adapter },
+			scoped,
+		);
+		let listings = 0;
+		const original = github.fetch;
+		github.fetch = async (input, init) => {
+			const response = await original.call(github, input, init);
+			const url = String(input instanceof Request ? input.url : input);
+			if (url.endsWith('/graphql') && ++listings === 1) {
+				const pull = github.pulls.get(1);
+				if (pull) {
+					pull.state = 'closed';
+				}
+			}
+			return response;
+		};
+		const result = await client.refreshPrStatuses();
+		expect(result).toMatchObject({
+			openPulls: 4,
+			selected: 1,
+			excluded: 3,
+			closed: 1,
+			written: 0,
+			remaining: 0,
+		});
+		expect(result.selected + result.excluded).toBe(result.openPulls);
+	});
+
+	it('reports the selected PRs it never reached as remaining', async () => {
+		const { client } = harness({ scope: 'all', maxWritesPerRun: 1 }, scoped);
+		const result = await client.refreshPrStatuses();
+		expect(result).toMatchObject({ selected: 4, written: 1, remaining: 3 });
+	});
+
+	it('promotes a defaulted scope to all for a custom reporter, and warns', async () => {
+		const written: string[] = [];
+		const { client, warnings } = harness(
+			{
+				scope: undefined,
+				reporter: {
+					current: () => Promise.resolve(null),
+					write: (sha_) => {
+						written.push(sha_);
+						return Promise.resolve();
+					},
+				},
+			},
+			scoped,
+		);
+		await expect(client.refreshPrStatuses()).resolves.toMatchObject({ scope: 'all', selected: 4 });
+		expect(written).toHaveLength(4);
+		expect(warnings.some((line) => line.includes('custom reporter'))).toBe(true);
+	});
+
+	it('refuses an explicit scope for a custom reporter', async () => {
+		const { client } = harness(
+			{
+				scope: 'corrections',
+				reporter: {
+					current: () => Promise.resolve(null),
+					write: () => Promise.resolve(),
+				},
+			},
+			scoped,
+		);
+		await expect(client.refreshPrStatuses()).rejects.toThrow(/custom reporter/);
+	});
+
+	it('refreshes every PR after a forced move and after an off-base baseline', async () => {
+		const forced = harness({ scope: 'corrections' }, scoped);
+		await expect(
+			forced.client.moveBaseline({ force: true, to: sha(5), refreshPrStatuses: true }),
+		).resolves.toMatchObject({ refresh: { scope: 'all', selected: 4 } });
+		const off = harness({ scope: 'corrections' }, (gh) => {
+			scoped(gh);
+			gh.commit(sha(20), [sha(2)]);
+			gh.baseline('pr-baseline', sha(20));
+		});
+		await expect(off.client.refreshPrStatuses()).resolves.toMatchObject({
+			scope: 'all',
+			selected: 4,
+		});
+	});
+});
+
 describe('refresh write accounting', () => {
 	it('counts failed writes against the per-run cap and the pacing', async () => {
 		const { client, github, sleeps } = harness(
@@ -543,8 +764,10 @@ describe('refresh transport retries', () => {
 });
 
 /** An adapter that refuses any ancestry question about a commit that was not prepared for it. */
-function strictAdapter(): { adapter: Ancestry; prepared: string[][] } {
+function strictAdapter(): { adapter: Ancestry; prepared: string[][]; preparedPulls: number[][] } {
 	const prepared: string[][] = [];
+	// Kept apart from `prepared`, which the guard reads: a refresh now prepares twice, the first with no PRs.
+	const preparedPulls: number[][] = [];
 	const known = new Set<string>();
 	// The descendant of a question may be a PR head, which comes from the listing, not from `shas`.
 	const guard = (commit: string): void => {
@@ -557,6 +780,7 @@ function strictAdapter(): { adapter: Ancestry; prepared: string[][] } {
 	};
 	return {
 		prepared,
+		preparedPulls,
 		adapter: {
 			name: 'api',
 			isAncestor(ancestor, descendant) {
@@ -569,6 +793,7 @@ function strictAdapter(): { adapter: Ancestry; prepared: string[][] } {
 			},
 			prepare(input) {
 				prepared.push(input.shas);
+				preparedPulls.push(input.pulls);
 				for (const commit of input.shas) {
 					known.add(commit);
 				}

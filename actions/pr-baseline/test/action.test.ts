@@ -47,7 +47,8 @@ function runner(input: {
 	});
 	writeFileSync(process.env['GITHUB_OUTPUT'] as string, '');
 	writeFileSync(process.env['GITHUB_STEP_SUMMARY'] as string, '');
-	for (const [name, value] of Object.entries(input.inputs ?? {})) {
+	// These cases predate scoping and assert the full sweep; a scoped case passes its own.
+	for (const [name, value] of Object.entries({ scope: 'all', ...input.inputs })) {
 		process.env[`INPUT_${name.toUpperCase()}`] = value;
 	}
 }
@@ -71,13 +72,18 @@ const OUTPUT_NAMES = [
 	'base',
 	'baselines',
 	'closed',
+	'cosmetic',
 	'deferred',
 	'description',
+	'excluded',
 	'failed',
 	'incomplete',
 	'missing',
 	'paused',
+	'remaining',
 	'results-file',
+	'scope',
+	'selected',
 	'skipped',
 	'state',
 	'summary',
@@ -538,13 +544,18 @@ describe('action explicit modes and errors', () => {
 			'base',
 			'baselines',
 			'closed',
+			'cosmetic',
 			'deferred',
 			'description',
+			'excluded',
 			'failed',
 			'incomplete',
 			'missing',
 			'paused',
+			'remaining',
 			'results-file',
+			'scope',
+			'selected',
 			'skipped',
 			'state',
 			'summary',
@@ -604,13 +615,18 @@ describe('action explicit modes and errors', () => {
 			base: 'main',
 			baselines: [],
 			openPulls: 200,
+			scope: 'all' as const,
+			selected: 200,
+			excluded: 0,
 			misconfigured: [],
 			written: 0,
 			skipped: 0,
+			cosmetic: 0,
 			closed: 0,
 			deferred: 0,
 			outOfScope: 0,
 			failed: 200,
+			remaining: 0,
 			incomplete: true,
 			paused: false,
 			reason: 'failed',

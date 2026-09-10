@@ -114,6 +114,23 @@ describe('cli', () => {
 		expect(stderr).toContain('GITHUB_TOKEN');
 	});
 
+	it('accepts --scope on the refresh only', () => {
+		const other = run(['report', '--scope', 'all', '--repo', 'a/b', '--token', 'x']);
+		expect(other.status).toBe(2);
+		expect(other.stderr).toContain('--scope cannot be used with "report"');
+		const invalid = run([
+			'refresh-pr-statuses',
+			'--scope',
+			'everything',
+			'--repo',
+			'a/b',
+			'--token',
+			'x',
+		]);
+		expect(invalid.status).toBe(2);
+		expect(invalid.stderr).toContain('Invalid scope "everything"');
+	});
+
 	it('rejects extra positionals', () => {
 		const { status, stderr } = run(['report', 'extra', '--repo', 'a/b', '--token', 'x']);
 		expect(status).toBe(2);

@@ -35,6 +35,11 @@ on:
         type: string
         default: ''
         description: Name of one baseline to move; blank moves all
+      scope:
+        type: choice
+        default: ''
+        options: ['', corrections, unstamped, all]
+        description: Which open PRs a refresh covers; blank is corrections, the green ones. unstamped is the backfill
 permissions: {}
 env:
   # One source of truth for both jobs. Omit to use the single default baseline.
@@ -92,6 +97,7 @@ jobs:
           mode: ${{ inputs.mode || 'auto' }}
           force: ${{ inputs.mode == 'move-baseline' }}
           baseline: ${{ inputs.baseline || '' }}
+          scope: ${{ inputs.scope || '' }}
       - if: ${{ always() && steps.pr-baseline.outputs.results-file != '' }}
         uses: actions/upload-artifact@<sha> # vN
         with:
@@ -136,6 +142,7 @@ Explicit modes (`refresh-pr-status`, `refresh-pr-statuses`, `move-baseline`, `re
 | `label`                          | Shorthand for a single baseline's label (default `Require PR update`).                                           |                       |
 | `markers`                        | Shorthand for a single baseline's auto-move patterns, one gitignore pattern per line.                            |                       |
 | `baseline`                       | In move-baseline mode, move only the baseline with this name; blank moves all.                                   |                       |
+| `scope`                          | Which open PRs a refresh covers: corrections (default, the green ones), unstamped (the backfill) or all.         |                       |
 | `status-context`                 | Status context (default `PR baseline`).                                                                          |                       |
 | `description-pass`               | Description of a passing status; `{base}` and `{baselines}` are replaced.                                        |                       |
 | `description-fail`               | Description of a failing status; `{base}` and `{baselines}` are replaced.                                        |                       |
@@ -170,6 +177,11 @@ Explicit modes (`refresh-pr-status`, `refresh-pr-statuses`, `move-baseline`, `re
 | `closed`       | PRs that closed while the refresh ran.                                                                                                                                         |
 | `deferred`     | PRs whose head was still moving.                                                                                                                                               |
 | `failed`       | PRs whose status could not be written.                                                                                                                                         |
+| `scope`        | The scope a refresh applied, which is `all` whatever was asked when a baseline is off the base branch.                                                                         |
+| `selected`     | Open PRs the scope selected.                                                                                                                                                   |
+| `excluded`     | Open PRs the scope left out.                                                                                                                                                   |
+| `cosmetic`     | Selected PRs whose status differed only in description or link, so no write was spent.                                                                                         |
+| `remaining`    | Selected PRs the run never reached.                                                                                                                                            |
 | `incomplete`   | Whether a refresh stopped before covering every PR (`true` or `false`).                                                                                                        |
 | `paused`       | Whether a refresh stopped on a budget having written something, so the next run continues on its own (`true` or `false`). The step stays green unless something else fails it. |
 | `summary`      | JSON summary of the run, per-PR results capped to stay under the output size limit.                                                                                            |

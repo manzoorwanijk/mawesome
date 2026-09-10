@@ -51,6 +51,15 @@ export type AncestryMode = 'auto' | 'git' | 'api';
 
 export type OtherBases = 'skip' | 'pass';
 
+/** Which open PRs a refresh brings in line. */
+export type RefreshScope =
+	/** PRs whose status is green, the only ones a forward baseline move can turn red. Default. */
+	| 'corrections'
+	/** PRs with no status on the context; the adoption and Dependabot backfill. */
+	| 'unstamped'
+	/** Every in-scope open PR. */
+	| 'all';
+
 /** What a command is about to ask, so an adapter can fetch in batches and verify the baseline refs first. */
 export interface PrepareInput {
 	/** Commits the run will ask about, such as the base head. */
@@ -123,6 +132,8 @@ export interface ClientOptions {
 	ancestry?: AncestryMode;
 	gitDir?: string;
 	otherBases?: OtherBases;
+	/** Which open PRs `refreshPrStatuses` covers; defaults to `corrections`. */
+	scope?: RefreshScope;
 	/** Login the statuses are written as; resolved from the token when unset. */
 	creator?: string;
 	/** Set when the token is provably the workflow's own `github.token`. */
@@ -174,6 +185,8 @@ export interface RefreshPrStatusResult {
 export type RefreshOutcome =
 	| 'written'
 	| 'skipped'
+	/** Differed only in description or target URL, which gates nothing, so no write was spent. */
+	| 'cosmetic'
 	| 'closed'
 	| 'deferred'
 	| 'failed'
@@ -197,16 +210,27 @@ export type RefreshStopReason =
 export interface RefreshPrStatusesResult {
 	base: string;
 	baselines: ResolvedBaseline[];
+	/** Open in-scope PRs as the first listing saw them, before the scope and any reconciliation. */
 	openPulls: number;
+	/** The scope the run applied, which is `all` whatever was asked when a baseline is off the base branch. */
+	scope: RefreshScope;
+	/** Open PRs the scope selected. */
+	selected: number;
+	/** `openPulls - selected`. */
+	excluded: number;
 	/** Baselines that are no longer on the base branch; every PR then carries the misconfiguration pass. */
 	misconfigured: string[];
 	written: number;
 	skipped: number;
+	/** Selected PRs whose status differed only in text, deliberately left alone outside `all`. */
+	cosmetic: number;
 	closed: number;
 	deferred: number;
 	/** PRs that left the base branch or became drafts while the refresh was preparing. */
 	outOfScope: number;
 	failed: number;
+	/** Selected PRs the run never reached, which is what the next run has left to do. */
+	remaining: number;
 	incomplete: boolean;
 	/** The run stopped on a budget having made progress, so the next run continues; a green ending. */
 	paused: boolean;
