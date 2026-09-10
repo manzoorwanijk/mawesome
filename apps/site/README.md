@@ -33,9 +33,10 @@ Connect the repository in the Cloudflare dashboard with these settings:
 | Build command          | `pnpm build` (topological — builds the package dep first) |
 | Build output directory | `apps/site/dist`                                          |
 | Node version           | from `.nvmrc` (24)                                        |
+| Custom domain          | `mawesome.dev` (production)                               |
 
 Notes:
 
 - Cloudflare installs dependencies with pnpm automatically (it honors the `packageManager` field). The repo pins pnpm with `packageManagerStrictVersion`, so the build image must provide that pnpm version; if it doesn't, prefix the build command with a standalone pnpm install.
-- No environment variables are required. Cloudflare provides `CF_PAGES_URL` (used for the site's canonical/sitemap URLs) and `CF_PAGES_BRANCH` (used for doc "Edit page" links) automatically.
+- No environment variables are required. Cloudflare provides `CF_PAGES_BRANCH` (doc "Edit page" links, and picking the production domain over a preview URL) and `CF_PAGES_URL` (the preview deployment's canonical/sitemap URLs) automatically.
 - Pull requests get per-branch preview deployments. The PR CI runs `pnpm verify`, whose `build` step builds this site too, so bundling regressions are caught before a deploy. (The release publish job uses `pnpm build:packages`, which skips apps.)

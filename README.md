@@ -2,13 +2,13 @@
 
 A monorepo of sharp, single-purpose developer tools.
 
-📖 Docs and playgrounds: **[mawesome.pages.dev](https://mawesome.pages.dev)**
+📖 Docs and playgrounds: **[mawesome.dev](https://mawesome.dev)**
 
 ## Tools
 
-| Tool                                                        | What it does                                                                                                                                                                                                                                                                                |
-| ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`@mawesome/dependency-audit`](./packages/dependency-audit) | Verify every reachable import in a package's released artifact is declared and resolvable. ([npm](https://www.npmjs.com/package/@mawesome/dependency-audit) · [docs](https://mawesome.pages.dev/dependency-audit/) · [playground](https://mawesome.pages.dev/dependency-audit/playground/)) |
+| Tool                                                        | What it does                                                                                                                                                                                                                                                                    |
+| ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`@mawesome/dependency-audit`](./packages/dependency-audit) | Verify every reachable import in a package's released artifact is declared and resolvable. ([npm](https://www.npmjs.com/package/@mawesome/dependency-audit) · [docs](https://mawesome.dev/dependency-audit/) · [playground](https://mawesome.dev/dependency-audit/playground/)) |
 
 ## Quickstart
 

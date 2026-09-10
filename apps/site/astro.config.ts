@@ -22,15 +22,17 @@ function aliasNodePathInClient() {
 	};
 }
 
-// Served at the root of a *.pages.dev project subdomain → base '/'.
+const DOCS_SITE_URL = 'https://mawesome.dev';
+
+// Served at the root of its own domain → base '/'.
 export default defineConfig({
 	base: '/',
 	/*
-	 * Cloudflare sets CF_PAGES_URL to the deployment's canonical URL (production or preview), enabling
-	 * the sitemap and absolute canonical/OG URLs.
-	 * Unset locally → those are simply skipped.
+	 * Production is served from the custom domain, so canonical/OG/sitemap URLs must use it.
+	 * CF_PAGES_URL is the per-deployment *.pages.dev URL: right for previews, wrong for production.
+	 * Both unset locally, so those URLs are simply skipped.
 	 */
-	site: process.env.CF_PAGES_URL,
+	site: process.env.CF_PAGES_BRANCH === 'main' ? DOCS_SITE_URL : process.env.CF_PAGES_URL,
 	vite: { plugins: [aliasNodePathInClient()] },
 	// Avoid `sharp` (native libvips) — a docs site doesn't need image optimization, and it
 	// keeps the build-script allowlist to just `esbuild`.
