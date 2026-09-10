@@ -88,9 +88,11 @@ jobs:
 # Uncomment during adoption to stamp the PRs nothing has reached yet, and watch `report`'s unstamped
 # count fall. Keep it permanently only if the repository uses Dependabot AND stays on the default
 # GITHUB_TOKEN, whose Dependabot runs cannot write; a custom App or PAT token is the better fix.
+# It needs its own daily tick: add `- cron: '23 4 * * *'` under `on.schedule` above, which the job
+# below matches on. The hourly refresh also runs at that minute, which costs one ordinary refresh.
 #  backfill:
 #    name: Stamp the PRs that have no status yet
-#    if: ${{ !github.event.repository.fork }}
+#    if: ${{ !github.event.repository.fork && github.event.schedule == '23 4 * * *' }}
 #    runs-on: ubuntu-latest
 #    timeout-minutes: 60
 #    permissions:
