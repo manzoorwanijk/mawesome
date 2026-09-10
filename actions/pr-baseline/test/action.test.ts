@@ -449,7 +449,7 @@ describe('action mode: auto', () => {
 		expect(outputs()['written']).toBe('1');
 		expect(outputs()['description']).toBe('Refresh paused (write-cap), 1 remaining');
 		expect(outputs()['state']).toBe('success');
-		expect(summary()).toContain('Paused: write-cap. 1 PRs left; the next run continues.');
+		expect(summary()).toContain('Paused: write-cap. 1 PRs left at scope all.');
 		expect(process.exitCode ?? 0).toBe(0);
 	});
 

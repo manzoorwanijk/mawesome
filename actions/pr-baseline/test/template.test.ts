@@ -62,6 +62,9 @@ describe('consumer workflow template', () => {
 		expect(backfill).toContain(' backfill:');
 		// Without the schedule guard it would fire on every event the workflow serves.
 		expect(backfill).toContain("github.event.schedule == '23 4 * * *'");
+		// And the ordinary refresh must match only its own cron, or both would run at that minute.
+		expect(refresh).toContain("github.event.schedule == '17 * * * *'");
+		expect(refresh).not.toContain("github.event_name == 'schedule'");
 		expect(backfill).toContain('mode: refresh-pr-statuses');
 		expect(backfill).toContain('scope: unstamped');
 		expect(backfill).toContain('max-writes-per-run: 150');

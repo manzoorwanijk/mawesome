@@ -636,6 +636,20 @@ describe('refresh scope', () => {
 		expect(result.selected + result.excluded).toBe(result.openPulls);
 	});
 
+	it('tells a paused forced sweep that the default scope will not continue it', async () => {
+		const { client, warnings } = harness({ scope: undefined, maxWritesPerRun: 1 }, scoped);
+		const result = await client.moveBaseline({
+			force: true,
+			to: sha(5),
+			refreshPrStatuses: true,
+		});
+		expect(result.refresh).toMatchObject({ scope: 'all', paused: true });
+		// The move that promoted the scope will not repeat, so the next run is back to corrections.
+		expect(warnings.join('\n')).toContain(
+			'at scope all; a run at the default scope will not continue it',
+		);
+	});
+
 	it('says what it plans to do before doing it, and what is left when it pauses', async () => {
 		const { client, logs, warnings } = harness({ scope: 'all', maxWritesPerRun: 2 }, scoped);
 		await client.refreshPrStatuses();

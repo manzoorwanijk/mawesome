@@ -75,17 +75,16 @@ export async function runRefreshPrStatuses(
 			'refresh-pr-statuses needs the API; --offline applies to refresh-pr-status only.',
 		);
 	}
-	const asked = input.scope !== undefined || config.scopeExplicit;
 	let scope: RefreshScope = input.scope ?? config.scope;
 	if (runtime.customReporter) {
 		/* Bucketing reads the listing's commit statuses, which a custom reporter does not own,
 		 * so the only honest population is every PR. */
-		if (asked && scope !== 'all') {
+		if (config.scopeExplicit && config.scope !== 'all') {
 			throw new ConfigError(
-				`A custom reporter owns the statuses this refresh compares against, so scope "${scope}" cannot be applied; use "all".`,
+				`A custom reporter owns the statuses this refresh compares against, so scope "${config.scope}" cannot be applied; use "all".`,
 			);
 		}
-		if (!asked) {
+		if (!config.scopeExplicit && input.scope === undefined) {
 			logger.warn(
 				'A custom reporter owns the statuses, which the PR listing cannot report; refreshing every open PR.',
 			);
@@ -142,12 +141,13 @@ export async function runRefreshPrStatuses(
 		const summary = `${counts.written} written, ${counts.skipped} skipped, ${counts.cosmetic} cosmetic, ${counts.failed} failed, ${remaining} remaining`;
 		if (paused) {
 			const runs = Math.ceil(remaining / config.maxWritesPerRun);
-			/* A promoted `all` is not what the next run defaults to, so an operator has to ask for it
-			 * again; the promotion came from a move that will not repeat. */
+			/* Only a run at the same scope continues this one, and a schedule runs the default unless
+			 * it was set up for this scope, so a non-default run says what it needs rather than promising. */
+			const more = `About ${runs} more ${runs === 1 ? 'run' : 'runs'} at this cap`;
 			const next =
-				scope === 'all' && !asked
-					? `About ${runs} more ${runs === 1 ? 'run' : 'runs'} at this cap, but the next run defaults to ${DEFAULT_SCOPE}; rerun with scope all to finish this sweep.`
-					: `About ${runs} more ${runs === 1 ? 'run' : 'runs'} at this cap; the schedule continues automatically.`;
+				scope === DEFAULT_SCOPE
+					? `${more}; the schedule continues automatically.`
+					: `${more}, at scope ${scope}; a run at the default scope will not continue it.`;
 			logger.warn(`Paused on ${STOP_PHRASE[reason as RefreshStopReason]}: ${summary}.\n${next}`);
 		} else if (
 			incomplete &&

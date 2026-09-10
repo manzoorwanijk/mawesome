@@ -669,7 +669,7 @@ async function reportRefreshPrStatuses(
 	]);
 	if (result.paused) {
 		core.summary.addRaw(
-			`\nPaused: ${result.reason}. ${result.remaining} PRs left; the next run continues.\n`,
+			`\nPaused: ${result.reason}. ${result.remaining} PRs left at scope ${result.scope}.\n`,
 		);
 	} else if (result.incomplete) {
 		core.summary.addRaw(`\nIncomplete: ${result.reason}. Dispatch the workflow to continue.\n`);

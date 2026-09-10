@@ -89,7 +89,8 @@ jobs:
 # count fall. Keep it permanently only if the repository uses Dependabot AND stays on the default
 # GITHUB_TOKEN, whose Dependabot runs cannot write; a custom App or PAT token is the better fix.
 # It needs its own daily tick: add `- cron: '23 4 * * *'` under `on.schedule` above. Each job matches
-# its own cron, so the two never run together and never share an hour's write budget.
+# its own cron, so the two never start together; they still share the hour's write budget, which is
+# what the two caps below and above are sized for.
 #  backfill:
 #    name: Stamp the PRs that have no status yet
 #    if: ${{ !github.event.repository.fork && github.event.schedule == '23 4 * * *' }}
