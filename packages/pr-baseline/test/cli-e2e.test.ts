@@ -110,6 +110,50 @@ describe('cli end to end', () => {
 		expect(full.json()).toMatchObject({ written: 2, incomplete: false, paused: false });
 	});
 
+	it('exits 1 on an incomplete refresh that is not paused', async () => {
+		const { status, json } = await run(
+			(gh) => {
+				twoStalePulls(gh);
+				gh.overrides.push({
+					path: /\/statuses\//,
+					method: 'POST',
+					status: 422,
+					times: 10,
+					body: { message: 'This SHA and context has reached the maximum number of statuses.' },
+				});
+			},
+			['refresh-pr-statuses'],
+		);
+		expect(status).toBe(1);
+		expect(json()).toMatchObject({ written: 0, failed: 2, incomplete: true, paused: false });
+	});
+
+	it('exits 0 when a move delegates to a paused refresh, and 1 when it fails', async () => {
+		const paused = await run(twoStalePulls, [
+			'move-baseline',
+			'--refresh-pr-statuses',
+			'--max-writes-per-run',
+			'1',
+		]);
+		expect(paused.status).toBe(0);
+		expect(paused.json()).toMatchObject({ refresh: { written: 1, paused: true } });
+		const failing = await run(
+			(gh) => {
+				twoStalePulls(gh);
+				gh.overrides.push({
+					path: /\/statuses\//,
+					method: 'POST',
+					status: 422,
+					times: 10,
+					body: { message: 'This SHA and context has reached the maximum number of statuses.' },
+				});
+			},
+			['move-baseline', '--refresh-pr-statuses'],
+		);
+		expect(failing.status).toBe(1);
+		expect(failing.json()).toMatchObject({ refresh: { failed: 2, paused: false } });
+	});
+
 	it('exits 2 when report finds a baseline off the base branch', async () => {
 		const { status, json } = await run(
 			(gh) => {

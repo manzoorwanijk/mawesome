@@ -94,6 +94,47 @@ describe('refresh-pr-statuses', () => {
 		expect(github.requests(/\/statuses\//, 'POST')).toHaveLength(2);
 	});
 
+	it('pauses on a rate limit met after writing something', async () => {
+		const { client, github } = harness({}, populate);
+		const original = github.fetch;
+		github.fetch = (input, init) => {
+			const url = String(input instanceof Request ? input.url : input);
+			// The limit arrives while evaluating the next PR, so no write of this run failed.
+			if (/\/statuses\//.test(url) && init?.method === 'POST') {
+				github.overrides.push({
+					path: /\/compare\//,
+					status: 403,
+					headers: { 'x-ratelimit-remaining': '0' },
+				});
+			}
+			return original.call(github, input, init);
+		};
+		const result = await client.refreshPrStatuses();
+		expect(result).toMatchObject({
+			failed: 0,
+			incomplete: true,
+			paused: true,
+			reason: 'rate-limit',
+		});
+		expect(result.written).toBeGreaterThan(0);
+	});
+
+	it('pauses on the primary budget once it has written something', async () => {
+		const { client } = harness({}, (gh) => {
+			populate(gh);
+			// Enough headroom for a write or two, then the reserve stops the run.
+			gh.rateLimitRemaining = 58;
+		});
+		const result = await client.refreshPrStatuses();
+		expect(result).toMatchObject({
+			failed: 0,
+			incomplete: true,
+			paused: true,
+			reason: 'primary-budget',
+		});
+		expect(result.written).toBeGreaterThan(0);
+	});
+
 	it('paces writes against the per-minute cap', async () => {
 		const { client, sleeps } = harness({ maxWritesPerMinute: 2 }, populate);
 		const result = await client.refreshPrStatuses();

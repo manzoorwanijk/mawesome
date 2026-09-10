@@ -397,6 +397,20 @@ describe('action mode: auto', () => {
 		process.exitCode = 0;
 	});
 
+	it('still fails an off-base baseline on a run that would otherwise be paused', async () => {
+		world.github.commit(sha(20), [sha(2)]);
+		world.github.commit(sha(13), [sha(1)]);
+		world.github.baseline('pr-baseline', sha(20));
+		world.github.pull({ number: 1, headSha: sha(12) });
+		world.github.pull({ number: 2, headSha: sha(13) });
+		runner({ event: 'schedule', payload: {}, inputs: { 'max-writes-per-run': '1' } });
+		await run();
+		// A pause is green, but an unannounced misconfiguration outranks it.
+		expect(outputs()).toMatchObject({ paused: 'true', written: '1', state: 'failure' });
+		expect(process.exitCode).toBe(1);
+		process.exitCode = 0;
+	});
+
 	it('fails once when the baseline leaves the base branch, then only warns', async () => {
 		world.github.commit(sha(20), [sha(2)]);
 		world.github.baseline('pr-baseline', sha(20));

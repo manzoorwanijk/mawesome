@@ -467,6 +467,22 @@ describe('git ancestry review round 3', () => {
 		});
 	});
 
+	it('calls a deferral a failure even when the run wrote everything else', async () => {
+		const [, c2] = world.c;
+		openPull(1, c2 as string, { 'x.txt': 'x' });
+		openPull(2, c2 as string, { 'y.txt': 'y' });
+		world.fixture.deletePull(2);
+		const result = await client().refreshPrStatuses();
+		// The deferred PR's next head is unstamped, so no later run revisits it on its own.
+		expect(result).toMatchObject({
+			written: 1,
+			deferred: 1,
+			incomplete: true,
+			paused: false,
+			reason: 'deferred',
+		});
+	});
+
 	it('binds a report on the fetched head when the listed one is gone from the remote', async () => {
 		const [, c2, , c4] = world.c;
 		const old = openPull(1, c2 as string, { 'packages/a/x.ts': 'x' });
