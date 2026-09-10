@@ -1,5 +1,11 @@
 # @mawesome/dependency-audit
 
+## 0.4.8
+
+### Patch Changes
+
+- [#88](https://github.com/mawesomedev/mawesome/pull/88) [`14e076b`](https://github.com/mawesomedev/mawesome/commit/14e076b85ec96da2e707c1384e65543bce5ad23d) Thanks [@manzoorwanijk](https://github.com/manzoorwanijk)! - Raise the `tar` and `pacote` floors to patched releases, clearing their outstanding advisories including a critical one in `tar`.
+
 ## 0.4.7
 
 ### Patch Changes
