@@ -39,13 +39,13 @@ describe('mirror workflow', () => {
 		/- name: Resolve the release\n[\s\S]*?run: \|\n([\s\S]*?)\n {6}-/.exec(text)?.[1] ?? '';
 
 	it('runs from the changesets tag in its own serialized environment', () => {
-		expect(text).toContain("tags: ['@mawesome/pr-baseline@*']");
+		expect(text).toContain("tags: ['@mawesome/pr-baseline-action@*']");
 		expect(text).toContain('environment: action-mirror');
 		expect(text).toMatch(
 			/concurrency:\n  group: mirror-action\n  cancel-in-progress: false\n  queue: max/,
 		);
 		expect(text).toContain('permission-contents: write');
-		expect(text).toContain('repositories: ${{ env.MIRROR_REPO }}');
+		expect(text).toContain('repositories: ${{ steps.release.outputs.mirror_repo }}');
 		expect(text).toContain('package-manager-cache: false');
 	});
 
@@ -60,18 +60,25 @@ describe('mirror workflow', () => {
 		);
 		expect(resolve).toContain('git checkout --quiet "$sha"');
 		expect(resolve).toContain('test "$manifest" = "$version"');
+		// The target repository comes from the action workspace's own manifest, so a second action brings its own.
+		expect(resolve).toContain('.mirror.repo');
+		expect(resolve).toContain("grep -Eq '^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$'");
 	});
 
 	it('stages, prepares, deploys, promotes and always cleans up with the same stage path', () => {
 		expect(text.match(/--stage mirror-stage/g)).toHaveLength(2);
 		expect(text).toContain('src_dir: mirror-stage');
+		// Only the action's own files reach the mirror; the workspace manifest and its tests stay here.
+		expect(text).toContain(
+			'for path in action.yml LICENSE README.md workflow-template.yml src dist; do',
+		);
 		expect(text.match(/if: steps\.prepare\.outputs\.deploy == 'true'/g)).toHaveLength(2);
 		expect(text).toMatch(/always\(\) && steps\.prepare\.outcome != 'skipped'/);
 	});
 
 	it('deploys through the pinned action into the branch prepare created, with the App bot identity', () => {
 		expect(text).toMatch(/uses: manzoorwanijk\/action-deploy-to-repo@[0-9a-f]{40} # v[\d.]+/);
-		expect(text).toContain('target_repo: ${{ env.MIRROR_OWNER }}/${{ env.MIRROR_REPO }}');
+		expect(text).toContain('target_repo: ${{ steps.release.outputs.mirror }}');
 		expect(text).toContain('target_branch: ${{ steps.prepare.outputs.target_branch }}');
 		expect(text).toContain('git_user_name: ${{ steps.bot.outputs.name }}');
 		expect(text).toContain('git_user_email: ${{ steps.bot.outputs.email }}');
