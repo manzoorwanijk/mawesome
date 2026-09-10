@@ -731,7 +731,7 @@ async function reportReport(result: ReportResult): Promise<void> {
 	);
 	if (result.stale !== undefined && result.current !== undefined) {
 		core.summary.addRaw(
-			`\n${result.current} PRs current, ${result.stale} stale, ${result.cosmetic ?? 0} differing only in wording.\n`,
+			`\n${result.current} PRs current, ${result.stale} stale, ${result.cosmetic ?? 0} differing only in wording or link.\n`,
 		);
 	}
 	await writeSummary();

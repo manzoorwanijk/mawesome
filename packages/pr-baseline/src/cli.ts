@@ -29,7 +29,9 @@ Commands:
                          Evaluate one commit (default: HEAD of the local repository).
   refresh-pr-statuses    Bring the open PRs --scope selects in line with the baselines.
   move-baseline          Move baselines forward when a label, marker or --force says so.
-  report                 Print every baseline, its commit and how many open PRs it binds.
+  report                 Every baseline with its commit and bound PRs, plus the open PRs by
+                         status: passing, failing, other, unstamped. With git ancestry it adds
+                         current, stale and cosmetic per PR.
 
 Repository (flags win over env):
   --repo <owner/name>    GITHUB_REPOSITORY
@@ -349,7 +351,7 @@ function describeReport(result: ReportResult): string {
 	}
 	if (result.stale !== undefined && result.current !== undefined) {
 		lines.push(
-			`${result.current} PRs current, ${result.stale} stale, ${result.cosmetic ?? 0} differing only in wording.`,
+			`${result.current} PRs current, ${result.stale} stale, ${result.cosmetic ?? 0} differing only in wording or link.`,
 		);
 	}
 	if (result.offBase.length > 0) {

@@ -94,7 +94,7 @@ Read-only. Prints the base head, the open PR count, and for every baseline its c
 
 It also breaks the open PRs down by the status they carry on the context: `passing`, `failing`, `other` (`error` or `pending`, which blocks a merge and which only `--scope all` reaches) and `unstamped`. All four come from the listing, so they cost nothing and are reported whatever the adapter. This is the adoption signal: require the context once `unstamped` and `other` are near zero, and it is how a `--scope unstamped` backfill is watched to completion.
 
-With the git adapter and every baseline on the base branch it adds a verdict per PR: `current`, `stale` (differing materially) and `cosmetic` (differing only in description or link, which a refresh leaves alone on purpose, so counting it as stale would mean the number could never reach zero).
+With the git adapter, every baseline on the base branch and a resolvable creator, it adds a verdict per PR: `current`, `stale` (differing materially) and `cosmetic` (differing only in description or link, which the default and `unstamped` scopes leave alone on purpose, so counting it as stale would mean the number could never reach zero; `--scope all` does write it). Any of those three conditions failing leaves all three counts out.
 
 Exit codes: `0`, `2` when a baseline is not on the base branch (the report is still printed) or on an error.
 

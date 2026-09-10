@@ -225,7 +225,7 @@ export interface RefreshPrStatusesResult {
 	misconfigured: string[];
 	written: number;
 	skipped: number;
-	/** Selected PRs whose status differed only in text, deliberately left alone outside `all`. */
+	/** Selected PRs whose status differed only in description or link, left alone outside `all`. */
 	cosmetic: number;
 	closed: number;
 	deferred: number;
@@ -302,7 +302,7 @@ export interface ReportResult {
 	unstamped: number;
 	/** PRs whose status differs materially from the intended one; only computed with the git adapter. */
 	stale?: number;
-	/** PRs differing only in description or link, which a refresh deliberately leaves alone. */
+	/** PRs differing only in description or link, which every scope but `all` leaves alone on purpose. */
 	cosmetic?: number;
 	current?: number;
 	ancestry: 'git' | 'api';

@@ -105,7 +105,7 @@ outputs:
   failed:
     description: PRs whose status could not be written.
   scope:
-    description: The scope a refresh applied, which is `all` whatever was asked when a baseline is off the base branch.
+    description: The scope a refresh applied; `all` whatever was asked when a baseline is off the base branch, after a forced move, or with a custom reporter.
   selected:
     description: Open PRs the scope selected.
   excluded:

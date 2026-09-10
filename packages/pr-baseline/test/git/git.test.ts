@@ -237,6 +237,11 @@ describe('git ancestry', () => {
 		});
 		const result = await client().report();
 		expect(result).toMatchObject({ ancestry: 'git', openPulls: 2, stale: 1, current: 1 });
+		// The four listing buckets are reported under this adapter too, and partition the open PRs.
+		expect(result).toMatchObject({ passing: 1, failing: 0, other: 0, unstamped: 1 });
+		expect(result.passing + result.failing + result.other + result.unstamped).toBe(
+			result.openPulls,
+		);
 	});
 
 	it('counts a wording-only difference as cosmetic rather than stale', async () => {

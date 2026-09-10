@@ -176,7 +176,7 @@ Outputs are plain strings, several of them JSON documents. Every run, including 
 | `closed`       | Selected PRs that closed while the refresh ran.                                                                                                                                |
 | `deferred`     | PRs whose head was still moving.                                                                                                                                               |
 | `failed`       | PRs whose status could not be written.                                                                                                                                         |
-| `scope`        | The scope a refresh applied, which is `all` whatever was asked when a baseline is off the base branch.                                                                         |
+| `scope`        | The scope a refresh applied; `all` whatever was asked when a baseline is off the base branch, after a forced move, or with a custom reporter.                                  |
 | `selected`     | Open PRs the scope selected.                                                                                                                                                   |
 | `excluded`     | Open PRs the scope left out.                                                                                                                                                   |
 | `cosmetic`     | Selected PRs whose status differed only in description or link, so no write was spent.                                                                                         |

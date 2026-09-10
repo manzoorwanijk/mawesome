@@ -12,7 +12,7 @@
 
 - **Move on demand:** `pr-baseline move-baseline --force --refresh-pr-statuses` (a workflow dispatch with mode `move-baseline` in the action).
 - **Retry an incomplete refresh:** run `refresh-pr-statuses` again, or dispatch the workflow. Every status already written is current and skipped, so retries are cheap. A run that stopped on a budget having written something is paused rather than failed, and the next run **of the same command** continues it: a paused backfill needs the backfill schedule, not the ordinary one, since the two cover different PRs.
-- **Check what is stale:** `pr-baseline report`. With the git adapter it also counts stale and current PRs.
+- **Check what is stale:** `pr-baseline report`. It always breaks the open PRs into passing, failing, other and unstamped; with the git adapter it also counts current, stale and cosmetic.
 - **See the ref itself:** `git ls-remote origin 'refs/baselines/*'`. The refs have no page in the GitHub UI and no clone fetches them on its own.
 - **Move one baseline of several:** `--baseline <name>`.
 - **Stamp the PRs nothing has reached yet:** `refresh-pr-statuses --scope unstamped`, throttled with `--max-writes-per-run 150` on a schedule (the action's `scope` input, or the dispatch input in the workflow template).
