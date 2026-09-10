@@ -55,7 +55,7 @@ export type {
 	Verdict,
 	VerdictKind,
 } from './types.ts';
-export { BaselineError } from './util.ts';
+export { BaselineError, createProgressThrottle, sameRefs, type ProgressThrottle } from './util.ts';
 export {
 	boundDescription,
 	compareStatus,

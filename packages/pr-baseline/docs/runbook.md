@@ -15,6 +15,7 @@
 - **Check what is stale:** `pr-baseline report`. It always breaks the open PRs into passing, failing, other and unstamped; with the git adapter it also counts current, stale and cosmetic.
 - **See the ref itself:** `git ls-remote origin 'refs/baselines/*'`. The refs have no page in the GitHub UI and no clone fetches them on its own.
 - **Move one baseline of several:** `--baseline <name>`.
+- **Gate a job on a move:** the action's `moved` and `moved-baselines` outputs say whether anything moved and which baselines did.
 - **Stamp the PRs nothing has reached yet:** `refresh-pr-statuses --scope unstamped`, throttled with `--max-writes-per-run 150` on a schedule (the action's `scope` input, or the dispatch input in the workflow template).
 
 ## When a full sweep is owed

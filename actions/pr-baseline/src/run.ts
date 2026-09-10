@@ -41,6 +41,8 @@ const OUTPUT_NAMES = [
 	'remaining',
 	'incomplete',
 	'paused',
+	'moved',
+	'moved-baselines',
 	'summary',
 	'results-file',
 ] as const;
@@ -62,6 +64,8 @@ interface Plan {
 	report?: boolean;
 	force?: boolean;
 	refreshPrStatuses?: boolean;
+	/** False for the events that fire on every base-branch push, so a push that moved nothing costs no refresh. */
+	refreshWhenUnchanged?: boolean;
 	/** Set when `auto` decided there is nothing to do; the reason goes to a notice. */
 	skip?: string;
 }
@@ -106,6 +110,8 @@ function emit(values: Record<string, string | number | boolean>): void {
 		remaining: 0,
 		incomplete: false,
 		paused: false,
+		moved: false,
+		'moved-baselines': '[]',
 		...values,
 	});
 }
@@ -168,7 +174,7 @@ export function decide(
 ): Plan {
 	// The workflow token is read-only in any run Dependabot triggers, whatever the event or mode.
 	const restricted = token === 'workflow' && event.actor === 'dependabot[bot]';
-	const plan = selected === 'auto' ? auto(event, base, token) : explicit(selected);
+	const plan = selected === 'auto' ? auto(event, base, token) : explicit(selected, event);
 	return restricted ? restrict(plan) : plan;
 }
 
@@ -221,7 +227,13 @@ function auto(event: Event, base: string | undefined, token: TokenKind): Plan {
 					skip: 'Pull request closed without merging; nothing to do.',
 				};
 			}
-			return { mode: 'move-baseline', force: false, refreshPrStatuses: true };
+			// A merge fires this and a push to the base branch; neither is worth a refresh that has nothing to correct.
+			return {
+				mode: 'move-baseline',
+				force: false,
+				refreshPrStatuses: true,
+				refreshWhenUnchanged: false,
+			};
 		}
 		case 'pull_request': {
 			if (pull === undefined) {
@@ -261,11 +273,17 @@ function auto(event: Event, base: string | undefined, token: TokenKind): Plan {
 					skip: `Push to ${ref}, not the base branch ${branch}; nothing to do.`,
 				};
 			}
-			return { mode: 'move-baseline', force: false, refreshPrStatuses: true };
+			return {
+				mode: 'move-baseline',
+				force: false,
+				refreshPrStatuses: true,
+				refreshWhenUnchanged: false,
+			};
 		}
 		case 'schedule':
 		case 'workflow_dispatch':
-			// A dispatch that wants anything else passes an explicit mode; the workflow owns that choice.
+			/* A dispatch that wants anything else passes an explicit mode; the workflow owns that choice.
+			 * These two refresh whatever moved: they are the net under a lost, paused or skipped run. */
 			return { mode: 'move-baseline', force: false, refreshPrStatuses: true };
 		default:
 			throw new ConfigError(
@@ -296,7 +314,8 @@ function canWriteOnPullRequest(
 	return !fork;
 }
 
-function explicit(selected: Exclude<Mode, 'auto'>): Plan {
+/** A pinned mode still gets the event's refresh rule, so `mode: move-baseline` on a push behaves like `auto`. */
+function explicit(selected: Exclude<Mode, 'auto'>, event: Event): Plan {
 	switch (selected) {
 		case 'refresh-pr-status': {
 			const sha = core.getInput('sha');
@@ -310,10 +329,24 @@ function explicit(selected: Exclude<Mode, 'auto'>): Plan {
 				mode: 'move-baseline',
 				force: booleanInput('force', false),
 				refreshPrStatuses: booleanInput('refresh-pr-statuses-after-move', true),
+				refreshWhenUnchanged: refreshesWhenUnchanged(event),
 			};
 		default:
 			return { mode: selected };
 	}
+}
+
+/** The events that fire on every base-branch push get no refresh when nothing moved; everything else keeps one. */
+function refreshesWhenUnchanged(event: Event): boolean {
+	const pull = event.payload['pull_request'] as { merged?: boolean } | undefined;
+	if (event.name === 'push') {
+		return false;
+	}
+	return !(
+		event.name === 'pull_request_target' &&
+		event.payload['action'] === 'closed' &&
+		pull?.merged === true
+	);
 }
 
 async function execute(client: Client, plan: Plan, options: ClientOptions): Promise<void> {
@@ -337,6 +370,7 @@ async function execute(client: Client, plan: Plan, options: ClientOptions): Prom
 			const result = await client.moveBaseline({
 				force: plan.force ?? false,
 				refreshPrStatuses: plan.refreshPrStatuses ?? true,
+				refreshWhenUnchanged: plan.refreshWhenUnchanged ?? true,
 				...(selector.length === 0 ? {} : { baseline: selector }),
 			});
 			await reportMove(result, options.dryRun ?? false);
@@ -555,6 +589,9 @@ export function boundedSummary(
 async function reportRefreshPrStatuses(
 	result: RefreshPrStatusesResult,
 	extra: Record<string, unknown> = {},
+	/* Passed explicitly rather than through `extra`, which never reaches `emit`, so a run that both
+	 * moved and refreshed still reports what moved. */
+	move: { moved: boolean; movedBaselines: string[] } = { moved: false, movedBaselines: [] },
 ): Promise<void> {
 	const file = join(
 		process.env['RUNNER_TEMP'] ?? process.cwd(),
@@ -580,7 +617,7 @@ async function reportRefreshPrStatuses(
 				: unannounced
 					? offBase
 					: result.paused
-						? `Refresh paused (${result.reason})`
+						? `Refresh paused (${result.reason}), ${result.remaining} remaining`
 						: misconfigured === undefined
 							? 'Refresh complete'
 							: offBase,
@@ -599,6 +636,8 @@ async function reportRefreshPrStatuses(
 		remaining: result.remaining,
 		incomplete: result.incomplete,
 		paused: result.paused,
+		moved: move.moved,
+		'moved-baselines': JSON.stringify(move.movedBaselines),
 		summary: boundedSummary(result, extra),
 		'results-file': file,
 	});
@@ -629,7 +668,9 @@ async function reportRefreshPrStatuses(
 		],
 	]);
 	if (result.paused) {
-		core.summary.addRaw(`\nPaused: ${result.reason}. The next run continues.\n`);
+		core.summary.addRaw(
+			`\nPaused: ${result.reason}. ${result.remaining} PRs left; the next run continues.\n`,
+		);
 	} else if (result.incomplete) {
 		core.summary.addRaw(`\nIncomplete: ${result.reason}. Dispatch the workflow to continue.\n`);
 	}
@@ -645,7 +686,9 @@ async function reportRefreshPrStatuses(
 		}
 	}
 	if (result.paused) {
-		core.warning(`Refresh paused (${result.reason}); the next run continues.`);
+		core.warning(
+			`Refresh paused (${result.reason}); ${result.remaining} PRs left, and the next run continues.`,
+		);
 	} else if (result.incomplete) {
 		core.setFailed(`Refresh incomplete (${result.reason}); dispatch the workflow to continue.`);
 	}
@@ -672,7 +715,11 @@ async function reportMove(result: MoveBaselineResult, dryRun: boolean): Promise<
 	await writeSummary();
 	if (result.refresh !== undefined) {
 		// The move details ride along with the refresh, so a consumer still sees what moved and why.
-		await reportRefreshPrStatuses(result.refresh, { moves: result.moves });
+		await reportRefreshPrStatuses(
+			result.refresh,
+			{ moves: result.moves },
+			{ moved: moved.length > 0, movedBaselines: moved.map((move) => move.name) },
+		);
 		return;
 	}
 	emit({
@@ -690,6 +737,8 @@ async function reportMove(result: MoveBaselineResult, dryRun: boolean): Promise<
 		deferred: 0,
 		failed: 0,
 		incomplete: false,
+		moved: moved.length > 0,
+		'moved-baselines': JSON.stringify(moved.map((move) => move.name)),
 		summary: JSON.stringify(result),
 	});
 }

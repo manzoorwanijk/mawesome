@@ -79,6 +79,8 @@ const OUTPUT_NAMES = [
 	'failed',
 	'incomplete',
 	'missing',
+	'moved',
+	'moved-baselines',
 	'paused',
 	'remaining',
 	'results-file',
@@ -366,6 +368,36 @@ describe('action mode: auto', () => {
 		expect(outputs()['written']).toBe('1');
 	});
 
+	it('runs no refresh on a base push that moved nothing, on auto and on a pinned mode', async () => {
+		world.github.baseline('pr-baseline', sha(5));
+		world.github.pull({ number: 1, headSha: sha(12) });
+		const push = { ref: 'refs/heads/main', repository: { default_branch: 'main', fork: false } };
+		runner({ event: 'push', payload: push });
+		await run();
+		expect(outputs()).toMatchObject({ written: '0', moved: 'false' });
+		expect(world.github.requests(/\/statuses\//, 'POST')).toHaveLength(0);
+		// `action.yml` invites pinning the mode; that must not bring the unconditional refresh back.
+		runner({ event: 'push', payload: push, inputs: { mode: 'move-baseline' } });
+		await run();
+		expect(world.github.requests(/\/statuses\//, 'POST')).toHaveLength(0);
+		// The schedule is the recovery net and refreshes whether or not anything moved.
+		runner({ event: 'schedule', payload: {} });
+		await run();
+		expect(outputs()['written']).toBe('1');
+	});
+
+	it('emits moved and moved-baselines on a run that also refreshed', async () => {
+		world.github.pull({ number: 1, headSha: sha(12) });
+		runner({
+			event: 'workflow_dispatch',
+			payload: {},
+			inputs: { mode: 'move-baseline', force: 'true' },
+		});
+		await run();
+		expect(outputs()).toMatchObject({ moved: 'true', 'moved-baselines': '["pr-baseline"]' });
+		expect(Number(outputs()['written'])).toBeGreaterThan(0);
+	});
+
 	it('passes the scope input through to the refresh', async () => {
 		world.github.commit(sha(13), [sha(1)]);
 		world.github.pull({ number: 1, headSha: sha(12) });
@@ -385,9 +417,9 @@ describe('action mode: auto', () => {
 		expect(outputs()['incomplete']).toBe('true');
 		expect(outputs()['paused']).toBe('true');
 		expect(outputs()['written']).toBe('1');
-		expect(outputs()['description']).toBe('Refresh paused (write-cap)');
+		expect(outputs()['description']).toBe('Refresh paused (write-cap), 1 remaining');
 		expect(outputs()['state']).toBe('success');
-		expect(summary()).toContain('Paused: write-cap. The next run continues.');
+		expect(summary()).toContain('Paused: write-cap. 1 PRs left; the next run continues.');
 		expect(process.exitCode ?? 0).toBe(0);
 	});
 
@@ -561,6 +593,8 @@ describe('action explicit modes and errors', () => {
 			'failed',
 			'incomplete',
 			'missing',
+			'moved',
+			'moved-baselines',
 			'paused',
 			'remaining',
 			'results-file',

@@ -12,7 +12,7 @@ import type {
 	MoveReason,
 	ResolvedBaseline,
 } from '../types.ts';
-import { BaselineError, refSnapshot, shortSha } from '../util.ts';
+import { BaselineError, refSnapshot, sameRefs, shortSha } from '../util.ts';
 import { runRefreshPrStatuses } from './refresh-pr-statuses.ts';
 
 type Decision = { reason: MoveReason } | { note: string };
@@ -110,7 +110,10 @@ export async function runMoveBaseline(
 		moves,
 		dryRun: config.dryRun,
 	};
-	if (options.refreshPrStatuses) {
+	/* Ref identity, not `moved`: a baseline another writer advanced past the target, or between this run's
+	 * write and the re-read, reports `moved: false` while the refs really did change since the last refresh. */
+	const changed = !sameRefs(before, authoritative) || moves.some((move) => move.moved);
+	if (options.refreshPrStatuses && (changed || options.refreshWhenUnchanged !== false)) {
 		/* Scoping to green PRs is sound only because a baseline moves forward: a forced move can put one
 		 * anywhere, so it can turn a red PR green, which only a full sweep sees. */
 		const forced = moves.some((move) => move.moved && move.reason === 'forced');

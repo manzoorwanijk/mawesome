@@ -40,7 +40,7 @@ Resolves the configuration (flags over `env` over defaults) and throws `ConfigEr
 
 - `refreshPrStatus(options?: RefreshPrStatusOptions): Promise<RefreshPrStatusResult>` with `sha`, `pr`, `baseRef` (the branch a bare commit targets, so the `otherBases` rule applies) and `report`.
 - `refreshPrStatuses(): Promise<RefreshPrStatusesResult>`; which PRs it covers comes from `ClientOptions.scope` (`corrections` by default, `unstamped` or `all`).
-- `moveBaseline(options?: MoveBaselineOptions): Promise<MoveBaselineResult>` with `force`, `to`, `baseline` and `refreshPrStatuses`.
+- `moveBaseline(options?: MoveBaselineOptions): Promise<MoveBaselineResult>` with `force`, `to`, `baseline`, `refreshPrStatuses` and `refreshWhenUnchanged` (default true; false skips the refresh when no baseline ref changed, which is what the action passes for the events that fire on every base-branch push).
 - `report(): Promise<ReportResult>`.
 
 Each result carries the base branch and the resolved baselines (`{ name, sha }` with `sha: null` for an absent baseline; after `moveBaseline`, the SHAs after the moves). `RefreshPrStatusResult.verdict` holds the verdict, `RefreshPrStatusesResult.entries` lists every PR the refresh reached with its outcome (`written`, `skipped`, `cosmetic`, `closed`, `deferred`, `out-of-scope`, `failed`, with matching counters including `outOfScope`; a refresh stopped by a budget or a rate limit lists only the PRs before the stop), `scope`, `selected`, `excluded` and `remaining` say what the run covered and what is left, `MoveBaselineResult.moves` says what moved and why, each entry moved outside a dry run carrying `via`, whether the ref was written by a lease push through git (`git`) or through the refs API (`api`), and `ReportResult.offBase` names baselines that left the base branch, alongside a `passing`/`failing`/`other`/`unstamped` breakdown of the open PRs and, with the git adapter, every baseline on the base branch and a resolvable creator, `current`, `stale` and `cosmetic` (all three absent otherwise).
@@ -75,4 +75,4 @@ A custom reporter can post a comment, create a check run or forward to a hosted 
 
 ## Pure helpers
 
-`computeVerdict`, `renderDescription`, `boundDescription`, `compareStatus`, `validateBaselines`, `parseBaselines`, `shorthandBaselines` and `createMatcher` are exported for tests and for integrations that want the same decisions without the client.
+`computeVerdict`, `renderDescription`, `boundDescription`, `compareStatus`, `sameRefs`, `createProgressThrottle`, `validateBaselines`, `parseBaselines`, `shorthandBaselines` and `createMatcher` are exported for tests and for integrations that want the same decisions without the client.

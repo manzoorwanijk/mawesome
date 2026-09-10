@@ -114,6 +114,10 @@ outputs:
     description: Selected PRs whose status differed only in description or link, so no write was spent.
   remaining:
     description: Selected PRs the run never reached.
+  moved:
+    description: Whether any baseline moved in this run (`true` or `false`).
+  moved-baselines:
+    description: JSON array of the baseline names that moved.
   incomplete:
     description: Whether a refresh stopped before covering every selected PR (`true` or `false`).
   paused:

@@ -117,12 +117,12 @@ The `refresh-pr-status` job never checks out code: the head SHA comes from the e
 | ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `pull_request_target`, any type but `closed`    | `refresh-pr-status` on the PR head, status written. The supported path for fork PRs.                                                                                                                                                         |
 | any event, run triggered by Dependabot          | The workflow token is read-only: a PR is evaluated without writing, a move or refresh is skipped. The schedule makes the move, but nothing stamps that commit under the default scope: use a custom token, or a `scope: unstamped` backfill. |
-| `pull_request_target` type `closed` and merged  | `move-baseline` (a labeled merge moves its baseline) followed by a refresh.                                                                                                                                                                  |
+| `pull_request_target` type `closed` and merged  | `move-baseline` (a labeled merge moves its baseline); the refresh that follows is suppressed when no baseline ref changed.                                                                                                                   |
 | `pull_request_target` type `closed`, not merged | Nothing, with a notice.                                                                                                                                                                                                                      |
 | `pull_request`                                  | `refresh-pr-status`; with the workflow token the status is written only for a same-repository PR not triggered by Dependabot.                                                                                                                |
 | `merge_group`                                   | `refresh-pr-status` on the merge group's head when its base is the configured branch; otherwise the `other-bases` rule applies.                                                                                                              |
-| `push` to the base branch                       | `move-baseline` (path markers, merges made without a PR event) followed by a refresh.                                                                                                                                                        |
-| `schedule`                                      | Non-forced `move-baseline` followed by a refresh, so a missed move is recovered and stale PRs converge.                                                                                                                                      |
+| `push` to the base branch                       | `move-baseline` (path markers, merges made without a PR event); the refresh that follows is suppressed when no baseline ref changed.                                                                                                         |
+| `schedule`                                      | Non-forced `move-baseline` followed by a refresh that runs whether or not anything moved, which is the recovery net.                                                                                                                         |
 | `workflow_dispatch`                             | The same as `schedule`; the template's `mode` input passes `move-baseline` with `force` or `refresh-pr-statuses` explicitly.                                                                                                                 |
 
 Explicit modes (`refresh-pr-status`, `refresh-pr-statuses`, `move-baseline`, `report`) take the inputs as given; `refresh-pr-status` then needs `sha`.
@@ -165,27 +165,29 @@ Explicit modes (`refresh-pr-status`, `refresh-pr-statuses`, `move-baseline`, `re
 
 <!-- outputs:start -->
 
-| Output         | Description                                                                                                                                                                    |
-| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `state`        | Status state of the checked commit (`success` or `failure`), or of the run (`success`, `failure`, `skipped` or `error`).                                                       |
-| `description`  | Status description of the checked commit.                                                                                                                                      |
-| `base`         | The base branch the run served.                                                                                                                                                |
-| `baselines`    | JSON array of `{ name, sha }` for every configured baseline.                                                                                                                   |
-| `missing`      | JSON array of baseline names the evaluated commit lacks (refresh-pr-status mode).                                                                                              |
-| `written`      | Statuses written.                                                                                                                                                              |
-| `skipped`      | PRs whose status was already current.                                                                                                                                          |
-| `closed`       | Selected PRs that closed while the refresh ran.                                                                                                                                |
-| `deferred`     | PRs whose head was still moving.                                                                                                                                               |
-| `failed`       | PRs whose status could not be written.                                                                                                                                         |
-| `scope`        | The scope a refresh applied; `all` whatever was asked when a baseline is off the base branch, after a forced move, or with a custom reporter.                                  |
-| `selected`     | Open PRs the scope selected.                                                                                                                                                   |
-| `excluded`     | Open PRs the scope left out.                                                                                                                                                   |
-| `cosmetic`     | Selected PRs whose status differed only in description or link, so no write was spent.                                                                                         |
-| `remaining`    | Selected PRs the run never reached.                                                                                                                                            |
-| `incomplete`   | Whether a refresh stopped before covering every selected PR (`true` or `false`).                                                                                               |
-| `paused`       | Whether a refresh stopped on a budget having written something, so the next run continues on its own (`true` or `false`). The step stays green unless something else fails it. |
-| `summary`      | JSON summary of the run, per-PR results capped to stay under the output size limit.                                                                                            |
-| `results-file` | Path of a JSON file with the uncapped per-PR results of a refresh, for an upload step.                                                                                         |
+| Output            | Description                                                                                                                                                                    |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `state`           | Status state of the checked commit (`success` or `failure`), or of the run (`success`, `failure`, `skipped` or `error`).                                                       |
+| `description`     | Status description of the checked commit.                                                                                                                                      |
+| `base`            | The base branch the run served.                                                                                                                                                |
+| `baselines`       | JSON array of `{ name, sha }` for every configured baseline.                                                                                                                   |
+| `missing`         | JSON array of baseline names the evaluated commit lacks (refresh-pr-status mode).                                                                                              |
+| `written`         | Statuses written.                                                                                                                                                              |
+| `skipped`         | PRs whose status was already current.                                                                                                                                          |
+| `closed`          | Selected PRs that closed while the refresh ran.                                                                                                                                |
+| `deferred`        | PRs whose head was still moving.                                                                                                                                               |
+| `failed`          | PRs whose status could not be written.                                                                                                                                         |
+| `scope`           | The scope a refresh applied; `all` whatever was asked when a baseline is off the base branch, after a forced move, or with a custom reporter.                                  |
+| `selected`        | Open PRs the scope selected.                                                                                                                                                   |
+| `excluded`        | Open PRs the scope left out.                                                                                                                                                   |
+| `cosmetic`        | Selected PRs whose status differed only in description or link, so no write was spent.                                                                                         |
+| `remaining`       | Selected PRs the run never reached.                                                                                                                                            |
+| `moved`           | Whether any baseline moved in this run (`true` or `false`).                                                                                                                    |
+| `moved-baselines` | JSON array of the baseline names that moved.                                                                                                                                   |
+| `incomplete`      | Whether a refresh stopped before covering every selected PR (`true` or `false`).                                                                                               |
+| `paused`          | Whether a refresh stopped on a budget having written something, so the next run continues on its own (`true` or `false`). The step stays green unless something else fails it. |
+| `summary`         | JSON summary of the run, per-PR results capped to stay under the output size limit.                                                                                            |
+| `results-file`    | Path of a JSON file with the uncapped per-PR results of a refresh, for an upload step.                                                                                         |
 
 <!-- outputs:end -->
 

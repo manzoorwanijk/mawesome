@@ -14,9 +14,32 @@ import type {
 	RefreshStopReason,
 	Verdict,
 } from '../types.ts';
-import { refSnapshot } from '../util.ts';
+import { createProgressThrottle, refSnapshot } from '../util.ts';
 import { writeWithRetries } from '../reporter/write.ts';
 import { compareStatus, misconfiguredVerdict, type VerdictContext } from '../verdict.ts';
+
+/** What a scope does to the PRs it selects, and what it calls the ones it has not reached yet. */
+const VERB: Record<RefreshScope, string> = {
+	corrections: 'check',
+	unstamped: 'stamp',
+	all: 'visit',
+};
+
+/** Plain wording for what stopped a run, for the closing line. */
+const STOP_PHRASE: Record<RefreshStopReason, string> = {
+	'write-cap': 'the write cap',
+	'primary-budget': 'the primary budget',
+	'rate-limit': 'a rate limit',
+	deferred: 'a PR whose head was still moving',
+	failed: 'a failure that repeats for every PR',
+};
+
+/** What the population left in each scope is called, so a progress line reads naturally. */
+const REMAINING_NOUN: Record<RefreshScope, string> = {
+	corrections: 'still to check',
+	unstamped: 'still unstamped',
+	all: 'still to visit',
+};
 
 /** Stops the next run continues from on its own; anything else needs someone to look. */
 const PAUSED_REASONS = new Set<RefreshStopReason>(['write-cap', 'primary-budget', 'rate-limit']);
@@ -105,9 +128,6 @@ export async function runRefreshPrStatuses(
 			counts.written > 0 &&
 			reason !== undefined &&
 			PAUSED_REASONS.has(reason);
-		if (incomplete) {
-			logger.warn(`Refresh incomplete (${reason}). ${RETRY_HINT}`);
-		}
 		const accounted =
 			counts.written +
 			counts.skipped +
@@ -116,6 +136,29 @@ export async function runRefreshPrStatuses(
 			counts.deferred +
 			counts.outOfScope +
 			counts.failed;
+		const remaining = Math.max(0, selected - accounted);
+		const summary = `${counts.written} written, ${counts.skipped} skipped, ${counts.cosmetic} cosmetic, ${counts.failed} failed, ${remaining} remaining`;
+		if (paused) {
+			const runs = Math.ceil(remaining / config.maxWritesPerRun);
+			logger.warn(
+				`Paused on ${STOP_PHRASE[reason as RefreshStopReason]}: ${summary}.\n` +
+					`About ${runs} more ${runs === 1 ? 'run' : 'runs'} at this cap; the schedule continues automatically.`,
+			);
+		} else if (
+			incomplete &&
+			counts.written === 0 &&
+			reason !== undefined &&
+			PAUSED_REASONS.has(reason)
+		) {
+			// A run that could not write at all is not waiting for a budget, it is being starved by something.
+			logger.warn(
+				`Stopped on ${STOP_PHRASE[reason]} having written nothing; another workflow is consuming the repository's request budget. ${RETRY_HINT}`,
+			);
+		} else if (incomplete) {
+			logger.warn(`Refresh incomplete (${reason}): ${summary}. ${RETRY_HINT}`);
+		} else {
+			logger.info(`Refresh complete: ${summary}.`);
+		}
 		return {
 			base,
 			baselines,
@@ -123,7 +166,7 @@ export async function runRefreshPrStatuses(
 			scope,
 			selected,
 			excluded: openPulls - selected,
-			remaining: Math.max(0, selected - accounted),
+			remaining,
 			misconfigured: offBase,
 			...counts,
 			incomplete,
@@ -138,6 +181,7 @@ export async function runRefreshPrStatuses(
 	let setup: Setup;
 	let knownOpenPulls = 0;
 	let knownSelected = 0;
+	let buckets = { passing: 0, failing: 0, other: 0, unstamped: 0 };
 	let resolvedBase: string | undefined;
 	let resolvedBaselines: ResolvedBaseline[] | undefined = input.baselines;
 	try {
@@ -173,6 +217,7 @@ export async function runRefreshPrStatuses(
 			// The misconfiguration pass goes to every PR, so a scope that keeps only passing ones would write nothing.
 			scope = 'all';
 		}
+		buckets = tally(inScope);
 		inScope = inScope.filter((pull) => selects(pull, scope));
 		knownSelected = inScope.length;
 		// A git adapter fetches the selected heads in a few batches here and reports which refs are gone.
@@ -230,9 +275,16 @@ export async function runRefreshPrStatuses(
 	/* One verdict serves every PR: the baseline is unsatisfiable, so no head is worth an ancestry question. */
 	const misconfigured = offBase.length > 0 ? misconfiguredVerdict(offBase, context) : undefined;
 	const inScope = setup.pulls;
+	/* Three lines before any work: where the baselines are, how the open PRs stand, and how much
+	 * of that this run will touch. The counts are all from the listing, which has already happened. */
+	logger.info(`Base ${base} at ${baseHead.slice(0, 12)}; ${describe(baselines)}.`);
 	logger.info(
-		`Base ${base} at ${baseHead.slice(0, 12)}; ${knownOpenPulls} open PRs, ${knownSelected} in scope ${scope}; ${describe(baselines)}.`,
+		`${knownOpenPulls} open PRs: ${buckets.passing} passing, ${buckets.failing} failing, ${buckets.other} other, ${buckets.unstamped} unstamped.`,
 	);
+	logger.info(
+		`Scope ${scope}: ${knownSelected} ${knownSelected === 1 ? 'PR' : 'PRs'} to ${VERB[scope]}, at most ${Math.min(knownSelected, config.maxWritesPerRun)} writes.`,
+	);
+	const progress = createProgressThrottle(runtime.now());
 
 	// Statuses belong to commits, so a head shared by several PRs is processed once, failures included.
 	const settled = new Map<string, { verdict?: Verdict; error?: unknown }>();
@@ -267,6 +319,20 @@ export async function runRefreshPrStatuses(
 			settled.set(pull.headSha, { verdict });
 			counts.written++;
 			entries.push(entry(pull, 'written', verdict));
+			if (progress.due(counts.written, runtime.now())) {
+				const left =
+					knownSelected -
+					(counts.written +
+						counts.skipped +
+						counts.cosmetic +
+						counts.closed +
+						counts.deferred +
+						counts.outOfScope +
+						counts.failed);
+				logger.info(
+					`Written ${counts.written} of at most ${Math.min(knownSelected, config.maxWritesPerRun)}; ${Math.max(0, left)} PRs ${REMAINING_NOUN[scope]}.`,
+				);
+			}
 			return true;
 		} catch (error) {
 			// A creator mismatch is an identity problem that repeats for every PR; the run fails outright.
@@ -419,6 +485,28 @@ export async function runRefreshPrStatuses(
 		}
 	}
 	return finish(base, baselines, knownOpenPulls, knownSelected);
+}
+
+/** How the open PRs stand on the context, for the plan line; the same four buckets `report` prints. */
+function tally(pulls: OpenPull[]): {
+	passing: number;
+	failing: number;
+	other: number;
+	unstamped: number;
+} {
+	const counts = { passing: 0, failing: 0, other: 0, unstamped: 0 };
+	for (const pull of pulls) {
+		if (pull.status === null) {
+			counts.unstamped++;
+		} else if (pull.status.state === 'success') {
+			counts.passing++;
+		} else if (pull.status.state === 'failure') {
+			counts.failing++;
+		} else {
+			counts.other++;
+		}
+	}
+	return counts;
 }
 
 /** Whether a scope selects a PR, read from the status the listing carries. */

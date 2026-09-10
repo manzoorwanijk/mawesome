@@ -636,6 +636,17 @@ describe('refresh scope', () => {
 		expect(result.selected + result.excluded).toBe(result.openPulls);
 	});
 
+	it('says what it plans to do before doing it, and what is left when it pauses', async () => {
+		const { client, logs, warnings } = harness({ scope: 'all', maxWritesPerRun: 2 }, scoped);
+		await client.refreshPrStatuses();
+		expect(logs).toContain('4 open PRs: 1 passing, 1 failing, 1 other, 1 unstamped.');
+		expect(logs).toContain('Scope all: 4 PRs to visit, at most 2 writes.');
+		expect(warnings.join('\n')).toContain(
+			'Paused on the write cap: 2 written, 0 skipped, 0 cosmetic, 0 failed, 2 remaining.',
+		);
+		expect(warnings.join('\n')).toContain('About 1 more run at this cap');
+	});
+
 	it('subtracts every accounted outcome from remaining, not just the writes', async () => {
 		const { client } = harness({ scope: 'all', maxWritesPerRun: 1 }, (gh) => {
 			scoped(gh);

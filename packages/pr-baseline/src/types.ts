@@ -250,8 +250,14 @@ export interface MoveBaselineOptions {
 	to?: string;
 	/** Restrict to one baseline by name. */
 	baseline?: string;
-	/** Refresh open PR statuses afterwards, also when nothing moved. */
+	/** Refresh open PR statuses afterwards. */
 	refreshPrStatuses?: boolean;
+	/**
+	 * Whether that refresh still runs when no baseline ref changed; default true.
+	 * The action passes false for the events that fire on every base-branch push, and leaves it true
+	 * for the schedule and dispatches, which are the recovery net.
+	 */
+	refreshWhenUnchanged?: boolean;
 }
 
 export type MoveReason = 'forced' | 'label' | 'markers';

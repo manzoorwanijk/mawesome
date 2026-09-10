@@ -86,6 +86,8 @@ For each selected baseline decides whether it should move, and to where:
 
 `--refresh-pr-statuses` runs a refresh afterwards, also when nothing moved, so a re-dispatch is a safe retry. In a dry run the refresh is evaluated against the intended, unwritten baseline positions.
 
+The refresh that follows always runs from the CLI, whether or not a baseline moved; only the action suppresses it, and only for the events that fire on every base-branch push.
+
 Exit codes: `0`, `1` when the following refresh is incomplete and not paused, `2` error.
 
 ### `report`

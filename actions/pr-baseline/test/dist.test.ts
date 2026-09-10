@@ -131,7 +131,8 @@ describe('built action bundle', () => {
 			payload: { ref: 'refs/heads/main', repository: { default_branch: 'main' } },
 		});
 		expect(result.code).toBe(0);
-		expect(result.outputs['skipped']).toBe('1');
+		// The merge already moved the baseline, so this push moves nothing and runs no refresh.
+		expect(result.outputs).toMatchObject({ moved: 'false', skipped: '0', written: '0' });
 		result = await runBundle({ event: 'schedule', payload: {} });
 		expect(result.code).toBe(0);
 		expect(result.outputs['incomplete']).toBe('false');
