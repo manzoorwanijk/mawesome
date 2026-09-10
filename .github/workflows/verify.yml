@@ -119,7 +119,7 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Build the action bundle
-        run: pnpm --filter @mawesome/pr-baseline-action build
+        run: pnpm --filter '@mawesome/pr-baseline-action...' build
       - name: Check the generated action README
         run: node actions/pr-baseline/scripts/generate-readme.ts --check
       # Runs the bundle the way the runner would, without a token: it must load, reject the mode and fail.
