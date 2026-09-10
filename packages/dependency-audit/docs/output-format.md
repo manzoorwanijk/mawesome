@@ -77,9 +77,7 @@ A `{ tool, version, results }` envelope. `tool` is always `"dependency-audit"` a
 {
 	"tool": "dependency-audit",
 	"version": "0.2.1", // the producing CLI version
-	"results": [
-		/* one AuditResult / error entry / skip entry per target */
-	],
+	"results": [/* one AuditResult / error entry / skip entry per target */],
 }
 ```
 
@@ -124,9 +122,7 @@ Distinguish the three by key: an `error` key → could not audit (exit 2); a `sk
 			"suggestion": "declare \"@types/react\" …",
 		},
 	],
-	"ignored": [
-		/* Finding[] suppressed by an ignore rule, same shape */
-	],
+	"ignored": [/* Finding[] suppressed by an ignore rule, same shape */],
 	"usedIgnoreRules": [
 		{ "package": "optional-plugin" }, // the run's ignore rules that suppressed something in this target
 	],

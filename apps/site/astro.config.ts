@@ -41,7 +41,6 @@ export default defineConfig({
 		starlight({
 			title: 'mawesome',
 			customCss: ['./src/styles/custom.css'],
-			tagline: 'Sharp, single-purpose developer tools.',
 			social: [
 				{ icon: 'github', label: 'GitHub', href: 'https://github.com/mawesomedev/mawesome' },
 			],

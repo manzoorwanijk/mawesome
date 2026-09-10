@@ -1,0 +1,5 @@
+# oxlint's config-file `ignorePatterns` are rooted at the config's directory (tools/repo), so repo-wide patterns live here and are passed with `--ignore-path`.
+**/dist/**
+**/*.d.ts
+**/*.astro
+**/*.mdx
