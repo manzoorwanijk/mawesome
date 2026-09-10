@@ -41,6 +41,9 @@ export default defineConfig({
 		starlight({
 			title: 'mawesome',
 			customCss: ['./src/styles/custom.css'],
+			// Narrows the sidebar to the tool being read; the override heads it with that tool's name.
+			routeMiddleware: './src/starlightRouteData.ts',
+			components: { Sidebar: './src/components/Sidebar.astro' },
 			social: [
 				{ icon: 'github', label: 'GitHub', href: 'https://github.com/mawesomedev/mawesome' },
 			],
