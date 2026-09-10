@@ -69,7 +69,7 @@ move-baseline:
             --force  Move by intent alone, seeding absent baselines; --to <sha>  Target commit;
             --baseline <name>  Only this baseline; --refresh-pr-statuses  Refresh every open PR's status afterwards.
 
-Exit codes: 0 pass, complete or paused, 1 fail or incomplete, 2 error.`;
+Exit codes: 0 pass, complete or paused, 1 fail, or incomplete and not paused, 2 error.`;
 
 const COMMANDS = new Set(['refresh-pr-status', 'refresh-pr-statuses', 'move-baseline', 'report']);
 

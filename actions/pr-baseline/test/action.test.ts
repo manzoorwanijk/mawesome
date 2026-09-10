@@ -405,8 +405,13 @@ describe('action mode: auto', () => {
 		world.github.pull({ number: 2, headSha: sha(13) });
 		runner({ event: 'schedule', payload: {}, inputs: { 'max-writes-per-run': '1' } });
 		await run();
-		// A pause is green, but an unannounced misconfiguration outranks it.
-		expect(outputs()).toMatchObject({ paused: 'true', written: '1', state: 'failure' });
+		// A pause is green, but an unannounced misconfiguration outranks it, description included.
+		expect(outputs()).toMatchObject({
+			paused: 'true',
+			written: '1',
+			state: 'failure',
+			description: 'Baseline pr-baseline is not on main',
+		});
 		expect(process.exitCode).toBe(1);
 		process.exitCode = 0;
 	});

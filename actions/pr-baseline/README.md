@@ -158,22 +158,22 @@ Explicit modes (`refresh-pr-status`, `refresh-pr-statuses`, `move-baseline`, `re
 
 <!-- outputs:start -->
 
-| Output         | Description                                                                                                                             |
-| -------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `state`        | Status state of the checked commit (`success` or `failure`), or of the run (`success`, `failure`, `skipped` or `error`).                |
-| `description`  | Status description of the checked commit.                                                                                               |
-| `base`         | The base branch the run served.                                                                                                         |
-| `baselines`    | JSON array of `{ name, sha }` for every configured baseline.                                                                            |
-| `missing`      | JSON array of baseline names the evaluated commit lacks (refresh-pr-status mode).                                                       |
-| `written`      | Statuses written.                                                                                                                       |
-| `skipped`      | PRs whose status was already current.                                                                                                   |
-| `closed`       | PRs that closed while the refresh ran.                                                                                                  |
-| `deferred`     | PRs whose head was still moving.                                                                                                        |
-| `failed`       | PRs whose status could not be written.                                                                                                  |
-| `incomplete`   | Whether a refresh stopped before covering every PR (`true` or `false`).                                                                 |
-| `paused`       | Whether a refresh stopped on a budget having written something, so the next run continues and the step stays green (`true` or `false`). |
-| `summary`      | JSON summary of the run, per-PR results capped to stay under the output size limit.                                                     |
-| `results-file` | Path of a JSON file with the uncapped per-PR results of a refresh, for an upload step.                                                  |
+| Output         | Description                                                                                                                                                                    |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `state`        | Status state of the checked commit (`success` or `failure`), or of the run (`success`, `failure`, `skipped` or `error`).                                                       |
+| `description`  | Status description of the checked commit.                                                                                                                                      |
+| `base`         | The base branch the run served.                                                                                                                                                |
+| `baselines`    | JSON array of `{ name, sha }` for every configured baseline.                                                                                                                   |
+| `missing`      | JSON array of baseline names the evaluated commit lacks (refresh-pr-status mode).                                                                                              |
+| `written`      | Statuses written.                                                                                                                                                              |
+| `skipped`      | PRs whose status was already current.                                                                                                                                          |
+| `closed`       | PRs that closed while the refresh ran.                                                                                                                                         |
+| `deferred`     | PRs whose head was still moving.                                                                                                                                               |
+| `failed`       | PRs whose status could not be written.                                                                                                                                         |
+| `incomplete`   | Whether a refresh stopped before covering every PR (`true` or `false`).                                                                                                        |
+| `paused`       | Whether a refresh stopped on a budget having written something, so the next run continues on its own (`true` or `false`). The step stays green unless something else fails it. |
+| `summary`      | JSON summary of the run, per-PR results capped to stay under the output size limit.                                                                                            |
+| `results-file` | Path of a JSON file with the uncapped per-PR results of a refresh, for an upload step.                                                                                         |
 
 <!-- outputs:end -->
 

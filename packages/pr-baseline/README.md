@@ -36,7 +36,7 @@ pr-baseline refresh-pr-statuses --dry-run
 pr-baseline report
 ```
 
-Exit codes: `0` pass or complete, `1` fail or incomplete, `2` error.
+Exit codes: `0` pass, complete or paused, `1` fail, or incomplete and not paused, `2` error.
 
 Several baselines, each with its own name, label, PR scope and auto-move markers, are configured with `--baselines`:
 

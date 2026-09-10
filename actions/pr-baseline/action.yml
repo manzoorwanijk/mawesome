@@ -104,7 +104,7 @@ outputs:
   incomplete:
     description: Whether a refresh stopped before covering every PR (`true` or `false`).
   paused:
-    description: Whether a refresh stopped on a budget having written something, so the next run continues and the step stays green (`true` or `false`).
+    description: Whether a refresh stopped on a budget having written something, so the next run continues on its own (`true` or `false`). The step stays green unless something else fails it.
   summary:
     description: JSON summary of the run, per-PR results capped to stay under the output size limit.
   results-file:

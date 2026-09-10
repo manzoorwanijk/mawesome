@@ -558,15 +558,21 @@ async function reportRefreshPrStatuses(
 			: `Baseline ${result.misconfigured.join(', ')} is not on ${result.base}; every PR passes until a forced move puts it back.`;
 	// Nothing written means every in-scope PR already says so; with no PRs at all, only this run can.
 	const unannounced = misconfigured !== undefined && (result.written > 0 || result.openPulls === 0);
+	const offBase = `Baseline ${result.misconfigured.join(', ')} is not on ${result.base}`;
 	emit({
 		state: (result.incomplete && !result.paused) || unannounced ? 'failure' : 'success',
-		description: result.paused
-			? `Refresh paused (${result.reason})`
-			: result.incomplete
+		/* The description names whatever failed the step, so a pause never hides a misconfiguration
+		 * that is the reason the step is red. */
+		description:
+			result.incomplete && !result.paused
 				? `Refresh incomplete (${result.reason})`
-				: misconfigured === undefined
-					? 'Refresh complete'
-					: `Baseline ${result.misconfigured.join(', ')} is not on ${result.base}`,
+				: unannounced
+					? offBase
+					: result.paused
+						? `Refresh paused (${result.reason})`
+						: misconfigured === undefined
+							? 'Refresh complete'
+							: offBase,
 		base: result.base,
 		baselines: baselinesOutput(result.baselines),
 		missing: '[]',
