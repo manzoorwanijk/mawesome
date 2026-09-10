@@ -2,7 +2,7 @@
 	"name": "mawesome",
 	"version": "0.0.0",
 	"private": true,
-	"description": "Monorepo for @mawesome/* packages",
+	"description": "A monorepo of sharp, single-purpose developer tools",
 	"license": "MIT",
 	"author": "Manzoor Ahmad Wani",
 	"repository": {
