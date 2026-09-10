@@ -59,7 +59,7 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Build the action
-        run: pnpm --filter @mawesome/pr-baseline-action build
+        run: pnpm --filter '@mawesome/pr-baseline-action...' build
       - name: Refresh the PR head's status
         # The workspace path, not `$/`: dist/ is built in this job and is not committed.
         uses: ./actions/pr-baseline # zizmor: ignore[self-repository]
@@ -107,7 +107,7 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Build the action
-        run: pnpm --filter @mawesome/pr-baseline-action build
+        run: pnpm --filter '@mawesome/pr-baseline-action...' build
       - name: Move baselines and refresh PR statuses
         id: pr-baseline
         uses: ./actions/pr-baseline # zizmor: ignore[self-repository]
