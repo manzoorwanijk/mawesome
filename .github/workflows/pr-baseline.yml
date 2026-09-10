@@ -1,5 +1,5 @@
 name: PR baseline
-# Dogfoods the pr-baseline action from this workspace; a consumer copies packages/pr-baseline/action/workflow-template.yml instead.
+# Dogfoods the pr-baseline action from this workspace; a consumer copies actions/pr-baseline/workflow-template.yml instead.
 # The refresh-pr-status job checks out the base branch, never the PR head, so PR code does not run under pull_request_target.
 on:
   # The refresh-pr-status job runs the base branch's code only; the trigger is what lets fork PRs receive a status.
@@ -59,10 +59,10 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Build the action
-        run: pnpm --filter @mawesome/pr-baseline build:action
+        run: pnpm --filter @mawesome/pr-baseline-action build
       - name: Refresh the PR head's status
         # The workspace path, not `$/`: dist/ is built in this job and is not committed.
-        uses: ./packages/pr-baseline/action # zizmor: ignore[self-repository]
+        uses: ./actions/pr-baseline # zizmor: ignore[self-repository]
         with:
           base: main
           baselines: ${{ env.PR_BASELINES }}
@@ -107,10 +107,10 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Build the action
-        run: pnpm --filter @mawesome/pr-baseline build:action
+        run: pnpm --filter @mawesome/pr-baseline-action build
       - name: Move baselines and refresh PR statuses
         id: pr-baseline
-        uses: ./packages/pr-baseline/action # zizmor: ignore[self-repository]
+        uses: ./actions/pr-baseline # zizmor: ignore[self-repository]
         with:
           base: main
           baselines: ${{ env.PR_BASELINES }}
