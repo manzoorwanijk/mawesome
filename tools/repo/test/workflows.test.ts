@@ -33,23 +33,24 @@ describe('pr-baseline dogfood workflow', () => {
 });
 
 /** The mirror workflow runs the tagged commit with the release App's token, so what it trusts must stay pinned down. */
-describe('mirror workflow', () => {
-	const text = read('mirror-action.yml');
+describe('deploy-to-mirror workflow', () => {
+	const text = read('deploy-to-mirror.yml');
 	const resolve =
 		/- name: Resolve the release\n[\s\S]*?run: \|\n([\s\S]*?)\n {6}-/.exec(text)?.[1] ?? '';
 
-	it('runs from the changesets tag in its own serialized environment', () => {
-		expect(text).toContain("tags: ['@mawesome/pr-baseline-action@*']");
+	it('runs from any action changesets tag in its own serialized environment', () => {
+		expect(text).toContain("tags: ['@mawesome/*-action@*']");
 		expect(text).toContain('environment: action-mirror');
 		expect(text).toMatch(
-			/concurrency:\n  group: mirror-action\n  cancel-in-progress: false\n  queue: max/,
+			/concurrency:\n  group: deploy-to-mirror\n  cancel-in-progress: false\n  queue: max/,
 		);
 		expect(text).toContain('permission-contents: write');
-		expect(text).toContain('repositories: ${{ steps.release.outputs.mirror_repo }}');
+		expect(text).toContain('repositories: ${{ steps.action.outputs.mirror_repo }}');
 		expect(text).toContain('package-manager-cache: false');
 	});
 
-	it('validates the version, checks out the peeled tag commit, and requires it on main with a matching manifest', () => {
+	it('validates the package and version, checks out the peeled tag commit, and requires it on main', () => {
+		expect(resolve).toContain("grep -Eq '^@mawesome/[a-z0-9-]+-action$'");
 		expect(resolve).toContain("grep -Eq '^[0-9]+\\.[0-9]+\\.[0-9]+$'");
 		expect(resolve).toContain('$tag^{}');
 		expect(resolve).toContain('origin "$sha" \'+refs/heads/main:refs/remotes/origin/main\'');
@@ -59,39 +60,31 @@ describe('mirror workflow', () => {
 			/- name: Checkout\n\s+uses: actions\/checkout@\w+ # v[\d.]+\n\s+with:\n\s+fetch-depth: 0\n\s+filter: tree:0/,
 		);
 		expect(resolve).toContain('git checkout --quiet "$sha"');
-		expect(resolve).toContain('test "$manifest" = "$version"');
-		// The target repository comes from the action workspace's own manifest, so a second action brings its own.
-		expect(resolve).toContain('.mirror.repo');
-		expect(resolve).toContain("grep -Eq '^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$'");
 	});
 
-	it('stages, prepares, deploys, promotes and always cleans up with the same stage path', () => {
-		expect(text.match(/--stage mirror-stage/g)).toHaveLength(2);
-		expect(text).toContain('src_dir: mirror-stage');
-		// Only the action's own files reach the mirror; the workspace manifest and its tests stay here.
+	/* The mirror repository and the files that reach it come from the workspace manifest, so a second action brings its own. */
+	it('takes the mirror and the staged files from the action workspace', () => {
 		expect(text).toContain(
-			'for path in action.yml LICENSE README.md workflow-template.yml src dist; do',
+			'run: node tools/repo/scripts/deploy-to-mirror.ts resolve --package "$PACKAGE" --version "$VERSION"',
 		);
-		expect(text.match(/if: steps\.prepare\.outputs\.deploy == 'true'/g)).toHaveLength(2);
-		expect(text).toMatch(/always\(\) && steps\.prepare\.outcome != 'skipped'/);
+		expect(text).toMatch(/deploy-to-mirror\.ts stage\n\s+--package "\$PACKAGE"/);
+		expect(text).toContain('pnpm --filter "$PACKAGE..." build');
+		expect(text).not.toContain('ACTION_DIR');
 	});
 
-	it('deploys through the pinned action into the branch prepare created, with the App bot identity', () => {
-		expect(text).toMatch(/uses: manzoorwanijk\/action-deploy-to-repo@[0-9a-f]{40} # v[\d.]+/);
-		expect(text).toContain('target_repo: ${{ steps.release.outputs.mirror }}');
-		expect(text).toContain('target_branch: ${{ steps.prepare.outputs.target_branch }}');
-		expect(text).toContain('git_user_name: ${{ steps.bot.outputs.name }}');
-		expect(text).toContain('git_user_email: ${{ steps.bot.outputs.email }}');
-		expect(text).toContain(
-			'cleanup_command: find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +',
-		);
+	/* Nothing but this workflow writes the mirror's refs: it commits in a checkout of its own and pushes once. */
+	it('commits in an official checkout of the mirror instead of delegating to another action', () => {
 		expect(text).toMatch(
-			/commit_msg: \|\n\s+Release v\$\{\{ steps\.release\.outputs\.version \}\}\n\n\s+Upstream-Ref: \$\{\{ steps\.release\.outputs\.sha \}\}/,
+			/- name: Check out the mirror\n\s+uses: actions\/checkout@\w+ # v[\d.]+\n\s+with:\n\s+repository: \$\{\{ steps\.action\.outputs\.mirror \}\}\n\s+token: \$\{\{ steps\.mirror-token\.outputs\.token \}\}\n\s+persist-credentials: true[^\n]*\n\s+path: mirror\n\s+fetch-depth: 0/,
 		);
+		expect(text).toMatch(/deploy-to-mirror\.ts publish\n\s+--repo mirror\n\s+--stage mirror-stage/);
+		expect(text).not.toContain('action-deploy-to-repo');
 	});
 
-	it('binds promote and cleanup to the commit the action reported', () => {
-		expect(text.match(/--deployed "\$DEPLOYED"/g)).toHaveLength(2);
-		expect(text.match(/DEPLOYED: \$\{\{ steps\.deploy\.outputs\.commit_sha \}\}/g)).toHaveLength(2);
+	it('commits as the App bot and announces the release on the mirror', () => {
+		expect(text).toContain('GIT_AUTHOR_NAME: ${{ steps.bot.outputs.name }}');
+		expect(text).toContain('GIT_COMMITTER_EMAIL: ${{ steps.bot.outputs.email }}');
+		expect(text).toContain('gh release view "v$VERSION" --repo "$MIRROR"');
+		expect(text).toContain('gh release create "v$VERSION" --repo "$MIRROR"');
 	});
 });
