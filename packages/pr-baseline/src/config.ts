@@ -5,6 +5,7 @@ import type {
 	ClientOptions,
 	DescriptionTemplates,
 	OtherBases,
+	RefreshScope,
 } from './types.ts';
 
 export const DEFAULT_NAME = 'pr-baseline';
@@ -12,6 +13,7 @@ export const DEFAULT_LABEL = 'Require PR update';
 export const DEFAULT_CONTEXT = 'PR baseline';
 export const DEFAULT_API_URL = 'https://api.github.com';
 export const DEFAULT_MAX_WRITES_PER_RUN = 450;
+export const DEFAULT_SCOPE: RefreshScope = 'corrections';
 export const DEFAULT_MAX_WRITES_PER_MINUTE = 60;
 export const DEFAULT_RETRY_BASE_MS = 1000;
 export const DEFAULT_DESCRIPTIONS: DescriptionTemplates = {
@@ -22,6 +24,7 @@ export const DEFAULT_DESCRIPTIONS: DescriptionTemplates = {
 
 const ANCESTRY_MODES = new Set<AncestryMode>(['auto', 'git', 'api']);
 const OTHER_BASES = new Set<OtherBases>(['skip', 'pass']);
+const SCOPES = new Set<RefreshScope>(['corrections', 'unstamped', 'all']);
 const BASELINE_KEYS = new Set(['name', 'label', 'scope', 'markers']);
 
 /** A configuration problem; reported before any evaluation and never retried. */
@@ -43,6 +46,9 @@ export interface ResolvedConfig {
 	ancestry: AncestryMode;
 	gitDir: string | undefined;
 	otherBases: OtherBases;
+	scope: RefreshScope;
+	/** Whether the scope was asked for rather than defaulted; a custom reporter treats the two differently. */
+	scopeExplicit: boolean;
 	creator: string | undefined;
 	tokenIsWorkflowToken: boolean;
 	offline: boolean;
@@ -76,6 +82,10 @@ export function resolveConfig(options: ClientOptions): ResolvedConfig {
 	if (!OTHER_BASES.has(otherBases)) {
 		throw new ConfigError(`Invalid other-bases value "${otherBases}": expected skip or pass.`);
 	}
+	const scope = options.scope;
+	if (scope !== undefined && !SCOPES.has(scope)) {
+		throw new ConfigError(`Invalid scope "${scope}": expected corrections, unstamped or all.`);
+	}
 	if ((options.offline ?? false) && ancestry === 'api') {
 		throw new ConfigError('--offline needs git ancestry; drop --ancestry api.');
 	}
@@ -105,6 +115,8 @@ export function resolveConfig(options: ClientOptions): ResolvedConfig {
 		ancestry,
 		gitDir: nonEmpty(options.gitDir),
 		otherBases,
+		scope: scope ?? DEFAULT_SCOPE,
+		scopeExplicit: scope !== undefined,
 		creator,
 		tokenIsWorkflowToken: options.tokenIsWorkflowToken ?? false,
 		offline: options.offline ?? false,

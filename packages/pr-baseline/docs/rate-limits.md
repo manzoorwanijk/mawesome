@@ -20,9 +20,9 @@ Git fetches do not count against any of these, which is why the git ancestry ada
 | `move-baseline`       | Fixed: 1 for the default branch unless `--base` is set, 1 per baseline, 1 for the base head, 1 to resolve `--to` when given. Per baseline that can move on a label: 1 GraphQL point per 50 merged labeled PRs per distinct label, up to 2 compares per candidate. Per baseline with markers: 1 compare. Per move: 1 compare for the fast-forward guard and 1 ref write. Then 1 per baseline to re-read the refs before the result (not in a dry run).                                                                                                                                                  |
 | `report`              | Fixed: 1 for the default branch unless `--base` is set, 1 per baseline, 1 for the base head, 1 GraphQL point per 100 open PRs, 1 compare per present baseline. Per PR: 1 compare when any baseline is scoped. No writes.                                                                                                                                                                                                                                                                                                                                                                               |
 
-After a move, a PR already failing is written again when the baseline its default link names (the first one it lacks) moved, since that link carries the baseline commit; `--target-url` makes the link constant and saves those writes.
+A default link names the base branch rather than a baseline commit, so a move leaves every failing PR's status alone and costs no writes.
 
-Worked cold start with `GITHUB_TOKEN`, one baseline, 600 open PRs, nothing stamped yet: 6 GraphQL points to list, 600 compares, 600 writes. The refresh stops at the 450-write cap with 150 PRs left and exits nonzero; the next scheduled run finishes them. With the git adapter the 600 compares disappear.
+Worked cold start with `GITHUB_TOKEN`, one baseline, 600 open PRs, nothing stamped yet, run as `--scope unstamped` or `--scope all` (the default scope selects none of them, since none carries a status): 6 GraphQL points to list, 600 compares, 600 writes. The refresh stops at the 450-write cap with 150 PRs left; it wrote something, so it is paused and exits 0, and the next run of the same command finishes them. With the git adapter the 600 compares disappear.
 
 ## How the tool paces itself
 
@@ -31,4 +31,4 @@ Worked cold start with `GITHUB_TOKEN`, one baseline, 600 open PRs, nothing stamp
 - **Primary reserve**: the refresh reads `x-ratelimit-remaining` from every response and stops writing when 50 requests remain, so reads at the end of the run never fail on an exhausted window.
 - **Classification**: a primary limit (`x-ratelimit-remaining: 0`), a secondary limit (403 or 429 with `retry-after` or a body mentioning the rate limit) and a GraphQL `RATE_LIMITED` error on a 200 all stop the run with the summary and a retry hint. For reads and ref updates, server errors (any 5xx) and network failures are retried three times with quadratic backoff through the official Octokit retry plugin; status writes are retried by `refresh-pr-status` and `refresh-pr-statuses` themselves so every attempt is budgeted; no 4xx is ever retried.
 
-An incomplete refresh is not lost work: every status it wrote is current, and the next run skips them.
+An incomplete or paused refresh is not lost work: every status it wrote is current, and the next run skips them.

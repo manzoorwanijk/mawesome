@@ -47,7 +47,8 @@ function runner(input: {
 	});
 	writeFileSync(process.env['GITHUB_OUTPUT'] as string, '');
 	writeFileSync(process.env['GITHUB_STEP_SUMMARY'] as string, '');
-	for (const [name, value] of Object.entries(input.inputs ?? {})) {
+	// These cases predate scoping and assert the full sweep; a scoped case passes its own.
+	for (const [name, value] of Object.entries({ scope: 'all', ...input.inputs })) {
 		process.env[`INPUT_${name.toUpperCase()}`] = value;
 	}
 }
@@ -71,12 +72,20 @@ const OUTPUT_NAMES = [
 	'base',
 	'baselines',
 	'closed',
+	'cosmetic',
 	'deferred',
 	'description',
+	'excluded',
 	'failed',
 	'incomplete',
 	'missing',
+	'moved',
+	'moved-baselines',
+	'paused',
+	'remaining',
 	'results-file',
+	'scope',
+	'selected',
 	'skipped',
 	'state',
 	'summary',
@@ -190,6 +199,10 @@ describe('action mode: auto', () => {
 		runner({ event: 'pull_request_target', payload: closed, actor: 'dependabot[bot]' });
 		await run();
 		expect(outputs()['state']).toBe('skipped');
+		/* The skip text is the only thing the maintainer sees on this path, and it must not promise
+		 * a stamp the default scope cannot make. */
+		expect(outputs()['description']).toContain('a scope unstamped backfill stamps the commit');
+		expect(outputs()['description']).not.toContain('the scheduled run recovers it');
 		runner({
 			event: 'push',
 			payload: { ref: 'refs/heads/main', repository: { default_branch: 'main' } },
@@ -359,14 +372,128 @@ describe('action mode: auto', () => {
 		expect(outputs()['written']).toBe('1');
 	});
 
-	it('fails the step on an incomplete refresh', async () => {
+	it('runs no refresh on a base push that moved nothing, on auto and on a pinned mode', async () => {
+		world.github.baseline('pr-baseline', sha(5));
+		world.github.pull({ number: 1, headSha: sha(12) });
+		const push = { ref: 'refs/heads/main', repository: { default_branch: 'main', fork: false } };
+		runner({ event: 'push', payload: push });
+		await run();
+		expect(outputs()).toMatchObject({ written: '0', moved: 'false' });
+		expect(world.github.requests(/\/statuses\//, 'POST')).toHaveLength(0);
+		// `action.yml` invites pinning the mode; that must not bring the unconditional refresh back.
+		runner({ event: 'push', payload: push, inputs: { mode: 'move-baseline' } });
+		await run();
+		expect(world.github.requests(/\/statuses\//, 'POST')).toHaveLength(0);
+		// The schedule is the recovery net and refreshes whether or not anything moved.
+		runner({ event: 'schedule', payload: {} });
+		await run();
+		expect(outputs()['written']).toBe('1');
+	});
+
+	it('keeps refreshing on a dispatch and skips it on an unchanged merge', async () => {
+		world.github.baseline('pr-baseline', sha(5));
+		world.github.pull({ number: 1, headSha: sha(12) });
+		const merged = pullPayload(sha(4), {
+			action: 'closed',
+			pull_request: { ...(pullPayload(sha(4))['pull_request'] as object), merged: true },
+		});
+		runner({ event: 'pull_request_target', payload: merged });
+		await run();
+		expect(world.github.requests(/\/statuses\//, 'POST')).toHaveLength(0);
+		// A bare dispatch is the recovery net and refreshes whether or not anything moved.
+		runner({ event: 'workflow_dispatch', payload: {} });
+		await run();
+		expect(outputs()['written']).toBe('1');
+	});
+
+	it('emits moved and moved-baselines with no refresh at all', async () => {
+		runner({
+			event: 'workflow_dispatch',
+			payload: {},
+			inputs: { mode: 'move-baseline', force: 'true', 'refresh-pr-statuses-after-move': 'false' },
+		});
+		await run();
+		expect(outputs()).toMatchObject({
+			moved: 'true',
+			'moved-baselines': '["pr-baseline"]',
+			written: '0',
+		});
+	});
+
+	it('emits moved and moved-baselines on a run that also refreshed', async () => {
+		world.github.pull({ number: 1, headSha: sha(12) });
+		runner({
+			event: 'workflow_dispatch',
+			payload: {},
+			inputs: { mode: 'move-baseline', force: 'true' },
+		});
+		await run();
+		expect(outputs()).toMatchObject({ moved: 'true', 'moved-baselines': '["pr-baseline"]' });
+		expect(Number(outputs()['written'])).toBeGreaterThan(0);
+	});
+
+	it('passes the scope input through to the refresh', async () => {
+		world.github.commit(sha(13), [sha(1)]);
+		world.github.pull({ number: 1, headSha: sha(12) });
+		world.github.pull({ number: 2, headSha: sha(13) });
+		runner({ event: 'schedule', payload: {}, inputs: { scope: 'corrections' } });
+		await run();
+		// Neither PR carries a status, so the corrections scope selects nothing and writes nothing.
+		expect(outputs()).toMatchObject({ scope: 'corrections', selected: '0', written: '0' });
+	});
+
+	it('leaves the step green on a paused refresh, still reporting it incomplete', async () => {
 		world.github.commit(sha(13), [sha(1)]);
 		world.github.pull({ number: 1, headSha: sha(12) });
 		world.github.pull({ number: 2, headSha: sha(13) });
 		runner({ event: 'schedule', payload: {}, inputs: { 'max-writes-per-run': '1' } });
 		await run();
 		expect(outputs()['incomplete']).toBe('true');
+		expect(outputs()['paused']).toBe('true');
 		expect(outputs()['written']).toBe('1');
+		expect(outputs()['description']).toBe('Refresh paused (write-cap), 1 remaining');
+		expect(outputs()['state']).toBe('success');
+		expect(summary()).toContain('Paused: write-cap. 1 PRs left at scope all.');
+		expect(process.exitCode ?? 0).toBe(0);
+	});
+
+	it('fails the step on a refresh that stopped having written nothing', async () => {
+		world.github.pull({ number: 1, headSha: sha(12) });
+		world.github.overrides.push({
+			path: /\/statuses\//,
+			method: 'POST',
+			status: 422,
+			times: 10,
+			body: { message: 'This SHA and context has reached the maximum number of statuses.' },
+		});
+		runner({ event: 'schedule', payload: {} });
+		await run();
+		expect(outputs()).toMatchObject({
+			incomplete: 'true',
+			paused: 'false',
+			written: '0',
+			failed: '1',
+			state: 'failure',
+		});
+		expect(process.exitCode).toBe(1);
+		process.exitCode = 0;
+	});
+
+	it('still fails an off-base baseline on a run that would otherwise be paused', async () => {
+		world.github.commit(sha(20), [sha(2)]);
+		world.github.commit(sha(13), [sha(1)]);
+		world.github.baseline('pr-baseline', sha(20));
+		world.github.pull({ number: 1, headSha: sha(12) });
+		world.github.pull({ number: 2, headSha: sha(13) });
+		runner({ event: 'schedule', payload: {}, inputs: { 'max-writes-per-run': '1' } });
+		await run();
+		// A pause is green, but an unannounced misconfiguration outranks it, description included.
+		expect(outputs()).toMatchObject({
+			paused: 'true',
+			written: '1',
+			state: 'failure',
+			description: 'Baseline pr-baseline is not on main',
+		});
 		expect(process.exitCode).toBe(1);
 		process.exitCode = 0;
 	});
@@ -435,13 +562,23 @@ describe('action mode: auto', () => {
 		});
 		await run();
 		expect(world.github.baselineAt('pr-baseline')).toBe(sha(5));
-		// The failure written earlier now links to the moved baseline, so it is written once more.
-		expect(outputs()['written']).toBe('1');
-		expect(world.github.latestStatus(sha(12), 'PR baseline')?.targetUrl).toContain(`...${sha(5)}`);
+		// The link names the base branch, so the move leaves the failing status alone.
+		expect(outputs()['written']).toBe('0');
+		expect(outputs()['skipped']).toBe('1');
+		expect(world.github.latestStatus(sha(12), 'PR baseline')?.targetUrl).toContain('...main');
 	});
 });
 
 describe('action explicit modes and errors', () => {
+	it('puts the readiness breakdown in the report summary', async () => {
+		world.github.pull({ number: 1, headSha: sha(11) });
+		world.github.pull({ number: 2, headSha: sha(12) });
+		runner({ event: 'workflow_dispatch', payload: {}, inputs: { mode: 'report' } });
+		await run();
+		// The four buckets are what a maintainer reads before making the context required.
+		expect(summary()).toContain('0 passing, 0 failing, 0 other, 2 unstamped.');
+	});
+
 	it('reports, with a failing step when a baseline is off the base', async () => {
 		runner({ event: 'workflow_dispatch', payload: {}, inputs: { mode: 'report' } });
 		await run();
@@ -492,12 +629,20 @@ describe('action explicit modes and errors', () => {
 			'base',
 			'baselines',
 			'closed',
+			'cosmetic',
 			'deferred',
 			'description',
+			'excluded',
 			'failed',
 			'incomplete',
 			'missing',
+			'moved',
+			'moved-baselines',
+			'paused',
+			'remaining',
 			'results-file',
+			'scope',
+			'selected',
 			'skipped',
 			'state',
 			'summary',
@@ -557,14 +702,20 @@ describe('action explicit modes and errors', () => {
 			base: 'main',
 			baselines: [],
 			openPulls: 200,
+			scope: 'all' as const,
+			selected: 200,
+			excluded: 0,
 			misconfigured: [],
 			written: 0,
 			skipped: 0,
+			cosmetic: 0,
 			closed: 0,
 			deferred: 0,
 			outOfScope: 0,
 			failed: 200,
+			remaining: 0,
 			incomplete: true,
+			paused: false,
 			reason: 'failed',
 			entries,
 			ancestry: 'api',

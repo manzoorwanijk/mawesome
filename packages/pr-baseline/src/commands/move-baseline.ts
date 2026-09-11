@@ -12,8 +12,8 @@ import type {
 	MoveReason,
 	ResolvedBaseline,
 } from '../types.ts';
-import { BaselineError, refSnapshot, shortSha } from '../util.ts';
-import { runRefreshPrStatuses } from './refresh-pr-statuses.ts';
+import { BaselineError, refSnapshot, sameRefs, shortSha } from '../util.ts';
+import { assertScopeUsable, runRefreshPrStatuses } from './refresh-pr-statuses.ts';
 
 type Decision = { reason: MoveReason } | { note: string };
 
@@ -53,6 +53,7 @@ export async function runMoveBaseline(
 	const base = await runtime.base();
 	if (options.refreshPrStatuses) {
 		// Resolved before anything moves so a creator problem is a configuration error, not a half-run.
+		assertScopeUsable(runtime);
 		await runtime.creator();
 	}
 	const baselines = await runtime.readBaselines();
@@ -110,10 +111,17 @@ export async function runMoveBaseline(
 		moves,
 		dryRun: config.dryRun,
 	};
-	if (options.refreshPrStatuses) {
+	/* Ref identity, not `moved`: a baseline another writer advanced past the target, or between this run's
+	 * write and the re-read, reports `moved: false` while the refs really did change since the last refresh. */
+	const changed = !sameRefs(before, authoritative) || moves.some((move) => move.moved);
+	if (options.refreshPrStatuses && (changed || options.refreshWhenUnchanged !== false)) {
+		/* Scoping to green PRs is sound only because a baseline moves forward: a forced move can put one
+		 * anywhere, so it can turn a red PR green, which only a full sweep sees. */
+		const forced = moves.some((move) => move.moved && move.reason === 'forced');
 		// A dry-run refresh evaluates statuses against the intended positions while the adapter still verifies the real, unmoved refs.
 		result.refresh = await runRefreshPrStatuses(runtime, {
 			baselines: authoritative,
+			...(forced ? { scope: 'all' as const } : {}),
 			...(config.dryRun ? { verifyRefs: before } : {}),
 		});
 	}

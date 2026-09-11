@@ -69,6 +69,14 @@ function twoStalePulls(gh: FakeGitHub): void {
 	gh.pull({ number: 2, headSha: sha(11) });
 }
 
+/** The same two PRs showing green, which is what the default scope corrects. */
+function twoCorrectablePulls(gh: FakeGitHub): void {
+	twoStalePulls(gh);
+	for (const head of [sha(10), sha(11)]) {
+		gh.status(head, { state: 'success', description: 'Contains the required main changes.' });
+	}
+}
+
 describe('cli end to end', () => {
 	it('exits 0 on a passing status and prints the result as JSON', async () => {
 		const { status, json } = await run(
@@ -96,13 +104,86 @@ describe('cli end to end', () => {
 		expect(github.latestStatus(sha(10), 'PR baseline')?.state).toBe('failure');
 	});
 
-	it('exits 1 on an incomplete refresh and 0 once it converges', async () => {
-		const capped = await run(twoStalePulls, ['refresh-pr-statuses', '--max-writes-per-run', '1']);
-		expect(capped.status).toBe(1);
-		expect(capped.json()).toMatchObject({ written: 1, incomplete: true, reason: 'write-cap' });
-		const full = await run(twoStalePulls, ['refresh-pr-statuses']);
+	it('leaves an unstamped PR alone under the default scope', async () => {
+		const { status, json } = await run(twoStalePulls, ['refresh-pr-statuses']);
+		expect(status).toBe(0);
+		expect(json()).toMatchObject({
+			scope: 'corrections',
+			openPulls: 2,
+			selected: 0,
+			excluded: 2,
+			written: 0,
+		});
+		const backfill = await run(twoStalePulls, ['refresh-pr-statuses', '--scope', 'unstamped']);
+		expect(backfill.json()).toMatchObject({ scope: 'unstamped', selected: 2, written: 2 });
+	});
+
+	it('exits 0 on a paused refresh and 0 once it converges', async () => {
+		const capped = await run(twoCorrectablePulls, [
+			'refresh-pr-statuses',
+			'--max-writes-per-run',
+			'1',
+		]);
+		expect(capped.status).toBe(0);
+		expect(capped.json()).toMatchObject({
+			written: 1,
+			incomplete: true,
+			paused: true,
+			reason: 'write-cap',
+		});
+		const full = await run(twoCorrectablePulls, ['refresh-pr-statuses']);
 		expect(full.status).toBe(0);
-		expect(full.json()).toMatchObject({ written: 2, incomplete: false });
+		expect(full.json()).toMatchObject({ written: 2, incomplete: false, paused: false });
+	});
+
+	it('exits 1 on an incomplete refresh that is not paused', async () => {
+		const { status, json } = await run(
+			(gh) => {
+				twoCorrectablePulls(gh);
+				gh.overrides.push({
+					path: /\/statuses\//,
+					method: 'POST',
+					status: 422,
+					times: 10,
+					body: { message: 'This SHA and context has reached the maximum number of statuses.' },
+				});
+			},
+			['refresh-pr-statuses'],
+		);
+		expect(status).toBe(1);
+		expect(json()).toMatchObject({ written: 0, failed: 2, incomplete: true, paused: false });
+	});
+
+	it('exits 0 when a move delegates to a paused refresh, and 1 when it fails', async () => {
+		const paused = await run(twoCorrectablePulls, [
+			'move-baseline',
+			'--refresh-pr-statuses',
+			'--max-writes-per-run',
+			'1',
+		]);
+		expect(paused.status).toBe(0);
+		expect(paused.json()).toMatchObject({ refresh: { written: 1, paused: true } });
+		const failing = await run(
+			(gh) => {
+				twoCorrectablePulls(gh);
+				gh.overrides.push({
+					path: /\/statuses\//,
+					method: 'POST',
+					status: 422,
+					times: 10,
+					body: { message: 'This SHA and context has reached the maximum number of statuses.' },
+				});
+			},
+			['move-baseline', '--refresh-pr-statuses'],
+		);
+		expect(failing.status).toBe(1);
+		expect(failing.json()).toMatchObject({ refresh: { failed: 2, paused: false } });
+	});
+
+	it('prints the readiness breakdown in the report', async () => {
+		const { status, json } = await run(twoCorrectablePulls, ['report']);
+		expect(status).toBe(0);
+		expect(json()).toMatchObject({ openPulls: 2, passing: 2, failing: 0, other: 0, unstamped: 0 });
 	});
 
 	it('exits 2 when report finds a baseline off the base branch', async () => {

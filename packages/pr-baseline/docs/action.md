@@ -14,7 +14,7 @@ name: PR baseline
 # in a job-level `if`, so the branch name is a literal in the marked places.
 on:
   pull_request_target:
-    types: [opened, synchronize, reopened, ready_for_review, edited, closed]
+    types: [opened, synchronize, reopened, ready_for_review, edited]
   merge_group:
   push:
     branches: [BASE]
@@ -31,6 +31,11 @@ on:
         type: string
         default: ''
         description: Name of one baseline to move; blank moves all
+      scope:
+        type: choice
+        default: corrections
+        options: [corrections, unstamped, all]
+        description: Which open PRs a refresh covers; corrections is the PRs showing green, unstamped is the backfill
 permissions: {}
 env:
   # One source of truth for both jobs. Omit to use the single default baseline.
@@ -56,11 +61,11 @@ jobs:
           baselines: ${{ env.PR_BASELINES }}
   refresh-pr-statuses:
     name: Move baselines and refresh PR statuses
+    # A merge fires `push` on the base branch at the same moment, so a `closed` trigger would only run this twice.
     if: >-
       !github.event.repository.fork && (
-        (github.event_name == 'pull_request_target' && github.event.action == 'closed' && github.event.pull_request.merged) ||
         (github.event_name == 'push' && github.ref_name == 'BASE') ||
-        github.event_name == 'schedule' ||
+        github.event.schedule == '17 * * * *' ||
         github.event_name == 'workflow_dispatch'
       )
     runs-on: ubuntu-latest
@@ -88,11 +93,43 @@ jobs:
           mode: ${{ inputs.mode || 'auto' }}
           force: ${{ inputs.mode == 'move-baseline' }}
           baseline: ${{ inputs.baseline || '' }}
-      - if: ${{ always() && steps.pr-baseline.outputs.results-file != '' }}
-        uses: actions/upload-artifact@<sha> # vN
-        with:
-          name: pr-baseline-refresh
-          path: ${{ steps.pr-baseline.outputs.results-file }}
+          scope: ${{ inputs.scope || '' }}
+          # Leaves headroom in the shared hourly budget for the per-PR checks.
+          max-writes-per-run: 300
+# Uncomment during adoption to stamp the PRs nothing has reached yet, and watch `report`'s unstamped
+# count fall. Keep it permanently only if the repository uses Dependabot AND stays on the default
+# GITHUB_TOKEN, whose Dependabot runs cannot write. A custom App or PAT token is the better fix, but it
+# must be stored as a Dependabot secret too: a Dependabot run cannot read the repository's Actions secrets.
+# It needs its own daily tick: add `- cron: '23 4 * * *'` under `on.schedule` above. Each job matches
+# its own cron, so the two never start together; they still share the hour's write budget, which is
+# what the two caps below and above are sized for.
+#  backfill:
+#    name: Stamp the PRs that have no status yet
+#    if: ${{ !github.event.repository.fork && github.event.schedule == '23 4 * * *' }}
+#    runs-on: ubuntu-latest
+#    timeout-minutes: 60
+#    permissions:
+#      contents: read
+#      statuses: write
+#      pull-requests: read
+#    concurrency:
+#      group: pr-baseline-backfill
+#      cancel-in-progress: false
+#    steps:
+#      - uses: actions/checkout@<sha> # vN
+#        with:
+#          ref: BASE
+#          fetch-depth: 0
+#          filter: tree:0
+#          persist-credentials: false
+#      - uses: mawesomedev/pr-baseline-action@<sha> # vX.Y.Z
+#        with:
+#          base: BASE
+#          baselines: ${{ env.PR_BASELINES }}
+#          mode: refresh-pr-statuses
+#          scope: unstamped
+#          # Well below the ceiling: a backfill must not starve every other workflow that writes a status.
+#          max-writes-per-run: 150
 ```
 
 <!-- workflow:end -->
@@ -103,16 +140,18 @@ The `refresh-pr-status` job serves PR and merge-queue events, the `refresh-pr-st
 
 `mode` is `auto` (default), `refresh-pr-status`, `refresh-pr-statuses`, `move-baseline` or `report`. In `auto` the event decides:
 
-| Event                                                  | Mode                                                                                                                                                                                                                             |
-| ------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `pull_request_target`, any type except `closed`        | `refresh-pr-status` on the payload head SHA, reporting on. The supported write path for fork PRs.                                                                                                                                |
-| `pull_request_target` type `closed`, `merged == true`  | `move-baseline --refresh-pr-statuses`, the immediate path for a labeled merge.                                                                                                                                                   |
-| `pull_request_target` type `closed`, `merged == false` | No-op with a notice.                                                                                                                                                                                                             |
-| `pull_request`                                         | `refresh-pr-status`; with the workflow token the status is written only for a same-repository PR not triggered by Dependabot, since the token is read-only otherwise. Any other token writes. A payload without a PR is a no-op. |
-| `merge_group`                                          | `refresh-pr-status` on `merge_group.head_sha` when `merge_group.base_ref` is the base branch; otherwise the `other-bases` rule applies, so a queue for another branch is skipped by default.                                     |
-| `push` to the base branch                              | `move-baseline --refresh-pr-statuses` for path markers and merges made without a `pull_request_target` run. The base defaults to the payload's default branch; a push to any other ref is a no-op.                               |
-| `schedule`                                             | `move-baseline --refresh-pr-statuses`, non-forced, so a missed move is recovered and stale PRs converge.                                                                                                                         |
-| `workflow_dispatch`                                    | The same non-forced `move-baseline --refresh-pr-statuses` as `schedule`. The template's `mode` choice input passes `move-baseline` with `force` or `refresh-pr-statuses` explicitly, so the action never reads dispatch inputs.  |
+| Event                                                  | Mode                                                                                                                                                                                                                                                                                                                                     |
+| ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pull_request_target`, any type except `closed`        | `refresh-pr-status` on the payload head SHA, reporting on. The supported write path for fork PRs.                                                                                                                                                                                                                                        |
+| `pull_request_target` type `closed`, `merged == true`  | `move-baseline --refresh-pr-statuses`, the immediate path for a labeled merge. The refresh is suppressed when no baseline ref changed, since a merge also fires `push`.                                                                                                                                                                  |
+| `pull_request_target` type `closed`, `merged == false` | No-op with a notice.                                                                                                                                                                                                                                                                                                                     |
+| `pull_request`                                         | `refresh-pr-status`; with the workflow token the status is written only for a same-repository PR not triggered by Dependabot, since the token is read-only otherwise. Any other token writes. A payload without a PR is a no-op.                                                                                                         |
+| `merge_group`                                          | `refresh-pr-status` on `merge_group.head_sha` when `merge_group.base_ref` is the base branch; otherwise the `other-bases` rule applies, so a queue for another branch is skipped by default.                                                                                                                                             |
+| `push` to the base branch                              | `move-baseline --refresh-pr-statuses` for path markers and merges made without a `pull_request_target` run, with the refresh suppressed when no baseline ref changed, so a push that moved nothing costs only the checkout and the move decision. The base defaults to the payload's default branch; a push to any other ref is a no-op. |
+| `schedule`                                             | `move-baseline --refresh-pr-statuses`, non-forced, and the refresh runs whether or not anything moved: this is the net under a lost, paused or suppressed run, and the only thing that converges drift no move reports.                                                                                                                  |
+| `workflow_dispatch`                                    | The same non-forced `move-baseline --refresh-pr-statuses` as `schedule`. The template's `mode` choice input passes `move-baseline` with `force` or `refresh-pr-statuses` explicitly, so the action never reads dispatch inputs.                                                                                                          |
+
+An explicit `mode` takes the inputs as given, with one rule still coming from the event: a pinned `mode: move-baseline` on a base-branch push or a merged `pull_request_target` skips its refresh when no baseline ref changed, exactly as `auto` does.
 
 ## Inputs and outputs
 
@@ -120,36 +159,37 @@ Inputs mirror the [CLI](./cli.md), except that `baselines` is inline JSON only a
 
 A hidden `github-token-probe` input, defaulting to `${{ github.token }}` like `token`, lets the action prove whether `token` is the workflow's own token: when the two are equal the status creator is `github-actions[bot]` without any request; an App token never matches and must come with `creator`.
 
-Outputs are plain strings, several of them JSON documents. Every run, including a skip or an error, sets every output and writes a step summary; `state` is then `skipped` or `error`. The `summary` output of a refresh drops per-PR entries until it fits a quarter of GitHub's 1 MB output cap and says how many it omitted; after a move it also carries the moves. A run Dependabot triggers has a read-only workflow token, so it evaluates without writing and leaves moves to the schedule. An incomplete refresh, an off-base baseline in `report`, a configuration error and a permission error fail the step; a failing `refresh-pr-status` verdict does not, since the commit status is the gate, and an off-base baseline in a refresh fails it only while some PR still has to learn it: the run that writes the misconfiguration pass fails, later runs, which write nothing, warn instead. A repository with no open PRs has nowhere else to carry the message, so its run always fails.
+Outputs are plain strings, several of them JSON documents. Every run, including a skip or an error, sets every output and writes a step summary; `state` is then `skipped` or `error`. The `summary` output of a refresh drops per-PR entries until it fits a quarter of GitHub's 1 MB output cap and says how many it omitted; after a move it also carries the moves. A run Dependabot triggers has a read-only workflow token, so it evaluates without writing and leaves moves to the schedule. Nothing else stamps that commit: the scheduled refresh covers the green PRs, not the unstamped ones. Give the action a custom App or PAT token, which lifts the restriction entirely, or schedule a `scope: unstamped` backfill; without one of the two, Dependabot PRs stay on "Expected" indefinitely, and their author cannot push a fix. A custom token has to be stored as a **Dependabot** secret as well as an Actions one: a Dependabot-triggered run cannot read Actions secrets, so a token kept only there is empty on the runs that need it. An incomplete refresh that is not paused, an off-base baseline in `report`, a configuration error and a permission error fail the step; a paused refresh warns and leaves the step green, with `incomplete` still `true`; a failing `refresh-pr-status` verdict does not, since the commit status is the gate, and an off-base baseline in a refresh fails it only while some PR still has to learn it: the run that writes the misconfiguration pass fails, later runs, which write nothing, warn instead. A repository with no open PRs has nowhere else to carry the message, so its run always fails.
 
 ### Inputs
 
 <!-- inputs:start -->
 
-| Input                            | Description                                                                                                      | Default               |
-| -------------------------------- | ---------------------------------------------------------------------------------------------------------------- | --------------------- |
-| `token`                          | Token used for every read and write; defaults to the workflow's own token.                                       | `${{ github.token }}` |
-| `mode`                           | What to do: auto (from the event), refresh-pr-status, refresh-pr-statuses, move-baseline or report.              | `auto`                |
-| `sha`                            | Commit to evaluate in refresh-pr-status mode; auto takes it from the event.                                      |                       |
-| `base`                           | Base branch; defaults to the repository's default branch.                                                        |                       |
-| `baselines`                      | JSON array of `{ name, label?, scope?, markers? }`, inline only; cannot be combined with name, label or markers. |                       |
-| `name`                           | Shorthand for a single baseline's name (default `pr-baseline`).                                                  |                       |
-| `label`                          | Shorthand for a single baseline's label (default `Require PR update`).                                           |                       |
-| `markers`                        | Shorthand for a single baseline's auto-move patterns, one gitignore pattern per line.                            |                       |
-| `baseline`                       | In move-baseline mode, move only the baseline with this name; blank moves all.                                   |                       |
-| `status-context`                 | Status context (default `PR baseline`).                                                                          |                       |
-| `description-pass`               | Description of a passing status; `{base}` and `{baselines}` are replaced.                                        |                       |
-| `description-fail`               | Description of a failing status; `{base}` and `{baselines}` are replaced.                                        |                       |
-| `description-not-applicable`     | Description written for PRs against other branches when other-bases is pass.                                     |                       |
-| `target-url`                     | Link attached to every status; by default a failing status links to the compare view of what it lacks.           |                       |
-| `other-bases`                    | PRs against other branches: skip (default) or pass.                                                              |                       |
-| `creator`                        | Login the token writes statuses as; required for a GitHub App token.                                             |                       |
-| `ancestry`                       | Ancestry source: auto (default), git or api.                                                                     |                       |
-| `max-writes-per-run`             | Stop a refresh after this many status writes; a positive integer (default 450).                                  |                       |
-| `max-writes-per-minute`          | Pace status writes; a positive integer per minute (default 60).                                                  |                       |
-| `dry-run`                        | Log every intended write and baseline move instead of making it.                                                 | `false`               |
-| `force`                          | In move-baseline mode, move by intent alone and seed absent baselines.                                           | `false`               |
-| `refresh-pr-statuses-after-move` | In move-baseline mode, refresh every open PR's status afterwards (default true).                                 | `true`                |
+| Input                            | Description                                                                                                                                                                                  | Default               |
+| -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------- |
+| `token`                          | Token used for every read and write; defaults to the workflow's own token.                                                                                                                   | `${{ github.token }}` |
+| `mode`                           | What to do: auto (from the event), refresh-pr-status, refresh-pr-statuses, move-baseline or report.                                                                                          | `auto`                |
+| `sha`                            | Commit to evaluate in refresh-pr-status mode; auto takes it from the event.                                                                                                                  |                       |
+| `base`                           | Base branch; defaults to the repository's default branch.                                                                                                                                    |                       |
+| `baselines`                      | JSON array of `{ name, label?, scope?, markers? }`, inline only; cannot be combined with name, label or markers.                                                                             |                       |
+| `name`                           | Shorthand for a single baseline's name (default `pr-baseline`).                                                                                                                              |                       |
+| `label`                          | Shorthand for a single baseline's label (default `Require PR update`).                                                                                                                       |                       |
+| `markers`                        | Shorthand for a single baseline's auto-move patterns, one gitignore pattern per line.                                                                                                        |                       |
+| `baseline`                       | In move-baseline mode, move only the baseline with this name; blank moves all.                                                                                                               |                       |
+| `scope`                          | Which open PRs a refresh covers: corrections (default, the green ones), unstamped (the backfill) or all.                                                                                     |                       |
+| `status-context`                 | Status context (default `PR baseline`).                                                                                                                                                      |                       |
+| `description-pass`               | Description of a passing status; `{base}` and `{baselines}` are replaced.                                                                                                                    |                       |
+| `description-fail`               | Description of a failing status; `{base}` and `{baselines}` are replaced.                                                                                                                    |                       |
+| `description-not-applicable`     | Description written for PRs against other branches when other-bases is pass.                                                                                                                 |                       |
+| `target-url`                     | Link attached to every status; by default a failing status links to the compare view of what it lacks.                                                                                       |                       |
+| `other-bases`                    | PRs against other branches: skip (default) or pass.                                                                                                                                          |                       |
+| `creator`                        | Login the token writes statuses as; required for a GitHub App token.                                                                                                                         |                       |
+| `ancestry`                       | Ancestry source: auto (default), git or api.                                                                                                                                                 |                       |
+| `max-writes-per-run`             | Stop a refresh after this many status writes; a positive integer (default 450).                                                                                                              |                       |
+| `max-writes-per-minute`          | Pace status writes; a positive integer per minute (default 60).                                                                                                                              |                       |
+| `dry-run`                        | Log every intended write and baseline move instead of making it.                                                                                                                             | `false`               |
+| `force`                          | In move-baseline mode, move by intent alone and seed absent baselines.                                                                                                                       | `false`               |
+| `refresh-pr-statuses-after-move` | In move-baseline mode, refresh open PR statuses afterwards (default true). On a base-branch push or a merged pull_request_target the refresh is skipped anyway when no baseline ref changed. | `true`                |
 
 <!-- inputs:end -->
 
@@ -157,21 +197,29 @@ Outputs are plain strings, several of them JSON documents. Every run, including 
 
 <!-- outputs:start -->
 
-| Output         | Description                                                                                                              |
-| -------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| `state`        | Status state of the checked commit (`success` or `failure`), or of the run (`success`, `failure`, `skipped` or `error`). |
-| `description`  | Status description of the checked commit.                                                                                |
-| `base`         | The base branch the run served.                                                                                          |
-| `baselines`    | JSON array of `{ name, sha }` for every configured baseline.                                                             |
-| `missing`      | JSON array of baseline names the evaluated commit lacks (refresh-pr-status mode).                                        |
-| `written`      | Statuses written.                                                                                                        |
-| `skipped`      | PRs whose status was already current.                                                                                    |
-| `closed`       | PRs that closed while the refresh ran.                                                                                   |
-| `deferred`     | PRs whose head was still moving.                                                                                         |
-| `failed`       | PRs whose status could not be written.                                                                                   |
-| `incomplete`   | Whether a refresh stopped before covering every PR (`true` or `false`).                                                  |
-| `summary`      | JSON summary of the run, per-PR results capped to stay under the output size limit.                                      |
-| `results-file` | Path of a JSON file with the uncapped per-PR results of a refresh, for an upload step.                                   |
+| Output            | Description                                                                                                                                                                                                                    |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `state`           | Status state of the checked commit (`success` or `failure`), or of the run (`success`, `failure`, `skipped` or `error`).                                                                                                       |
+| `description`     | Status description of the checked commit.                                                                                                                                                                                      |
+| `base`            | The base branch the run served.                                                                                                                                                                                                |
+| `baselines`       | JSON array of `{ name, sha }` for every configured baseline.                                                                                                                                                                   |
+| `missing`         | JSON array of baseline names the evaluated commit lacks (refresh-pr-status mode).                                                                                                                                              |
+| `written`         | Statuses written.                                                                                                                                                                                                              |
+| `skipped`         | PRs whose status was already current.                                                                                                                                                                                          |
+| `closed`          | Selected PRs that closed while the refresh ran.                                                                                                                                                                                |
+| `deferred`        | PRs whose head was still moving.                                                                                                                                                                                               |
+| `failed`          | PRs whose status could not be written.                                                                                                                                                                                         |
+| `scope`           | The scope a refresh applied; `all` whatever was asked when a baseline is off the base branch, after a forced move, or with a custom reporter.                                                                                  |
+| `selected`        | Open PRs the scope selected.                                                                                                                                                                                                   |
+| `excluded`        | Open PRs the scope left out.                                                                                                                                                                                                   |
+| `cosmetic`        | Selected PRs whose status differed only in description or link, so no write was spent.                                                                                                                                         |
+| `remaining`       | Selected PRs the run never reached.                                                                                                                                                                                            |
+| `moved`           | Whether any baseline moved in this run (`true` or `false`).                                                                                                                                                                    |
+| `moved-baselines` | JSON array of the baseline names that moved.                                                                                                                                                                                   |
+| `incomplete`      | Whether a refresh stopped before covering every selected PR (`true` or `false`).                                                                                                                                               |
+| `paused`          | Whether a refresh stopped on a budget having written something, with nothing failed or deferred (`true` or `false`). The step stays green unless something else fails it; a run at the same scope continues where it left off. |
+| `summary`         | JSON summary of the run, per-PR results capped to stay under the output size limit.                                                                                                                                            |
+| `results-file`    | Path of a JSON file with the uncapped per-PR results of a refresh, for an upload step.                                                                                                                                         |
 
 <!-- outputs:end -->
 

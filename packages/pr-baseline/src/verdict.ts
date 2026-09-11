@@ -5,6 +5,9 @@ export const MAX_DESCRIPTION_LENGTH = 140;
 const LISTED_BASELINES = 2;
 const ELLIPSIS = '…';
 
+/** How an existing status differs from the intended one: not at all, in text only, or in a way that gates a merge. */
+export type StatusDifference = 'current' | 'cosmetic' | 'material';
+
 export interface VerdictBaseline {
 	name: string;
 	sha: string | null;
@@ -24,7 +27,7 @@ export interface VerdictContext {
 
 /**
  * Combines per-baseline answers into the one status the context carries.
- * With `head`, a failing status without a configured link points at the commits the head lacks up to the first missing baseline.
+ * With `head`, a failing status without a configured link points at the commits the base branch has that the head lacks.
  */
 export function computeVerdict(
 	baselines: VerdictBaseline[],
@@ -44,28 +47,30 @@ export function computeVerdict(
 			applicable: names,
 		};
 	}
-	const first = applicable.find((entry) => entry.name === missing[0])?.sha ?? null;
 	return {
 		kind: 'fail',
 		status: {
 			...payload('failure', context.descriptions.fail, context, missing),
-			targetUrl: context.targetUrl ?? compareUrl(context, head, first),
+			targetUrl: context.targetUrl ?? compareUrl(context, head, context.base),
 		},
 		missing,
 		applicable: names,
 	};
 }
 
-/** GitHub's three-dot compare: the commits reachable from the baseline that the head does not contain. */
+/**
+ * GitHub's three-dot compare: the commits on the base branch that the head does not contain.
+ * Naming the branch rather than the baseline commit keeps the link identical across a move, so a move alone never costs a write.
+ */
 export function compareUrl(
 	context: Pick<VerdictContext, 'repoUrl'>,
 	head: string | undefined,
-	baseline: string | null,
+	base: string,
 ): string | undefined {
-	if (context.repoUrl === undefined || head === undefined || baseline === null) {
+	if (context.repoUrl === undefined || head === undefined) {
 		return undefined;
 	}
-	return `${context.repoUrl}/compare/${head}...${baseline}`;
+	return `${context.repoUrl}/compare/${head}...${encodeURIComponent(base)}`;
 }
 
 /** The pass written for a PR outside the base branch when `other-bases` is `pass`. */
@@ -115,21 +120,22 @@ export function boundDescription(text: string): string {
 	return points.slice(0, MAX_DESCRIPTION_LENGTH - 1).join('') + ELLIPSIS;
 }
 
-/** A status is current only when state, description, target URL and creator all match. */
-export function statusMatches(
+/**
+ * Whether an intended status differs from the one on the commit, and whether the difference gates a merge.
+ * A creator mismatch is material because a ruleset pinned to a source is not satisfied by another creator's green.
+ */
+export function compareStatus(
 	current: StatusRecord | null,
 	intended: StatusPayload,
 	creator: string,
-): boolean {
-	if (current === null) {
-		return false;
+): StatusDifference {
+	if (current === null || current.state !== intended.state || current.creator !== creator) {
+		return 'material';
 	}
-	return (
-		current.state === intended.state &&
-		(current.description ?? '') === intended.description &&
-		(current.targetUrl ?? '') === (intended.targetUrl ?? '') &&
-		current.creator === creator
-	);
+	const drifted =
+		(current.description ?? '') !== intended.description ||
+		(current.targetUrl ?? '') !== (intended.targetUrl ?? '');
+	return drifted ? 'cosmetic' : 'current';
 }
 
 function payload(

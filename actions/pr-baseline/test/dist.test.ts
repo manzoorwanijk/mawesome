@@ -39,7 +39,8 @@ async function runBundle(input: {
 		INPUT_TOKEN: 'workflow-token',
 		'INPUT_GITHUB-TOKEN-PROBE': 'workflow-token',
 	};
-	for (const [name, value] of Object.entries(input.inputs ?? {})) {
+	// These cases predate scoping and assert the full sweep; a scoped case passes its own.
+	for (const [name, value] of Object.entries({ scope: 'all', ...input.inputs })) {
 		env[`INPUT_${name.toUpperCase()}`] = value;
 	}
 	const { code, stdout } = await new Promise<{ code: number; stdout: string }>((resolve) => {
@@ -130,7 +131,8 @@ describe('built action bundle', () => {
 			payload: { ref: 'refs/heads/main', repository: { default_branch: 'main' } },
 		});
 		expect(result.code).toBe(0);
-		expect(result.outputs['skipped']).toBe('1');
+		// The merge already moved the baseline, so this push moves nothing and runs no refresh.
+		expect(result.outputs).toMatchObject({ moved: 'false', skipped: '0', written: '0' });
 		result = await runBundle({ event: 'schedule', payload: {} });
 		expect(result.code).toBe(0);
 		expect(result.outputs['incomplete']).toBe('false');

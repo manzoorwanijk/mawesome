@@ -29,12 +29,20 @@ const OUTPUT_NAMES = [
 	'base',
 	'baselines',
 	'missing',
+	'scope',
+	'selected',
+	'excluded',
 	'written',
 	'skipped',
+	'cosmetic',
 	'closed',
 	'deferred',
 	'failed',
+	'remaining',
 	'incomplete',
+	'paused',
+	'moved',
+	'moved-baselines',
 	'summary',
 	'results-file',
 ] as const;
@@ -56,6 +64,8 @@ interface Plan {
 	report?: boolean;
 	force?: boolean;
 	refreshPrStatuses?: boolean;
+	/** False for the events that fire on every base-branch push, so a push that moved nothing costs no refresh. */
+	refreshWhenUnchanged?: boolean;
 	/** Set when `auto` decided there is nothing to do; the reason goes to a notice. */
 	skip?: string;
 }
@@ -88,12 +98,20 @@ function emit(values: Record<string, string | number | boolean>): void {
 		...Object.fromEntries(OUTPUT_NAMES.map((name) => [name, ''])),
 		baselines: '[]',
 		missing: '[]',
+		scope: '',
+		selected: 0,
+		excluded: 0,
 		written: 0,
 		skipped: 0,
+		cosmetic: 0,
 		closed: 0,
 		deferred: 0,
 		failed: 0,
+		remaining: 0,
 		incomplete: false,
+		paused: false,
+		moved: false,
+		'moved-baselines': '[]',
 		...values,
 	});
 }
@@ -156,7 +174,7 @@ export function decide(
 ): Plan {
 	// The workflow token is read-only in any run Dependabot triggers, whatever the event or mode.
 	const restricted = token === 'workflow' && event.actor === 'dependabot[bot]';
-	const plan = selected === 'auto' ? auto(event, base, token) : explicit(selected);
+	const plan = selected === 'auto' ? auto(event, base, token) : explicit(selected, event);
 	return restricted ? restrict(plan) : plan;
 }
 
@@ -168,14 +186,14 @@ function restrict(plan: Plan): Plan {
 	if (plan.mode === 'refresh-pr-status') {
 		if (plan.report !== false) {
 			core.notice(
-				'Dependabot triggered this run, so its token cannot write; the commit is evaluated only and the scheduled run stamps it.',
+				'Dependabot triggered this run, so its token cannot write and the commit is evaluated only. Configure a custom token, stored as a Dependabot secret so this run can read it, or schedule a refresh-pr-statuses run with scope unstamped to stamp the commit later.',
 			);
 		}
 		return { ...plan, report: false };
 	}
 	return {
 		mode: 'refresh-pr-status',
-		skip: 'Dependabot triggered this run, so its token cannot move a baseline or write statuses; the scheduled run recovers it.',
+		skip: 'Dependabot triggered this run, so its token cannot move a baseline or write statuses; the scheduled run makes the move, and a custom token or a scope unstamped backfill stamps the commit.',
 	};
 }
 
@@ -209,7 +227,13 @@ function auto(event: Event, base: string | undefined, token: TokenKind): Plan {
 					skip: 'Pull request closed without merging; nothing to do.',
 				};
 			}
-			return { mode: 'move-baseline', force: false, refreshPrStatuses: true };
+			// A merge fires this and a push to the base branch; neither is worth a refresh that has nothing to correct.
+			return {
+				mode: 'move-baseline',
+				force: false,
+				refreshPrStatuses: true,
+				refreshWhenUnchanged: false,
+			};
 		}
 		case 'pull_request': {
 			if (pull === undefined) {
@@ -249,11 +273,17 @@ function auto(event: Event, base: string | undefined, token: TokenKind): Plan {
 					skip: `Push to ${ref}, not the base branch ${branch}; nothing to do.`,
 				};
 			}
-			return { mode: 'move-baseline', force: false, refreshPrStatuses: true };
+			return {
+				mode: 'move-baseline',
+				force: false,
+				refreshPrStatuses: true,
+				refreshWhenUnchanged: false,
+			};
 		}
 		case 'schedule':
 		case 'workflow_dispatch':
-			// A dispatch that wants anything else passes an explicit mode; the workflow owns that choice.
+			/* A dispatch that wants anything else passes an explicit mode; the workflow owns that choice.
+			 * These two refresh whatever moved: they are the net under a lost, paused or skipped run. */
 			return { mode: 'move-baseline', force: false, refreshPrStatuses: true };
 		default:
 			throw new ConfigError(
@@ -284,7 +314,8 @@ function canWriteOnPullRequest(
 	return !fork;
 }
 
-function explicit(selected: Exclude<Mode, 'auto'>): Plan {
+/** A pinned mode still gets the event's refresh rule, so `mode: move-baseline` on a push behaves like `auto`. */
+function explicit(selected: Exclude<Mode, 'auto'>, event: Event): Plan {
 	switch (selected) {
 		case 'refresh-pr-status': {
 			const sha = core.getInput('sha');
@@ -298,10 +329,24 @@ function explicit(selected: Exclude<Mode, 'auto'>): Plan {
 				mode: 'move-baseline',
 				force: booleanInput('force', false),
 				refreshPrStatuses: booleanInput('refresh-pr-statuses-after-move', true),
+				refreshWhenUnchanged: refreshesWhenUnchanged(event),
 			};
 		default:
 			return { mode: selected };
 	}
+}
+
+/** The events that fire on every base-branch push get no refresh when nothing moved; everything else keeps one. */
+function refreshesWhenUnchanged(event: Event): boolean {
+	const pull = event.payload['pull_request'] as { merged?: boolean } | undefined;
+	if (event.name === 'push') {
+		return false;
+	}
+	return !(
+		event.name === 'pull_request_target' &&
+		event.payload['action'] === 'closed' &&
+		pull?.merged === true
+	);
 }
 
 async function execute(client: Client, plan: Plan, options: ClientOptions): Promise<void> {
@@ -325,6 +370,7 @@ async function execute(client: Client, plan: Plan, options: ClientOptions): Prom
 			const result = await client.moveBaseline({
 				force: plan.force ?? false,
 				refreshPrStatuses: plan.refreshPrStatuses ?? true,
+				refreshWhenUnchanged: plan.refreshWhenUnchanged ?? true,
 				...(selector.length === 0 ? {} : { baseline: selector }),
 			});
 			await reportMove(result, options.dryRun ?? false);
@@ -361,6 +407,7 @@ function clientOptions(): ClientOptions {
 	assign(options, 'creator', core.getInput('creator'));
 	assign(options, 'ancestry', core.getInput('ancestry') as ClientOptions['ancestry']);
 	assign(options, 'otherBases', core.getInput('other-bases') as ClientOptions['otherBases']);
+	assign(options, 'scope', core.getInput('scope') as ClientOptions['scope']);
 	assign(
 		options,
 		'maxWritesPerRun',
@@ -542,6 +589,9 @@ export function boundedSummary(
 async function reportRefreshPrStatuses(
 	result: RefreshPrStatusesResult,
 	extra: Record<string, unknown> = {},
+	/* Passed explicitly rather than through `extra`, which never reaches `emit`, so a run that both
+	 * moved and refreshed still reports what moved. */
+	move: { moved: boolean; movedBaselines: string[] } = { moved: false, movedBaselines: [] },
 ): Promise<void> {
 	const file = join(
 		process.env['RUNNER_TEMP'] ?? process.cwd(),
@@ -556,46 +606,72 @@ async function reportRefreshPrStatuses(
 			: `Baseline ${result.misconfigured.join(', ')} is not on ${result.base}; every PR passes until a forced move puts it back.`;
 	// Nothing written means every in-scope PR already says so; with no PRs at all, only this run can.
 	const unannounced = misconfigured !== undefined && (result.written > 0 || result.openPulls === 0);
+	const offBase = `Baseline ${result.misconfigured.join(', ')} is not on ${result.base}`;
 	emit({
-		state: result.incomplete || unannounced ? 'failure' : 'success',
-		description: result.incomplete
-			? `Refresh incomplete (${result.reason})`
-			: misconfigured === undefined
-				? 'Refresh complete'
-				: `Baseline ${result.misconfigured.join(', ')} is not on ${result.base}`,
+		state: (result.incomplete && !result.paused) || unannounced ? 'failure' : 'success',
+		/* The description names whatever failed the step, so a pause never hides a misconfiguration
+		 * that is the reason the step is red. */
+		description:
+			result.incomplete && !result.paused
+				? `Refresh incomplete (${result.reason})`
+				: unannounced
+					? offBase
+					: result.paused
+						? `Refresh paused (${result.reason}), ${result.remaining} remaining`
+						: misconfigured === undefined
+							? 'Refresh complete'
+							: offBase,
 		base: result.base,
 		baselines: baselinesOutput(result.baselines),
 		missing: '[]',
+		scope: result.scope,
+		selected: result.selected,
+		excluded: result.excluded,
 		written: result.written,
 		skipped: result.skipped,
+		cosmetic: result.cosmetic,
 		closed: result.closed,
 		deferred: result.deferred,
 		failed: result.failed,
+		remaining: result.remaining,
 		incomplete: result.incomplete,
+		paused: result.paused,
+		moved: move.moved,
+		'moved-baselines': JSON.stringify(move.movedBaselines),
 		summary: boundedSummary(result, extra),
 		'results-file': file,
 	});
 	core.summary.addHeading('PR baseline refresh', 3).addTable([
 		[
 			{ data: 'Open PRs', header: true },
+			{ data: 'Selected', header: true },
 			{ data: 'Written', header: true },
 			{ data: 'Skipped', header: true },
+			{ data: 'Cosmetic', header: true },
 			{ data: 'Closed', header: true },
 			{ data: 'Deferred', header: true },
 			{ data: 'Out of scope', header: true },
 			{ data: 'Failed', header: true },
+			{ data: 'Remaining', header: true },
 		],
 		[
 			String(result.openPulls),
+			`${result.selected} (${result.scope})`,
 			String(result.written),
 			String(result.skipped),
+			String(result.cosmetic),
 			String(result.closed),
 			String(result.deferred),
 			String(result.outOfScope),
 			String(result.failed),
+			String(result.remaining),
 		],
 	]);
-	if (result.incomplete) {
+	if (result.paused) {
+		core.summary.addRaw(
+			`\nPaused: ${result.reason}. ${result.remaining} PRs left at scope ${result.scope}.\n`,
+		);
+	} else if (result.incomplete) {
 		core.summary.addRaw(`\nIncomplete: ${result.reason}. Dispatch the workflow to continue.\n`);
 	}
 	if (misconfigured !== undefined) {
@@ -609,8 +685,11 @@ async function reportRefreshPrStatuses(
 			core.warning(misconfigured);
 		}
 	}
-	if (result.incomplete) {
-		core.setFailed(`Refresh incomplete (${result.reason}); dispatch the workflow to continue.`);
+	// The command already logged the closing line with the counts; only the failure needs to fail the step.
+	if (result.incomplete && !result.paused) {
+		core.setFailed(
+			`Refresh incomplete (${result.reason}); ${result.remaining} PRs left. Retry by dispatching the workflow.`,
+		);
 	}
 }
 
@@ -635,7 +714,11 @@ async function reportMove(result: MoveBaselineResult, dryRun: boolean): Promise<
 	await writeSummary();
 	if (result.refresh !== undefined) {
 		// The move details ride along with the refresh, so a consumer still sees what moved and why.
-		await reportRefreshPrStatuses(result.refresh, { moves: result.moves });
+		await reportRefreshPrStatuses(
+			result.refresh,
+			{ moves: result.moves },
+			{ moved: moved.length > 0, movedBaselines: moved.map((move) => move.name) },
+		);
 		return;
 	}
 	emit({
@@ -653,6 +736,8 @@ async function reportMove(result: MoveBaselineResult, dryRun: boolean): Promise<
 		deferred: 0,
 		failed: 0,
 		incomplete: false,
+		moved: moved.length > 0,
+		'moved-baselines': JSON.stringify(moved.map((move) => move.name)),
 		summary: JSON.stringify(result),
 	});
 }
@@ -689,8 +774,13 @@ async function reportReport(result: ReportResult): Promise<void> {
 			String(baseline.bound),
 		]),
 	]);
+	core.summary.addRaw(
+		`\n${result.passing} passing, ${result.failing} failing, ${result.other} other, ${result.unstamped} unstamped.\n`,
+	);
 	if (result.stale !== undefined && result.current !== undefined) {
-		core.summary.addRaw(`\n${result.current} PRs current, ${result.stale} stale.\n`);
+		core.summary.addRaw(
+			`\n${result.current} PRs current, ${result.stale} stale, ${result.cosmetic ?? 0} differing only in wording or link.\n`,
+		);
 	}
 	await writeSummary();
 	if (result.offBase.length > 0) {

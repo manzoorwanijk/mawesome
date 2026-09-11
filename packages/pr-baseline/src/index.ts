@@ -13,6 +13,7 @@ export {
 	DEFAULT_MAX_WRITES_PER_MINUTE,
 	DEFAULT_MAX_WRITES_PER_RUN,
 	DEFAULT_NAME,
+	DEFAULT_SCOPE,
 	graphqlUrlFor,
 	serverUrlFor,
 	parseBaselines,
@@ -49,17 +50,19 @@ export type {
 	RefreshEntry,
 	RefreshOutcome,
 	RefreshPrStatusesResult,
+	RefreshScope,
 	RefreshStopReason,
 	Verdict,
 	VerdictKind,
 } from './types.ts';
-export { BaselineError } from './util.ts';
+export { BaselineError, createProgressThrottle, sameRefs, type ProgressThrottle } from './util.ts';
 export {
 	boundDescription,
+	compareStatus,
 	computeVerdict,
 	MAX_DESCRIPTION_LENGTH,
 	renderDescription,
-	statusMatches,
+	type StatusDifference,
 	type VerdictBaseline,
 	type VerdictContext,
 } from './verdict.ts';

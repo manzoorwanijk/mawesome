@@ -17,7 +17,7 @@ import { isFullSha, refSnapshot } from '../util.ts';
 import {
 	misconfiguredVerdict,
 	notApplicableVerdict,
-	statusMatches,
+	compareStatus,
 	type VerdictContext,
 } from '../verdict.ts';
 
@@ -166,7 +166,7 @@ async function write(
 	const creator = await runtime.creator();
 	const reporter = await runtime.reporter();
 	const current = await reporter.current(sha);
-	if (statusMatches(current, verdict.status, creator)) {
+	if (compareStatus(current, verdict.status, creator) === 'current') {
 		runtime.logger.info(`Status already current (${verdict.status.state}); nothing written.`);
 		return { ...result, skipped: true };
 	}

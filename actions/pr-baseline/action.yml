@@ -38,6 +38,9 @@ inputs:
   baseline:
     description: In move-baseline mode, move only the baseline with this name; blank moves all.
     required: false
+  scope:
+    description: 'Which open PRs a refresh covers: corrections (default, the green ones), unstamped (the backfill) or all.'
+    required: false
   status-context:
     description: Status context (default `PR baseline`).
     required: false
@@ -77,7 +80,7 @@ inputs:
     required: false
     default: 'false'
   refresh-pr-statuses-after-move:
-    description: In move-baseline mode, refresh every open PR's status afterwards (default true).
+    description: In move-baseline mode, refresh open PR statuses afterwards (default true). On a base-branch push or a merged pull_request_target the refresh is skipped anyway when no baseline ref changed.
     required: false
     default: 'true'
 outputs:
@@ -96,13 +99,29 @@ outputs:
   skipped:
     description: PRs whose status was already current.
   closed:
-    description: PRs that closed while the refresh ran.
+    description: Selected PRs that closed while the refresh ran.
   deferred:
     description: PRs whose head was still moving.
   failed:
     description: PRs whose status could not be written.
+  scope:
+    description: The scope a refresh applied; `all` whatever was asked when a baseline is off the base branch, after a forced move, or with a custom reporter.
+  selected:
+    description: Open PRs the scope selected.
+  excluded:
+    description: Open PRs the scope left out.
+  cosmetic:
+    description: Selected PRs whose status differed only in description or link, so no write was spent.
+  remaining:
+    description: Selected PRs the run never reached.
+  moved:
+    description: Whether any baseline moved in this run (`true` or `false`).
+  moved-baselines:
+    description: JSON array of the baseline names that moved.
   incomplete:
-    description: Whether a refresh stopped before covering every PR (`true` or `false`).
+    description: Whether a refresh stopped before covering every selected PR (`true` or `false`).
+  paused:
+    description: Whether a refresh stopped on a budget having written something, with nothing failed or deferred (`true` or `false`). The step stays green unless something else fails it; a run at the same scope continues where it left off.
   summary:
     description: JSON summary of the run, per-PR results capped to stay under the output size limit.
   results-file:

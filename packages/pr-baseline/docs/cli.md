@@ -25,7 +25,7 @@ Commands: `refresh-pr-status`, `refresh-pr-statuses`, `move-baseline`, `report`.
 | `--description-pass <text>`           |                      | `Contains the required {base} changes.`          | `{base}` and `{baselines}` placeholders.                                                                                                                                                                                                                                                                                                                                                                                                    |
 | `--description-fail <text>`           |                      | `Merge or rebase {base} to include: {baselines}` | Lists two missing baselines and counts the rest.                                                                                                                                                                                                                                                                                                                                                                                            |
 | `--description-not-applicable <text>` |                      | `Baseline applies to {base} only.`               | Used only with `--other-bases pass`.                                                                                                                                                                                                                                                                                                                                                                                                        |
-| `--target-url <url>`                  |                      | compare view                                     | Link on every status, for example the [PR author page](./for-pr-authors.md). Without it a failing status links to the commits the head lacks up to the first missing baseline; a pass has no link.                                                                                                                                                                                                                                          |
+| `--target-url <url>`                  |                      | compare view                                     | Link on every status, for example the [PR author page](./for-pr-authors.md). Without it a failing status links to the commits the base branch has that the head lacks; a pass has no link.                                                                                                                                                                                                                                                  |
 | `--other-bases skip\|pass`            |                      | `skip`                                           | PRs against another branch: skip them, or write a not-applicable pass.                                                                                                                                                                                                                                                                                                                                                                      |
 | `--creator <login>`                   |                      | resolved                                         | Login the token writes statuses as. Required for a GitHub App token and for `GITHUB_TOKEN` used from the CLI (`github-actions[bot]`).                                                                                                                                                                                                                                                                                                       |
 | `--ancestry auto\|git\|api`           |                      | `auto`                                           | Ancestry source. `auto` uses git when `--git-dir` (or the working directory) is a full-history clone whose `origin` serves the repository over https or a local path, otherwise the API. `git` fails without such a clone. `api` also keeps `move-baseline` off git entirely, so its writes go through the refs API.                                                                                                                        |
@@ -54,15 +54,25 @@ Exit codes: `0` pass (including not-applicable and misconfigured), `1` fail, `2`
 
 ### `refresh-pr-statuses`
 
-Lists open PRs against the base branch, computes every verdict, and writes only the statuses that differ in state, description, target URL or creator. Writes are paced by `--max-writes-per-minute`, capped by `--max-writes-per-run`, and stop when the primary rate limit is within its reserve.
+Lists open PRs against the base branch, computes the verdict of the ones `--scope` selects, and writes only the statuses that differ in state, description, target URL or creator. Writes are paced by `--max-writes-per-minute`, capped by `--max-writes-per-run`, and stop when the primary rate limit is within its reserve.
 
-The summary reports `written`, `skipped` (already current), `closed` (gone since listing), `deferred` (head still moving), `outOfScope` (left the base branch or became a draft meanwhile), `failed` and `incomplete` with a `reason`: `rate-limit`, `write-cap`, `primary-budget`, `deferred` or `failed`. Any `deferred` or `failed` marks the refresh incomplete. `closed` and `deferred` only occur with the git adapter, which fetches every head and notices a PR that closed or moved since the listing; the API adapter writes to the listed head.
+`--scope` decides which open PRs the run covers:
+
+| Scope                   | PRs                      | Why                                                                                                                                                               |
+| ----------------------- | ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `corrections` (default) | Status is green          | A baseline only moves forward, so a green PR is the only one that can have turned red, and the only kind whose missing write can let a wrong merge through.       |
+| `unstamped`             | No status on the context | The adoption backfill. A PR with no status is already blocked, so this only adds the explanation; run it throttled.                                               |
+| `all`                   | Every in-scope open PR   | The full sweep. Owed after any change to `refs/baselines/` made outside `move-baseline`, and after any change to the `baselines`, scope or context configuration. |
+
+A PR whose status is `error` or `pending` is in neither named bucket and is reached only by `all`. That is safe, since a required non-success status blocks a merge exactly as a failure does. A forced or non-fast-forward `move-baseline` and a baseline off the base branch both force `all` whatever was asked, because either can turn a red PR green. A custom reporter forces it too: the PR listing carries commit statuses the reporter does not own, so bucketing from it would be a guess. Scoping a custom-reporter run explicitly is an error, raised before a move writes anything rather than after.
+
+The summary reports `scope`, `openPulls` (the first listing, before the scope and before any PR closed), `selected`, `excluded`, `written`, `skipped` (already current), `cosmetic` (differed only in description or link, so no write was spent), `closed` (gone since listing), `deferred` (head still moving), `outOfScope` (left the base branch or became a draft meanwhile), `failed`, `remaining` (selected PRs the run never reached) and `incomplete` with a `reason`: `rate-limit`, `write-cap`, `primary-budget`, `deferred` or `failed`. Any `deferred` or `failed` marks the refresh incomplete. `paused` is an incomplete run that stopped on `rate-limit`, `write-cap` or `primary-budget` having written something, with nothing failed and nothing deferred, which the next run at the same scope continues on its own. `closed` and `deferred` only occur with the git adapter, which fetches the selected heads and notices a PR that closed or moved since the listing; the API adapter writes to the listed head.
 
 A permission or authentication failure on the first write stops the refresh, since it would repeat for every PR. A commit that already carries 1,000 statuses for the context fails for that PR only.
 
 Before evaluating anything, the refresh resolves the status creator, which is exit `2` when it fails, and checks that every present baseline is an ancestor of the base branch head. A baseline that is not gets a warning and the misconfiguration pass for every PR, since such a baseline can never be satisfied by merging and a refusal would only leave stale statuses behind.
 
-Exit codes: `0` complete, `1` incomplete, `2` error.
+Exit codes: `0` complete or paused, `1` incomplete and not paused, `2` error.
 
 ### `move-baseline`
 
@@ -76,11 +86,17 @@ For each selected baseline decides whether it should move, and to where:
 
 `--refresh-pr-statuses` runs a refresh afterwards, also when nothing moved, so a re-dispatch is a safe retry. In a dry run the refresh is evaluated against the intended, unwritten baseline positions.
 
-Exit codes: `0`, `1` when the following refresh is incomplete, `2` error.
+The refresh that follows always runs from the CLI, whether or not a baseline moved; only the action suppresses it, and only for the events that fire on every base-branch push.
+
+Exit codes: `0`, `1` when the following refresh is incomplete and not paused, `2` error.
 
 ### `report`
 
-Read-only. Prints the base head, the open PR count, and for every baseline its commit, whether that commit is on the base branch, and how many open PRs it binds. With the git adapter it also counts PRs whose status is `stale` versus `current`, when the creator can be resolved.
+Read-only. Prints the base head, the open PR count, and for every baseline its commit, whether that commit is on the base branch, and how many open PRs it binds.
+
+It also breaks the open PRs down by the status they carry on the context: `passing`, `failing`, `other` (`error` or `pending`, which blocks a merge and which only `--scope all` reaches) and `unstamped`. All four come from the listing, so they cost nothing and are reported whatever the adapter. This is the adoption signal: require the context once `unstamped` and `other` are near zero, and it is how a `--scope unstamped` backfill is watched to completion.
+
+With the git adapter, every baseline on the base branch and a resolvable creator, it adds a verdict per PR: `current`, `stale` (differing materially) and `cosmetic` (differing only in description or link, which the default and `unstamped` scopes leave alone on purpose, so counting it as stale would mean the number could never reach zero; `--scope all` does write it). Any of those three conditions failing leaves all three counts out.
 
 Exit codes: `0`, `2` when a baseline is not on the base branch (the report is still printed) or on an error.
 

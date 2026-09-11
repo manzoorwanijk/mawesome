@@ -11,6 +11,7 @@ import type {
 	ClientOptions,
 	MoveBaselineResult,
 	OtherBases,
+	RefreshScope,
 	ReportResult,
 	RefreshPrStatusesResult,
 } from './types.ts';
@@ -26,9 +27,11 @@ Usage:
 Commands:
   refresh-pr-status [<sha-or-ref>]
                          Evaluate one commit (default: HEAD of the local repository).
-  refresh-pr-statuses    Bring every open PR's status in line with the baselines.
+  refresh-pr-statuses    Bring the open PRs --scope selects in line with the baselines.
   move-baseline          Move baselines forward when a label, marker or --force says so.
-  report                 Print every baseline, its commit and how many open PRs it binds.
+  report                 Every baseline with its commit and bound PRs, plus the open PRs by
+                         status: passing, failing, other, unstamped. With git ancestry it adds
+                         current, stale and cosmetic per PR.
 
 Repository (flags win over env):
   --repo <owner/name>    GITHUB_REPOSITORY
@@ -62,14 +65,18 @@ Behavior:
   --dry-run              Log writes instead of making them
   --json                 Print the result as JSON on stdout
 
+refresh-pr-statuses:
+            --scope corrections|unstamped|all  Which open PRs to bring in line (default corrections:
+            the green ones, which are the only ones a baseline move can turn red).
+
 refresh-pr-status:
             --pr <n>  Evaluate the PR's head; --report / --no-report  Write the status
             (reporting defaults on for --pr and off for any commit given directly).
 move-baseline:
             --force  Move by intent alone, seeding absent baselines; --to <sha>  Target commit;
-            --baseline <name>  Only this baseline; --refresh-pr-statuses  Refresh every open PR's status afterwards.
+            --baseline <name>  Only this baseline; --refresh-pr-statuses  Refresh open PR statuses afterwards.
 
-Exit codes: 0 pass or complete, 1 fail or incomplete, 2 error.`;
+Exit codes: 0 pass, complete or paused, 1 fail, or incomplete and not paused, 2 error.`;
 
 const COMMANDS = new Set(['refresh-pr-status', 'refresh-pr-statuses', 'move-baseline', 'report']);
 
@@ -131,7 +138,7 @@ async function main(argv: string[]): Promise<number> {
 			case 'refresh-pr-statuses': {
 				const result = await client.refreshPrStatuses();
 				emit(json, result, describeRefreshPrStatuses(result));
-				return result.incomplete ? 1 : 0;
+				return result.incomplete && !result.paused ? 1 : 0;
 			}
 			case 'move-baseline': {
 				const result = await client.moveBaseline({
@@ -141,7 +148,7 @@ async function main(argv: string[]): Promise<number> {
 					...(values.baseline === undefined ? {} : { baseline: values.baseline }),
 				});
 				emit(json, result, describeMove(result));
-				return result.refresh?.incomplete ? 1 : 0;
+				return result.refresh?.incomplete && !result.refresh.paused ? 1 : 0;
 			}
 			case 'report': {
 				const result = await client.report();
@@ -181,6 +188,7 @@ function parse(argv: string[]) {
 			ancestry: { type: 'string' },
 			'git-dir': { type: 'string' },
 			'other-bases': { type: 'string' },
+			scope: { type: 'string' },
 			creator: { type: 'string' },
 			offline: { type: 'boolean' },
 			'max-writes-per-run': { type: 'string' },
@@ -203,7 +211,7 @@ type Values = ReturnType<typeof parse>['values'];
 /** Command-specific options, so a flag meant for another command is an error rather than silently ignored. */
 const COMMAND_OPTIONS: Record<string, readonly (keyof Values)[]> = {
 	'refresh-pr-status': ['pr', 'report'],
-	'refresh-pr-statuses': [],
+	'refresh-pr-statuses': ['scope'],
 	'move-baseline': ['force', 'to', 'baseline', 'refresh-pr-statuses'],
 	report: [],
 };
@@ -234,6 +242,7 @@ function clientOptions(values: Values): ClientOptions {
 	assign(options, 'creator', values.creator);
 	assign(options, 'ancestry', values.ancestry as AncestryMode | undefined);
 	assign(options, 'otherBases', values['other-bases'] as OtherBases | undefined);
+	assign(options, 'scope', values.scope as RefreshScope | undefined);
 	assign(options, 'offline', values.offline);
 	assign(options, 'dryRun', values['dry-run']);
 	assign(
@@ -305,11 +314,14 @@ function describeRefreshPrStatus(result: RefreshPrStatusResult): string {
 }
 
 function describeRefreshPrStatuses(result: RefreshPrStatusesResult): string {
-	const line = `Refreshed statuses of ${result.openPulls} open PRs against ${result.base}: ${result.written} written, ${result.skipped} skipped, ${result.closed} closed, ${result.deferred} deferred, ${result.outOfScope} out of scope, ${result.failed} failed.`;
+	const line = `Refreshed ${result.selected} of ${result.openPulls} open PRs against ${result.base} (scope ${result.scope}): ${result.written} written, ${result.skipped} skipped, ${result.cosmetic} cosmetic, ${result.closed} closed, ${result.deferred} deferred, ${result.outOfScope} out of scope, ${result.failed} failed, ${result.remaining} remaining.`;
 	const misconfigured =
 		result.misconfigured.length === 0
 			? ''
 			: ` Baseline ${result.misconfigured.join(', ')} is not on ${result.base}; every PR passes until a forced move puts it back.`;
+	if (result.paused) {
+		return `${line}${misconfigured} Paused (${result.reason}) at scope ${result.scope}, ${result.remaining} left.`;
+	}
 	return result.incomplete
 		? `${line}${misconfigured} Incomplete (${result.reason}). ${RETRY_HINT}`
 		: `${line}${misconfigured}`;
@@ -329,14 +341,18 @@ function describeMove(result: MoveBaselineResult): string {
 }
 
 function describeReport(result: ReportResult): string {
-	const lines = [`${result.base} at ${shortSha(result.head)}; ${result.openPulls} open PRs.`];
+	const lines = [
+		`${result.base} at ${shortSha(result.head)}; ${result.openPulls} open PRs: ${result.passing} passing, ${result.failing} failing, ${result.other} other, ${result.unstamped} unstamped.`,
+	];
 	for (const baseline of result.baselines) {
 		const where = baseline.sha === null ? 'absent' : shortSha(baseline.sha);
 		const onBase = baseline.onBase === null ? '' : baseline.onBase ? ', on base' : ', NOT on base';
 		lines.push(`${baseline.name}: ${where}${onBase}; binds ${baseline.bound} open PRs.`);
 	}
 	if (result.stale !== undefined && result.current !== undefined) {
-		lines.push(`${result.current} PRs current, ${result.stale} stale.`);
+		lines.push(
+			`${result.current} PRs current, ${result.stale} stale, ${result.cosmetic ?? 0} differing only in wording or link.`,
+		);
 	}
 	if (result.offBase.length > 0) {
 		lines.push(
