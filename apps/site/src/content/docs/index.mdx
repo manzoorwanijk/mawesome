@@ -3,22 +3,101 @@ title: mawesome
 description: Docs and interactive playgrounds for the @mawesome/* tools.
 template: splash
 hero:
-  tagline: Sharp, single-purpose developer tools.
+  tagline: Sharp, single-purpose developer tools, shipped as npm packages and GitHub Actions.
+  actions:
+    - text: Explore the tools
+      link: '#packages'
+      icon: right-arrow
+    - text: View on GitHub
+      link: https://github.com/mawesomedev/mawesome
+      icon: external
+      variant: minimal
 ---
 
-import { Card, CardGrid } from '@astrojs/starlight/components';
-import { tools } from '../../tools.ts';
+import { Card, CardGrid, LinkCard } from '@astrojs/starlight/components';
+import ToolCard from '../../components/ToolCard.astro';
+import { actions, tools } from '../../tools.ts';
 import { toolVersion } from '../../lib/tool-versions.ts';
 
-<CardGrid>
+<h2 id="packages">📦 npm packages</h2>
+
+<div class="tool-grid">
 	{tools.map((tool) => (
-		<Card title={`<a href="/${tool.slug}/">${tool.name}</a>`} icon={tool.icon}>
-			<p><a href={`https://www.npmjs.com/package/${tool.npm}`}><code>v{toolVersion(tool.npm)}</code></a></p>
-			<p>{tool.tagline}</p>
-			<p>
-				<a href={`/${tool.slug}/`}>Documentation →</a>
-				{tool.playground && <Fragment> · <a href={`/${tool.slug}/playground/`}>⚡ Playground →</a></Fragment>}
-			</p>
-		</Card>
+		<ToolCard
+			name={tool.npm}
+			href={`/${tool.slug}/`}
+			icon={tool.icon}
+			version={toolVersion(tool.npm)}
+			versionHref={`https://www.npmjs.com/package/${tool.npm}`}
+			tagline={tool.tagline}
+			code={tool.quickstart}
+			lang="sh"
+			links={[
+				{ label: 'Documentation', href: `/${tool.slug}/` },
+				...(tool.playground ? [{ label: '⚡ Playground', href: `/${tool.slug}/playground/` }] : []),
+				{ label: 'npm', href: `https://www.npmjs.com/package/${tool.npm}` },
+				{ label: 'Source', href: `https://github.com/mawesomedev/mawesome/tree/main/packages/${tool.slug}` },
+			]}
+		/>
 	))}
+</div>
+
+<h2 id="actions">⚙️ GitHub Actions</h2>
+
+Each action is released to its own mirror repository, which is what a workflow references.
+
+<div class="tool-grid">
+	{actions.map((action) => {
+		const version = toolVersion(action.workspace);
+		return (
+			<ToolCard
+				name={action.repo}
+				href={action.docs}
+				icon={action.icon}
+				version={version}
+				versionHref={`https://github.com/${action.repo}/tree/v${version}`}
+				tagline={action.tagline}
+				code={`- uses: ${action.repo}@<sha> # v${version}\n  with:\n    base: main`}
+				lang="yaml"
+				links={[
+					{ label: 'Documentation', href: action.docs },
+					{ label: 'Mirror', href: `https://github.com/${action.repo}` },
+				]}
+			/>
+		);
+	})}
+</div>
+
+## ✨ Built the same way
+
+<CardGrid>
+	<Card title="Single-purpose" icon="puzzle">
+		Each tool solves one problem, with a small, documented surface.
+	</Card>
+	<Card title="Packages for any project" icon="seti:typescript">
+		Packages work from ESM or CommonJS, with TypeScript types that resolve under any module setting.
+	</Card>
+	<Card title="Released from CI" icon="rocket">
+		Published with npm OIDC trusted publishing, with a changelog for every release.
+	</Card>
+	<Card title="Documented in depth" icon="open-book">
+		Concepts, every CLI flag and exit code, and each tool's limits, written down.
+	</Card>
+</CardGrid>
+
+## 🤝 Contributing
+
+Every tool lives in one MIT licensed monorepo. Issues and pull requests are welcome.
+
+<CardGrid>
+	<LinkCard
+		title="Contributing guide"
+		description="Set up the repo and learn the release flow."
+		href="https://github.com/mawesomedev/mawesome/blob/main/CONTRIBUTING.md"
+	/>
+	<LinkCard
+		title="Report an issue"
+		description="Found a bug or missing feature? Tell us on GitHub."
+		href="https://github.com/mawesomedev/mawesome/issues"
+	/>
 </CardGrid>

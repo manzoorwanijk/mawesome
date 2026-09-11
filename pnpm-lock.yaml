@@ -259,6 +259,9 @@ importers:
       '@mawesome/pr-baseline':
         specifier: workspace:*
         version: link:../../packages/pr-baseline
+      '@mawesome/pr-baseline-action':
+        specifier: workspace:*
+        version: link:../../actions/pr-baseline
       astro:
         specifier: ^7.3.1
         version: 7.3.1(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.3)(@types/node@26.4.1)(yaml@2.9.0)
