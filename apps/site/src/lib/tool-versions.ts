@@ -10,9 +10,9 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-/** The `version` field from the tool package's `package.json`, given its npm name. */
-export function toolVersion(npm: string): string {
-	const path = fileURLToPath(import.meta.resolve(`${npm}/package.json`));
+/** The `version` field from a workspace package's `package.json`, given its package name. */
+export function toolVersion(name: string): string {
+	const path = fileURLToPath(import.meta.resolve(`${name}/package.json`));
 	const pkg = JSON.parse(readFileSync(path, 'utf8')) as { version: string };
 	return pkg.version;
 }

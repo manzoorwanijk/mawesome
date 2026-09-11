@@ -1,12 +1,17 @@
-/* Starlight renders a card title through `set:html`, so the homepage's title links need a global rule to look like the heading they replace. */
-.card .title a {
-	color: inherit;
-	text-decoration: none;
+/* Homepage package and action cards (src/components/ToolCard.astro): two per row when there is room. */
+.tool-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(min(100%, 24rem), 1fr));
+	gap: 1rem;
 }
 
-.card .title a:hover,
-.card .title a:focus-visible {
-	text-decoration: underline;
+/*
+ * Starlight spaces sibling content blocks with a top margin, which would push later cards below their row.
+ * A zero `min-width` lets a long code line scroll inside its card instead of widening the page.
+ */
+.tool-grid > * {
+	min-width: 0;
+	margin-top: 0;
 }
 
 /*

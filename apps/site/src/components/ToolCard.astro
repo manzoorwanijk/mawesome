@@ -1,0 +1,94 @@
+---
+/**
+ * A homepage card for one npm package or GitHub Action: version, pitch, a copyable snippet and its links.
+ */
+import { Code, Icon } from '@astrojs/starlight/components';
+import type { StarlightIcon } from '@astrojs/starlight/types';
+
+interface Props {
+	name: string;
+	href: string;
+	icon: StarlightIcon;
+	version: string;
+	versionHref: string;
+	tagline: string;
+	code: string;
+	lang: 'sh' | 'yaml';
+	links: { label: string; href: string }[];
+}
+
+const { name, href, icon, version, versionHref, tagline, code, lang, links } = Astro.props;
+---
+
+<article class="tool-card">
+	<header>
+		<Icon name={icon} class="icon" size="1.5em" />
+		<h3><a href={href}>{name}</a></h3>
+		<a class="version" href={versionHref}><code>v{version}</code></a>
+	</header>
+	<p>{tagline}</p>
+	<Code code={code} lang={lang} />
+	<p class="links">
+		{
+			links.map((link, i) => (
+				<Fragment>
+					{i > 0 && <span aria-hidden="true"> · </span>}
+					<a href={link.href}>{link.label}</a>
+				</Fragment>
+			))
+		}
+	</p>
+</article>
+
+<style>
+	.tool-card {
+		display: flex;
+		flex-direction: column;
+		padding: clamp(1rem, calc(0.125rem + 3vw), 2rem);
+		border: 1px solid var(--sl-color-gray-5);
+		background-color: var(--sl-color-black);
+	}
+
+	.tool-card header {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 0.5rem 0.75rem;
+	}
+
+	.tool-card .icon {
+		flex-shrink: 0;
+		padding: 0.2em;
+		border: 1px solid var(--sl-color-accent);
+		border-radius: 0.25rem;
+		background-color: var(--sl-color-accent-low);
+		color: var(--sl-color-white);
+	}
+
+	.tool-card h3 {
+		margin: 0;
+		font-size: var(--sl-text-h4);
+		overflow-wrap: anywhere;
+	}
+
+	.tool-card h3 a {
+		color: var(--sl-color-white);
+		text-decoration: none;
+	}
+
+	.tool-card h3 a:hover,
+	.tool-card h3 a:focus-visible {
+		text-decoration: underline;
+	}
+
+	.tool-card .version {
+		margin: 0 0 0 auto;
+		font-size: var(--sl-text-sm);
+	}
+
+	/* Keep the links on the card's bottom edge when cards in a row differ in height. */
+	.tool-card .links {
+		margin-top: auto;
+		padding-top: 1rem;
+	}
+</style>
