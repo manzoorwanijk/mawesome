@@ -14,7 +14,7 @@ hero:
       variant: minimal
 ---
 
-import { Card, CardGrid, LinkCard } from '@astrojs/starlight/components';
+import { CardGrid, LinkCard } from '@astrojs/starlight/components';
 import ToolCard from '../../components/ToolCard.astro';
 import { actions, tools } from '../../tools.ts';
 import { toolVersion } from '../../lib/tool-versions.ts';
@@ -67,23 +67,6 @@ Each action is released to its own mirror repository, which is what a workflow r
 		);
 	})}
 </div>
-
-## ✨ Built the same way
-
-<CardGrid>
-	<Card title="Single-purpose" icon="puzzle">
-		Each tool solves one problem, with a small, documented surface.
-	</Card>
-	<Card title="Packages for any project" icon="seti:typescript">
-		Packages work from ESM or CommonJS, with TypeScript types that resolve under any module setting.
-	</Card>
-	<Card title="Released from CI" icon="rocket">
-		npm packages are published with OIDC trusted publishing, and every release gets a changelog.
-	</Card>
-	<Card title="Documented in depth" icon="open-book">
-		Concepts, every CLI flag and exit code, and each tool's limits, written down.
-	</Card>
-</CardGrid>
 
 ## 🤝 Contributing
 
